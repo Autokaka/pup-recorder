@@ -10,6 +10,7 @@ import {
   startSync,
   stopSync,
 } from "./frame_sync";
+import { checkHTML } from "./html_check";
 import { isEmpty } from "./image";
 import { logger } from "./logging";
 import { enableProxy, proxiedUrl } from "./proxy";
@@ -34,9 +35,7 @@ export interface RecordResult {
 }
 
 async function loadWindow(source: string, options: RecordOptions) {
-  if (!source.startsWith("file://") && !source.match(/^https?:\/\//)) {
-    throw new Error("invalid source");
-  }
+  checkHTML(source);
 
   const { width, height, useInnerProxy } = options;
 

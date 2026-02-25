@@ -341,6 +341,18 @@ function stopSync(cdp) {
   });
 }
 
+// src/base/html_check.ts
+var SUPPORTED_PROTOCOLS = ["file:", "http:", "https:", "data:"];
+var SOURCE_PATTERN = /^(file:|https?:|data:)/;
+function checkHTML(source) {
+  if (SOURCE_PATTERN.test(source)) {
+    return;
+  }
+  const protocol = source.split(":")[0] + ":";
+  const message = SUPPORTED_PROTOCOLS.includes(protocol) ? `unsupported protocol: ${protocol}, expected ${SUPPORTED_PROTOCOLS.join(", ")}` : `invalid source format, expected ${SUPPORTED_PROTOCOLS.join(", ")}`;
+  throw new Error(message);
+}
+
 // src/base/image.ts
 function isEmpty(image) {
   const size = image.getSize();
@@ -417,9 +429,7 @@ function useRetry({
 // src/base/record.ts
 var TAG2 = "[Record]";
 async function loadWindow(source, options) {
-  if (!source.startsWith("file://") && !source.match(/^https?:\/\//)) {
-    throw new Error("invalid source");
-  }
+  checkHTML(source);
   const { width, height, useInnerProxy } = options;
   import_electron3.session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     const responseHeaders = { ...details.responseHeaders };
@@ -596,7 +606,7 @@ var DEFAULT_FPS = 30;
 var DEFAULT_DURATION = 5;
 var DEFAULT_OUT_DIR = "out";
 function makeCLI(name, callback) {
-  import_commander.program.name(name).argument("<source>", "URL \u6216 HTML data").option("-w, --width <number>", "\u89C6\u9891\u5BBD\u5EA6", `${DEFAULT_WIDTH}`).option("-h, --height <number>", "\u89C6\u9891\u9AD8\u5EA6", `${DEFAULT_HEIGHT}`).option("-f, --fps <number>", "\u5E27\u7387", `${DEFAULT_FPS}`).option("-t, --duration <number>", "\u5F55\u5236\u65F6\u957F\uFF08\u79D2\uFF09", `${DEFAULT_DURATION}`).option("-o, --out-dir <path>", "\u8F93\u51FA\u76EE\u5F55", `${DEFAULT_OUT_DIR}`).option("-a, --with-alpha-channel", "\u8F93\u51FA\u5305\u542B alpha \u901A\u9053\u7684\u89C6\u9891", false).option(
+  import_commander.program.name(name).argument("<source>", "file://, http(s)://, \u6216 data: URI").option("-w, --width <number>", "\u89C6\u9891\u5BBD\u5EA6", `${DEFAULT_WIDTH}`).option("-h, --height <number>", "\u89C6\u9891\u9AD8\u5EA6", `${DEFAULT_HEIGHT}`).option("-f, --fps <number>", "\u5E27\u7387", `${DEFAULT_FPS}`).option("-t, --duration <number>", "\u5F55\u5236\u65F6\u957F\uFF08\u79D2\uFF09", `${DEFAULT_DURATION}`).option("-o, --out-dir <path>", "\u8F93\u51FA\u76EE\u5F55", `${DEFAULT_OUT_DIR}`).option("-a, --with-alpha-channel", "\u8F93\u51FA\u5305\u542B alpha \u901A\u9053\u7684\u89C6\u9891", false).option(
     "--use-inner-proxy",
     "\u4F7F\u7528 B \u7AD9\u5185\u7F51\u4EE3\u7406\u52A0\u901F\u8D44\u6E90\u8BBF\u95EE",
     pupUseInnerProxy

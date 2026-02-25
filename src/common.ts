@@ -22,7 +22,7 @@ export type CLICallback = (
 export function makeCLI(name: string, callback: CLICallback) {
   program
     .name(name)
-    .argument("<source>", "URL 或 HTML data")
+    .argument("<source>", "file://, http(s)://, 或 data: URI")
     .option("-w, --width <number>", "视频宽度", `${DEFAULT_WIDTH}`)
     .option("-h, --height <number>", "视频高度", `${DEFAULT_HEIGHT}`)
     .option("-f, --fps <number>", "帧率", `${DEFAULT_FPS}`)

@@ -179,7 +179,7 @@ var DEFAULT_FPS = 30;
 var DEFAULT_DURATION = 5;
 var DEFAULT_OUT_DIR = "out";
 function makeCLI(name, callback) {
-  program.name(name).argument("<source>", "URL \u6216 HTML data").option("-w, --width <number>", "\u89C6\u9891\u5BBD\u5EA6", `${DEFAULT_WIDTH}`).option("-h, --height <number>", "\u89C6\u9891\u9AD8\u5EA6", `${DEFAULT_HEIGHT}`).option("-f, --fps <number>", "\u5E27\u7387", `${DEFAULT_FPS}`).option("-t, --duration <number>", "\u5F55\u5236\u65F6\u957F\uFF08\u79D2\uFF09", `${DEFAULT_DURATION}`).option("-o, --out-dir <path>", "\u8F93\u51FA\u76EE\u5F55", `${DEFAULT_OUT_DIR}`).option("-a, --with-alpha-channel", "\u8F93\u51FA\u5305\u542B alpha \u901A\u9053\u7684\u89C6\u9891", false).option(
+  program.name(name).argument("<source>", "file://, http(s)://, \u6216 data: URI").option("-w, --width <number>", "\u89C6\u9891\u5BBD\u5EA6", `${DEFAULT_WIDTH}`).option("-h, --height <number>", "\u89C6\u9891\u9AD8\u5EA6", `${DEFAULT_HEIGHT}`).option("-f, --fps <number>", "\u5E27\u7387", `${DEFAULT_FPS}`).option("-t, --duration <number>", "\u5F55\u5236\u65F6\u957F\uFF08\u79D2\uFF09", `${DEFAULT_DURATION}`).option("-o, --out-dir <path>", "\u8F93\u51FA\u76EE\u5F55", `${DEFAULT_OUT_DIR}`).option("-a, --with-alpha-channel", "\u8F93\u51FA\u5305\u542B alpha \u901A\u9053\u7684\u89C6\u9891", false).option(
     "--use-inner-proxy",
     "\u4F7F\u7528 B \u7AD9\u5185\u7F51\u4EE3\u7406\u52A0\u901F\u8D44\u6E90\u8BBF\u95EE",
     pupUseInnerProxy
