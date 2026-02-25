@@ -1,7 +1,4 @@
-/*
- * Created by Lu Ao (luao@bilibili.com) on 2026/02/25.
- * Copyright © 2026 bilibili. All rights reserved.
- */
+// Created by Autokaka (qq1909698494@gmail.com) on 2026/02/09.
 
 const SUPPORTED_PROTOCOLS = ["file:", "http:", "https:", "data:"];
 const SOURCE_PATTERN = /^(file:|https?:|data:)/;
