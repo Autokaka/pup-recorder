@@ -1,0 +1,37 @@
+{
+  "name": "pup-recorder",
+  "version": "0.0.8",
+  "description": "High-performance webview recording tool.",
+  "type": "module",
+  "bin": {
+    "pup": "./dist/cli.js",
+    "pup-cjs": "./dist/cjs/cli.cjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/cjs/index.cjs"
+    }
+  },
+  "engines": {
+    "bun": ">= 1",
+    "node": ">= 20"
+  },
+  "engineStrict": true,
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^20.0.0",
+    "@typescript/native-preview": "latest",
+    "dts-bundle-generator": "latest",
+    "esbuild": "latest",
+    "typescript": "latest"
+  },
+  "dependencies": {
+    "commander": "latest",
+    "electron": "latest"
+  },
+  "scripts": {
+    "build": "bun build.ts && bun build_rust.ts"
+  }
+}
