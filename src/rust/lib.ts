@@ -2,14 +2,15 @@
 
 import { existsSync } from "fs";
 import { join } from "path";
+import { basedir } from "../base/basedir";
 
 const { platform, arch } = process;
 
 const rustPath = `rust/${platform}-${arch}.node`;
 
 const nativeSearchPaths = [
-  join(__dirname, `../../${rustPath}`), // process start from src
-  join(__dirname, `../${rustPath}`), // process start from dist
+  join(basedir, `../../${rustPath}`), // process start from src
+  join(basedir, `../${rustPath}`), // process start from dist
 ];
 const mod = require(nativeSearchPaths.find(existsSync)!);
 

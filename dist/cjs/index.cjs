@@ -50,9 +50,18 @@ __export(index_exports, {
 });
 module.exports = __toCommonJS(index_exports);
 
+// ../../node_modules/.bun/tsup@8.5.1+3f29b90437d001ad/node_modules/tsup/assets/cjs_shims.js
+var getImportMetaUrl = () => typeof document === "undefined" ? new URL(`file:${__filename}`).href : document.currentScript && document.currentScript.tagName.toUpperCase() === "SCRIPT" ? document.currentScript.src : new URL("main.js", document.baseURI).href;
+var importMetaUrl = /* @__PURE__ */ getImportMetaUrl();
+
 // src/base/constants.ts
 var import_fs = require("fs");
+var import_path2 = require("path");
+
+// src/base/basedir.ts
 var import_path = require("path");
+var import_url = require("url");
+var basedir = (0, import_path.dirname)((0, import_url.fileURLToPath)(importMetaUrl));
 
 // src/base/env.ts
 function penv(name, parser, defaultValue) {
@@ -77,11 +86,11 @@ function parseNumber(value) {
 
 // src/base/constants.ts
 var pupAppSearchPaths = [
-  (0, import_path.resolve)(__dirname, "cjs/app.cjs"),
+  (0, import_path2.join)(basedir, "cjs/app.cjs"),
   // process from dist
-  (0, import_path.resolve)(__dirname, "app.cjs"),
+  (0, import_path2.join)(basedir, "app.cjs"),
   // process from dist/cjs
-  (0, import_path.resolve)(__dirname, "../../cjs/app.cjs")
+  (0, import_path2.join)(basedir, "../../cjs/app.cjs")
   // process from src
 ];
 var pupAppPath = pupAppSearchPaths.find(import_fs.existsSync);
@@ -128,11 +137,11 @@ var ConcurrencyLimiter = class {
     if (this._ended) {
       throw new Error("ended");
     }
-    return new Promise((resolve3, reject) => {
+    return new Promise((resolve, reject) => {
       const run = () => {
         this._active++;
         this._pending--;
-        fn().then(resolve3).catch(reject).finally(() => {
+        fn().then(resolve).catch(reject).finally(() => {
           this._active--;
           this.next();
         });
@@ -149,7 +158,7 @@ var ConcurrencyLimiter = class {
     if (!this._ended) {
       this._ended = true;
       while (this._active > 0 || this._pending > 0) {
-        await new Promise((resolve3) => setTimeout(resolve3, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
       }
     }
   }
@@ -216,7 +225,7 @@ var Logger = class {
     }
   }
   attach(proc, name) {
-    return new Promise((resolve3, reject) => {
+    return new Promise((resolve, reject) => {
       this.debug(`${name}.attach`);
       let fatal = "";
       const dispatch = (data) => {
@@ -239,7 +248,7 @@ var Logger = class {
           reject(new Error(fatal));
         } else {
           this.debug(`${name}.close`);
-          resolve3();
+          resolve();
         }
       }).on("unhandledRejection", (reason) => {
         this.error(`${name}.unhandled`, reason);
@@ -296,7 +305,7 @@ var import_promises = require("timers/promises");
 
 // src/base/timing.ts
 function sleep(ms) {
-  return new Promise((resolve3) => setTimeout(resolve3, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 function periodical(callback, ms) {
   let token;
@@ -347,7 +356,7 @@ function useRetry({
 // src/pup.ts
 var import_child_process2 = require("child_process");
 var import_promises2 = require("fs/promises");
-var import_path3 = require("path");
+var import_path4 = require("path");
 
 // src/base/abort.ts
 var AbortLink = class _AbortLink {
@@ -461,15 +470,15 @@ function runElectronApp(size, app, args) {
 
 // src/base/ffmpeg.ts
 var import_fs2 = require("fs");
-var import_path2 = require("path");
+var import_path3 = require("path");
 var import_process2 = require("process");
 var quiet = ["-hide_banner", "-loglevel", "error", "-nostats"];
 function resolveX265() {
   const path = `x265/${import_process2.platform}-${import_process2.arch}`;
   const dirs = [
-    (0, import_path2.resolve)(__dirname, `../../${path}`),
+    (0, import_path3.join)(basedir, `../../${path}`),
     // process from src
-    (0, import_path2.resolve)(__dirname, `../${path}`)
+    (0, import_path3.join)(basedir, `../${path}`)
     // process from dist
   ];
   const found = dirs.find(import_fs2.existsSync);
@@ -648,11 +657,11 @@ function encodeBgraToMov(bgraPath, movPath, spec) {
 function waitAll(...procs) {
   return Promise.all(
     procs.map(
-      (proc) => new Promise((resolve3, reject) => {
+      (proc) => new Promise((resolve, reject) => {
         proc.on("error", reject);
         proc.on(
           "close",
-          (code) => code === 0 ? resolve3() : reject(new Error(`exit ${code ?? "null"}`))
+          (code) => code === 0 ? resolve() : reject(new Error(`exit ${code ?? "null"}`))
         );
       })
     )
@@ -708,16 +717,16 @@ async function pup(source, options) {
   await link.wait(handle);
   await counter.end();
   logger.info(TAG, `capture cost ${Math.round(performance.now() - t0)}ms`);
-  const metaPath = (0, import_path3.join)(outDir, "record.json");
+  const metaPath = (0, import_path4.join)(outDir, "record.json");
   const meta = JSON.parse(await (0, import_promises2.readFile)(metaPath, "utf-8"));
   const { bgraPath, written, options: recordOptions } = meta;
   const { fps, width, height, withAlphaChannel } = recordOptions;
   const size = { width, height };
   const outputs = {
-    mp4: withAlphaChannel ? void 0 : (0, import_path3.join)(outDir, "output.mp4"),
-    webm: withAlphaChannel ? (0, import_path3.join)(outDir, "output.webm") : void 0,
-    mov: withAlphaChannel ? (0, import_path3.join)(outDir, "output.mov") : void 0,
-    cover: (0, import_path3.join)(outDir, "cover.png")
+    mp4: withAlphaChannel ? void 0 : (0, import_path4.join)(outDir, "output.mp4"),
+    webm: withAlphaChannel ? (0, import_path4.join)(outDir, "output.webm") : void 0,
+    mov: withAlphaChannel ? (0, import_path4.join)(outDir, "output.mov") : void 0,
+    cover: (0, import_path4.join)(outDir, "cover.png")
   };
   try {
     const t1 = performance.now();

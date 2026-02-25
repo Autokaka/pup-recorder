@@ -1,14 +1,15 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/09.
 
 import { existsSync } from "fs";
-import { resolve } from "path";
+import { join } from "path";
+import { basedir } from "./basedir";
 import { penv } from "./env";
 import { parseNumber } from "./parser";
 
 const pupAppSearchPaths = [
-  resolve(__dirname, "cjs/app.cjs"), // process from dist
-  resolve(__dirname, "app.cjs"), // process from dist/cjs
-  resolve(__dirname, "../../cjs/app.cjs"), // process from src
+  join(basedir, "cjs/app.cjs"), // process from dist
+  join(basedir, "app.cjs"), // process from dist/cjs
+  join(basedir, "../../cjs/app.cjs"), // process from src
 ];
 export const pupAppPath = pupAppSearchPaths.find(existsSync)!;
 

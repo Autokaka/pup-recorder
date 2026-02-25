@@ -1,8 +1,9 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/09.
 
 import { existsSync } from "fs";
-import { resolve } from "path";
+import { join } from "path";
 import { arch, platform } from "process";
+import { basedir } from "./basedir";
 import { pupFFmpegPath } from "./constants";
 import type { VideoFiles, VideoSpec } from "./types";
 
@@ -16,8 +17,8 @@ const quiet = ["-hide_banner", "-loglevel", "error", "-nostats"];
 function resolveX265() {
   const path = `x265/${platform}-${arch}`;
   const dirs = [
-    resolve(__dirname, `../../${path}`), // process from src
-    resolve(__dirname, `../${path}`), // process from dist
+    join(basedir, `../../${path}`), // process from src
+    join(basedir, `../${path}`), // process from dist
   ];
   const found = dirs.find(existsSync);
   if (!found) {

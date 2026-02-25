@@ -22,6 +22,10 @@ var __toESM = (mod2, isNodeMode, target) => (target = mod2 != null ? __create(__
   mod2
 ));
 
+// ../../node_modules/.bun/tsup@8.5.1+3f29b90437d001ad/node_modules/tsup/assets/cjs_shims.js
+var getImportMetaUrl = () => typeof document === "undefined" ? new URL(`file:${__filename}`).href : document.currentScript && document.currentScript.tagName.toUpperCase() === "SCRIPT" ? document.currentScript.src : new URL("main.js", document.baseURI).href;
+var importMetaUrl = /* @__PURE__ */ getImportMetaUrl();
+
 // src/app.ts
 var import_electron4 = require("electron");
 
@@ -30,7 +34,12 @@ var import_electron = __toESM(require("electron"), 1);
 
 // src/base/constants.ts
 var import_fs = require("fs");
+var import_path2 = require("path");
+
+// src/base/basedir.ts
 var import_path = require("path");
+var import_url = require("url");
+var basedir = (0, import_path.dirname)((0, import_url.fileURLToPath)(importMetaUrl));
 
 // src/base/env.ts
 function penv(name, parser, defaultValue) {
@@ -55,11 +64,11 @@ function parseNumber(value) {
 
 // src/base/constants.ts
 var pupAppSearchPaths = [
-  (0, import_path.resolve)(__dirname, "cjs/app.cjs"),
+  (0, import_path2.join)(basedir, "cjs/app.cjs"),
   // process from dist
-  (0, import_path.resolve)(__dirname, "app.cjs"),
+  (0, import_path2.join)(basedir, "app.cjs"),
   // process from dist/cjs
-  (0, import_path.resolve)(__dirname, "../../cjs/app.cjs")
+  (0, import_path2.join)(basedir, "../../cjs/app.cjs")
   // process from src
 ];
 var pupAppPath = pupAppSearchPaths.find(import_fs.existsSync);
@@ -124,7 +133,7 @@ var Logger = class {
     }
   }
   attach(proc, name) {
-    return new Promise((resolve2, reject) => {
+    return new Promise((resolve, reject) => {
       this.debug(`${name}.attach`);
       let fatal = "";
       const dispatch = (data) => {
@@ -147,7 +156,7 @@ var Logger = class {
           reject(new Error(fatal));
         } else {
           this.debug(`${name}.close`);
-          resolve2();
+          resolve();
         }
       }).on("unhandledRejection", (reason) => {
         this.error(`${name}.unhandled`, reason);
@@ -201,17 +210,17 @@ var ELECTRON_OPTS = [
 // src/base/record.ts
 var import_electron3 = require("electron");
 var import_promises2 = require("fs/promises");
-var import_path3 = require("path");
+var import_path4 = require("path");
 
 // src/rust/lib.ts
 var import_fs2 = require("fs");
-var import_path2 = require("path");
+var import_path3 = require("path");
 var { platform, arch } = process;
 var rustPath = `rust/${platform}-${arch}.node`;
 var nativeSearchPaths = [
-  (0, import_path2.join)(__dirname, `../../${rustPath}`),
+  (0, import_path3.join)(basedir, `../../${rustPath}`),
   // process start from src
-  (0, import_path2.join)(__dirname, `../${rustPath}`)
+  (0, import_path3.join)(basedir, `../${rustPath}`)
   // process start from dist
 ];
 var mod = require(nativeSearchPaths.find(import_fs2.existsSync));
@@ -392,7 +401,7 @@ var import_promises = require("timers/promises");
 
 // src/base/timing.ts
 function sleep(ms) {
-  return new Promise((resolve2) => setTimeout(resolve2, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // src/base/retry.ts
@@ -468,11 +477,11 @@ async function loadWindow(source, options) {
   const wrapperHTML = buildWrapperHTML(src, { width, height });
   const dataURL = `data:text/html;charset=utf-8,${encodeURIComponent(wrapperHTML)}`;
   let token;
-  await new Promise((resolve2, reject) => {
+  await new Promise((resolve, reject) => {
     token = setTimeout(() => {
       reject(new Error("load window timeout"));
     }, 20 * 1e3);
-    win.webContents.once("did-finish-load", resolve2);
+    win.webContents.once("did-finish-load", resolve);
     win.webContents.once("did-fail-load", (_event, code, desc, url) => {
       reject(new Error(`failed to load ${url}: [${code}] ${desc}`));
     });
@@ -499,7 +508,7 @@ async function record(source, options) {
   if (!win.webContents.isPainting()) {
     win.webContents.startPainting();
   }
-  const bgraPath = (0, import_path3.join)(outDir, "output.bgra");
+  const bgraPath = (0, import_path4.join)(outDir, "output.bgra");
   const total = Math.ceil(fps * duration);
   const frameInterval = 1e3 / fps;
   const bufferSize = width * height * 4;
@@ -574,7 +583,7 @@ async function record(source, options) {
   }
   try {
     const result = { options, written, bgraPath };
-    await (0, import_promises2.writeFile)((0, import_path3.join)(outDir, "record.json"), JSON.stringify(result));
+    await (0, import_promises2.writeFile)((0, import_path4.join)(outDir, "record.json"), JSON.stringify(result));
     logger.info(TAG2, `progress: 100%, ${written} frames written`);
   } finally {
     win.close();

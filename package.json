@@ -1,6 +1,6 @@
 {
   "name": "pup-recorder",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "description": "High-performance webview recording tool.",
   "type": "module",
   "bin": {
@@ -23,8 +23,7 @@
     "@types/bun": "latest",
     "@types/node": "^20.0.0",
     "@typescript/native-preview": "latest",
-    "dts-bundle-generator": "latest",
-    "esbuild": "latest",
+    "tsup": "latest",
     "typescript": "latest"
   },
   "dependencies": {
