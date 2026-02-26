@@ -34,15 +34,17 @@ var import_zod2 = __toESM(require("zod"), 1);
 // package.json
 var package_default = {
   name: "pup-recorder",
-  version: "0.0.11",
-  description: "High-performance webview recording tool.",
+  version: "0.0.12",
+  description: "A nice webview recording tool.",
+  homepage: "https://github.com/Autokaka/pup-recorder",
   license: "MIT",
+  author: "autokaka",
   type: "module",
   bin: {
-    pup: "./dist/cli.js",
-    "pup-cjs": "./dist/cjs/cli.cjs",
-    "pup-mcp-server": "./dist/mcp_server.js",
-    "pup-mcp-server-cjs": "./dist/cjs/mcp_server.cjs"
+    pup: "dist/cli.js",
+    "pup-cjs": "dist/cjs/cli.cjs",
+    "pup-mcp-server": "dist/mcp_server.js",
+    "pup-mcp-server-cjs": "dist/cjs/mcp_server.cjs"
   },
   exports: {
     ".": {

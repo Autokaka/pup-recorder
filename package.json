@@ -1,8 +1,10 @@
 {
   "name": "pup-recorder",
-  "version": "0.0.12",
-  "description": "High-performance webview recording tool.",
+  "version": "0.0.13",
+  "description": "A nice webview recording tool.",
+  "homepage": "https://github.com/Autokaka/pup-recorder",
   "license": "MIT",
+  "author": "autokaka",
   "type": "module",
   "bin": {
     "pup": "dist/cli.js",
