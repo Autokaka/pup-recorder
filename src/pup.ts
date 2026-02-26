@@ -1,6 +1,5 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/09.
 
-import { spawn } from "child_process";
 import type { Size } from "electron";
 import { readFile, rm } from "fs/promises";
 import { join } from "path";
@@ -12,7 +11,7 @@ import { createCoverCommand } from "./base/ffmpeg";
 import { ConcurrencyLimiter } from "./base/limiter";
 import { logger } from "./base/logging";
 import { parseNumber } from "./base/parser";
-import { type ProcessHandle } from "./base/process";
+import { exec, type ProcessHandle } from "./base/process";
 import {
   DEFAULT_HEIGHT,
   DEFAULT_WIDTH,
@@ -21,7 +20,6 @@ import {
   type VideoFilesWithCover,
   type VideoSpec,
 } from "./base/schema";
-import { waitAll } from "./base/stream";
 
 const TAG = "[pup]";
 const PROGRESS_TAG = " progress: ";
@@ -115,9 +113,8 @@ export async function pup(source: string, options: PupOptions) {
     const coverSrc = outputs.mov ?? outputs.webm ?? outputs.mp4;
     if (coverSrc) {
       const coverCmd = createCoverCommand(coverSrc, outputs.cover);
-      await waitAll(
-        spawn(coverCmd.command, coverCmd.args, { stdio: "inherit" }),
-      );
+      const handle = exec(`${coverCmd.command} ${coverCmd.args.join(" ")}`);
+      await link.wait(handle);
     }
 
     link.stop();

@@ -19,6 +19,15 @@ const WARN = "<pup@warn>";
 const ERROR = "<pup@error>";
 const FATAL = "<pup@fatal>";
 
+function stackHook(target: Function, _context: ClassMethodDecoratorContext) {
+  return function (this: Logger, ...messages: unknown[]) {
+    const processed = messages.map((msg) => {
+      return msg instanceof Error ? (msg.stack ?? String(msg)) : msg;
+    });
+    return target.call(this, ...processed);
+  };
+}
+
 class Logger implements LoggerLike {
   private _impl?: LoggerLike;
 
@@ -43,23 +52,28 @@ class Logger implements LoggerLike {
     this.impl = console;
   }
 
+  @stackHook
   debug(...messages: unknown[]): void {
     this.impl?.debug?.(DEBUG, ...messages);
   }
 
+  @stackHook
   info(...messages: unknown[]): void {
     this.impl?.info?.(INFO, ...messages);
   }
 
+  @stackHook
   warn(...messages: unknown[]): void {
     this.impl?.warn?.(WARN, ...messages);
   }
 
+  @stackHook
   error(...messages: unknown[]): void {
     this.impl?.error?.(ERROR, ...messages);
   }
 
-  fatal(...messages: unknown[]): never {
+  @stackHook
+  fatal(...messages: unknown[]): void {
     this.impl?.error?.(FATAL, ...messages);
     process.exit(1);
   }
@@ -101,7 +115,7 @@ class Logger implements LoggerLike {
         .once("close", (code, signal) => {
           if (code || signal || fatal) {
             fatal ||= `command failed: ${proc.spawnargs.join(" ")}`;
-            this.error(`${name}.close`, { code, signal, fatal });
+            this.debug(`${name}.close`, { code, signal, fatal });
             reject(new Error(fatal));
           } else {
             this.debug(`${name}.close`);

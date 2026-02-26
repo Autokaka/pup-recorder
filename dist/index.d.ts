@@ -69,7 +69,7 @@ declare class Logger implements LoggerLike {
     info(...messages: unknown[]): void;
     warn(...messages: unknown[]): void;
     error(...messages: unknown[]): void;
-    fatal(...messages: unknown[]): never;
+    fatal(...messages: unknown[]): void;
     private dispatch;
     attach(proc: ChildProcess, name: string): Promise<void>;
 }

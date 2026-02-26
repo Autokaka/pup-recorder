@@ -7,7 +7,10 @@
     "url": "https://github.com/Autokaka/pup-recorder.git"
   },
   "license": "MIT",
-  "author": "autokaka",
+  "author": {
+    "name": "autokaka",
+    "email": "qq1909698494@gmail.com"
+  },
   "type": "module",
   "bin": {
     "pup": "dist/cli.js",
@@ -39,6 +42,7 @@
     "@opencode-ai/plugin": "latest",
     "commander": "latest",
     "electron": "latest",
+    "source-map-support": "latest",
     "zod": "latest"
   },
   "scripts": {

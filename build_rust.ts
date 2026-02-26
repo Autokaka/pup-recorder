@@ -41,11 +41,15 @@ async function buildRust() {
 
   await $`cargo install cargo-zigbuild`;
 
-  for (const platform of platforms) {
-    for (const arch of archs) {
-      await build(platform, arch);
-    }
-  }
+  await Promise.all(
+    platforms
+      .map((platform) => {
+        return archs.map((arch) => {
+          return build(platform, arch);
+        });
+      })
+      .flat(),
+  );
 }
 
 buildRust();
