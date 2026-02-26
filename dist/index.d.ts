@@ -1,4 +1,26 @@
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import z from 'zod';
+import { Plugin } from '@opencode-ai/plugin';
 import { ChildProcess, SpawnOptions } from 'child_process';
+import { Size } from 'electron';
+
+declare const PupMCPSchema: z.ZodObject<{
+    source: z.ZodString;
+    duration: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+    width: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+    height: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+    fps: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+    withAlphaChannel: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    outDir: z.ZodDefault<z.ZodOptional<z.ZodString>>;
+    useInnerProxy: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+}, z.core.$strip>;
+declare const MCP_TOOL_NAME: string;
+declare const MCP_TOOL_TITLE = "Record Webpage";
+declare const MCP_TOOL_DESC = "Record a webpage to video";
+declare function mcpAddPup(server: McpServer): void;
+declare function startMCPServer(): Promise<void>;
+
+declare const PupOpenCodePlugin: Plugin;
 
 declare const pupAppPath: string;
 declare const pupLogLevel: number;
@@ -72,19 +94,55 @@ interface RetryOptions<Args extends any[], Ret> {
 }
 declare function useRetry<Args extends any[], Ret>({ fn, maxAttempts, timeout, }: RetryOptions<Args, Ret>): (...args: Args) => Promise<Ret>;
 
+interface VideoSpec {
+    fps: number;
+    frames: number;
+    size: Size;
+}
+interface VideoFiles {
+    mp4?: string;
+    webm?: string;
+    mov?: string;
+}
+interface VideoFilesWithCover extends VideoFiles {
+    cover: string;
+}
+declare const DEFAULT_WIDTH = 1920;
+declare const DEFAULT_HEIGHT = 1080;
+declare const DEFAULT_FPS = 30;
+declare const DEFAULT_DURATION = 5;
+declare const DEFAULT_OUT_DIR = "out";
+declare const RecordSchema: z.ZodObject<{
+    duration: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+    width: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+    height: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+    fps: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
+    withAlphaChannel: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    outDir: z.ZodDefault<z.ZodOptional<z.ZodString>>;
+    useInnerProxy: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+}, z.core.$strip>;
+interface RecordOptions {
+    duration: number;
+    width: number;
+    height: number;
+    fps: number;
+    withAlphaChannel: boolean;
+    outDir: string;
+    useInnerProxy: boolean;
+}
+interface RecordResult {
+    options: RecordOptions;
+    written: number;
+    bgraPath: string;
+}
+
 declare function sleep(ms: number): Promise<void>;
 declare function periodical(callback: (count: number) => Promise<void> | void, ms: number): () => void;
 
 type AbortQuery = () => Promise<boolean> | boolean;
 
 type PupProgressCallback = (progress: number) => Promise<void> | void;
-interface PupOptions {
-    withAlphaChannel?: boolean;
-    width?: number;
-    height?: number;
-    fps?: number;
-    duration?: number;
-    outDir?: string;
+interface PupOptions extends Partial<RecordOptions> {
     cancelQuery?: AbortQuery;
     onProgress?: PupProgressCallback;
 }
@@ -99,4 +157,4 @@ declare function pup(source: string, options: PupOptions): Promise<{
     mov?: string;
 }>;
 
-export { ConcurrencyLimiter, type EnvParser, Lazy, type LoggerLike, PUP_ARGS_ENV_KEY, type ProcessHandle, type PupOptions, type RetryOptions, exec, logger, noerr, pargs, parseNumber, penv, periodical, pup, pupAppPath, pupFFmpegPath, pupLogLevel, pupUseInnerProxy, sleep, useRetry };
+export { ConcurrencyLimiter, DEFAULT_DURATION, DEFAULT_FPS, DEFAULT_HEIGHT, DEFAULT_OUT_DIR, DEFAULT_WIDTH, type EnvParser, Lazy, type LoggerLike, MCP_TOOL_DESC, MCP_TOOL_NAME, MCP_TOOL_TITLE, PUP_ARGS_ENV_KEY, type ProcessHandle, PupMCPSchema, PupOpenCodePlugin, type PupOptions, type PupProgressCallback, type RecordOptions, type RecordResult, RecordSchema, type RetryOptions, type VideoFiles, type VideoFilesWithCover, type VideoSpec, exec, logger, mcpAddPup, noerr, pargs, parseNumber, penv, periodical, pup, pupAppPath, pupFFmpegPath, pupLogLevel, pupUseInnerProxy, sleep, startMCPServer, useRetry };

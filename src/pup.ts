@@ -13,27 +13,25 @@ import { ConcurrencyLimiter } from "./base/limiter";
 import { logger } from "./base/logging";
 import { parseNumber } from "./base/parser";
 import { type ProcessHandle } from "./base/process";
-import type { RecordResult } from "./base/record";
+import {
+  DEFAULT_HEIGHT,
+  DEFAULT_WIDTH,
+  type RecordOptions,
+  type RecordResult,
+  type VideoFilesWithCover,
+  type VideoSpec,
+} from "./base/schema";
 import { waitAll } from "./base/stream";
-import type { VideoFilesWithCover, VideoSpec } from "./base/types";
-import { DEFAULT_HEIGHT, DEFAULT_WIDTH } from "./common";
 
 const TAG = "[pup]";
+const PROGRESS_TAG = " progress: ";
 
 export type PupProgressCallback = (progress: number) => Promise<void> | void;
 
-export interface PupOptions {
-  withAlphaChannel?: boolean;
-  width?: number;
-  height?: number;
-  fps?: number;
-  duration?: number;
-  outDir?: string;
+export interface PupOptions extends Partial<RecordOptions> {
   cancelQuery?: AbortQuery;
   onProgress?: PupProgressCallback;
 }
-
-const PROGRESS_TAG = " progress: ";
 
 function runPupApp(source: string, options: PupOptions) {
   logger.debug(TAG, `runPupApp`, source, options);
@@ -45,6 +43,7 @@ function runPupApp(source: string, options: PupOptions) {
   if (options.duration) args.push("--duration", `${options.duration}`);
   if (options.outDir) args.push("--out-dir", options.outDir);
   if (options.withAlphaChannel) args.push("--with-alpha-channel");
+  if (options.useInnerProxy) args.push("--use-inner-proxy");
 
   const w = options.width ?? DEFAULT_WIDTH;
   const h = options.height ?? DEFAULT_HEIGHT;

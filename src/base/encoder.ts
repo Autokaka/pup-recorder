@@ -2,7 +2,7 @@
 
 import { createBgraFileCommand, createBgraToMovPipeline } from "./ffmpeg";
 import { exec, type ProcessHandle } from "./process";
-import type { VideoSpec } from "./types";
+import type { VideoSpec } from "./schema";
 
 export function encodeBgraFile(
   bgraPath: string,

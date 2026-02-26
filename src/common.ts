@@ -6,17 +6,18 @@ import { logger } from "./base/logging";
 import { noerr } from "./base/noerr";
 import { parseNumber } from "./base/parser";
 import { pargs } from "./base/process";
-import type { RecordOptions } from "./base/record";
-
-export const DEFAULT_WIDTH = 1920;
-export const DEFAULT_HEIGHT = 1080;
-export const DEFAULT_FPS = 30;
-export const DEFAULT_DURATION = 5;
-export const DEFAULT_OUT_DIR = "out";
+import {
+  DEFAULT_DURATION,
+  DEFAULT_FPS,
+  DEFAULT_HEIGHT,
+  DEFAULT_OUT_DIR,
+  DEFAULT_WIDTH,
+  type RecordOptions,
+} from "./base/schema";
 
 export type CLICallback = (
   source: string,
-  options: RecordOptions & Record<string, unknown>,
+  options: RecordOptions,
 ) => Promise<unknown>;
 
 export function makeCLI(name: string, callback: CLICallback) {

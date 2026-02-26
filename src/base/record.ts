@@ -15,24 +15,9 @@ import { isEmpty } from "./image";
 import { logger } from "./logging";
 import { enableProxy, proxiedUrl } from "./proxy";
 import { useRetry } from "./retry";
+import type { RecordOptions, RecordResult } from "./schema";
 
 const TAG = "[Record]";
-
-export interface RecordOptions {
-  outDir: string;
-  duration: number;
-  fps: number;
-  width: number;
-  height: number;
-  withAlphaChannel: boolean;
-  useInnerProxy: boolean;
-}
-
-export interface RecordResult {
-  options: RecordOptions;
-  written: number;
-  bgraPath: string;
-}
 
 async function loadWindow(source: string, options: RecordOptions) {
   checkHTML(source);

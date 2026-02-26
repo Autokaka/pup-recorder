@@ -608,12 +608,24 @@ function noerr(fn, defaultValue) {
   };
 }
 
-// src/common.ts
+// src/base/schema.ts
+var import_zod = __toESM(require("zod"), 1);
 var DEFAULT_WIDTH = 1920;
 var DEFAULT_HEIGHT = 1080;
 var DEFAULT_FPS = 30;
 var DEFAULT_DURATION = 5;
 var DEFAULT_OUT_DIR = "out";
+var RecordSchema = import_zod.default.object({
+  duration: import_zod.default.number().optional().default(DEFAULT_DURATION).describe("Recording duration in seconds"),
+  width: import_zod.default.number().optional().default(DEFAULT_WIDTH).describe("Video width"),
+  height: import_zod.default.number().optional().default(DEFAULT_HEIGHT).describe("Video height"),
+  fps: import_zod.default.number().optional().default(DEFAULT_FPS).describe("Frames per second"),
+  withAlphaChannel: import_zod.default.boolean().optional().default(false).describe("Output with alpha channel"),
+  outDir: import_zod.default.string().optional().default(DEFAULT_OUT_DIR).describe("Output directory"),
+  useInnerProxy: import_zod.default.boolean().optional().default(false).describe("Use bilibili inner proxy for resource access")
+});
+
+// src/common.ts
 function makeCLI(name, callback) {
   import_commander.program.name(name).argument("<source>", "file://, http(s)://, \u6216 data: URI").option("-w, --width <number>", "\u89C6\u9891\u5BBD\u5EA6", `${DEFAULT_WIDTH}`).option("-h, --height <number>", "\u89C6\u9891\u9AD8\u5EA6", `${DEFAULT_HEIGHT}`).option("-f, --fps <number>", "\u5E27\u7387", `${DEFAULT_FPS}`).option("-t, --duration <number>", "\u5F55\u5236\u65F6\u957F\uFF08\u79D2\uFF09", `${DEFAULT_DURATION}`).option("-o, --out-dir <path>", "\u8F93\u51FA\u76EE\u5F55", `${DEFAULT_OUT_DIR}`).option("-a, --with-alpha-channel", "\u8F93\u51FA\u5305\u542B alpha \u901A\u9053\u7684\u89C6\u9891", false).option(
     "--use-inner-proxy",

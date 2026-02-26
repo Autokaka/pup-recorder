@@ -6,7 +6,9 @@
   "type": "module",
   "bin": {
     "pup": "./dist/cli.js",
-    "pup-cjs": "./dist/cjs/cli.cjs"
+    "pup-cjs": "./dist/cjs/cli.cjs",
+    "pup-mcp-server": "./dist/mcp_server.js",
+    "pup-mcp-server-cjs": "./dist/cjs/mcp_server.cjs"
   },
   "exports": {
     ".": {
@@ -28,8 +30,11 @@
     "typescript": "latest"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "latest",
+    "@opencode-ai/plugin": "latest",
     "commander": "latest",
-    "electron": "latest"
+    "electron": "latest",
+    "zod": "latest"
   },
   "scripts": {
     "build": "bun build.ts && bun build_rust.ts"

@@ -1,5 +1,135 @@
-// src/common.ts
-import { program } from "commander";
+// src/ai/mcp.ts
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import z2 from "zod";
+
+// package.json
+var package_default = {
+  name: "pup-recorder",
+  version: "0.0.11",
+  description: "High-performance webview recording tool.",
+  license: "MIT",
+  type: "module",
+  bin: {
+    pup: "./dist/cli.js",
+    "pup-cjs": "./dist/cjs/cli.cjs",
+    "pup-mcp-server": "./dist/mcp_server.js",
+    "pup-mcp-server-cjs": "./dist/cjs/mcp_server.cjs"
+  },
+  exports: {
+    ".": {
+      types: "./dist/index.d.ts",
+      import: "./dist/index.js",
+      require: "./dist/cjs/index.cjs"
+    }
+  },
+  engines: {
+    bun: ">= 1",
+    node: ">= 20"
+  },
+  engineStrict: true,
+  devDependencies: {
+    "@types/bun": "latest",
+    "@types/node": "^20.0.0",
+    "@typescript/native-preview": "latest",
+    tsup: "latest",
+    typescript: "latest"
+  },
+  dependencies: {
+    "@modelcontextprotocol/sdk": "latest",
+    "@opencode-ai/plugin": "latest",
+    commander: "latest",
+    electron: "latest",
+    zod: "latest"
+  },
+  scripts: {
+    build: "bun build.ts && bun build_rust.ts"
+  }
+};
+
+// src/base/schema.ts
+import z from "zod";
+var DEFAULT_WIDTH = 1920;
+var DEFAULT_HEIGHT = 1080;
+var DEFAULT_FPS = 30;
+var DEFAULT_DURATION = 5;
+var DEFAULT_OUT_DIR = "out";
+var RecordSchema = z.object({
+  duration: z.number().optional().default(DEFAULT_DURATION).describe("Recording duration in seconds"),
+  width: z.number().optional().default(DEFAULT_WIDTH).describe("Video width"),
+  height: z.number().optional().default(DEFAULT_HEIGHT).describe("Video height"),
+  fps: z.number().optional().default(DEFAULT_FPS).describe("Frames per second"),
+  withAlphaChannel: z.boolean().optional().default(false).describe("Output with alpha channel"),
+  outDir: z.string().optional().default(DEFAULT_OUT_DIR).describe("Output directory"),
+  useInnerProxy: z.boolean().optional().default(false).describe("Use bilibili inner proxy for resource access")
+});
+
+// src/pup.ts
+import { spawn as spawn2 } from "child_process";
+import { readFile, rm } from "fs/promises";
+import { join as join3 } from "path";
+
+// src/base/abort.ts
+var AbortLink = class _AbortLink {
+  constructor(query, interval = 1e3) {
+    this.query = query;
+    this.interval = interval;
+    if (query) {
+      this.tick();
+    }
+  }
+  _callback;
+  _aborted;
+  _stopped = false;
+  static start(query, interval) {
+    return new _AbortLink(query, interval);
+  }
+  get aborted() {
+    return !this._stopped && this._aborted;
+  }
+  get stopped() {
+    return this._stopped;
+  }
+  async onAbort(callback) {
+    if (this._aborted) {
+      await callback();
+    } else {
+      this._callback = callback;
+    }
+  }
+  wait(...handles) {
+    const abort = new Promise((_, reject) => {
+      this.onAbort(async () => {
+        handles.forEach((h) => h.process.kill());
+        reject(new Error("aborted"));
+      });
+    });
+    return Promise.race([
+      abort,
+      Promise.all(handles.map((h) => h.wait))
+      //
+    ]);
+  }
+  stop() {
+    this._stopped = true;
+  }
+  tick() {
+    setTimeout(async () => {
+      if (this._stopped) {
+        return;
+      }
+      this._aborted = await this.query?.();
+      if (this._stopped) {
+        return;
+      }
+      if (this._aborted) {
+        await this._callback?.();
+      } else {
+        this.tick();
+      }
+    }, this.interval);
+  }
+};
 
 // src/base/constants.ts
 import { existsSync } from "fs";
@@ -45,6 +175,12 @@ var env = process.env;
 var pupLogLevel = penv("PUP_LOG_LEVEL", parseNumber, 2);
 var pupUseInnerProxy = env["PUP_USE_INNER_PROXY"] === "1";
 var pupFFmpegPath = env["FFMPEG_BIN"] ?? `ffmpeg`;
+
+// src/base/electron.ts
+import electron from "electron";
+
+// src/base/process.ts
+import { spawn } from "child_process";
 
 // src/base/logging.ts
 var DEBUG = "<pup@debug>";
@@ -137,35 +273,7 @@ var Logger = class {
 };
 var logger = new Logger();
 
-// src/base/noerr.ts
-function noerr(fn, defaultValue) {
-  return (...args) => {
-    try {
-      const ret = fn(...args);
-      if (ret instanceof Promise) {
-        return ret.catch(() => defaultValue);
-      }
-      return ret;
-    } catch {
-      return defaultValue;
-    }
-  };
-}
-
 // src/base/process.ts
-import { spawn } from "child_process";
-var PUP_ARGS_ENV_KEY = "__PUP_ARGS__";
-function pargs() {
-  const pupArgs = process.env[PUP_ARGS_ENV_KEY];
-  if (pupArgs) {
-    const args = ["exec", ...process.argv.slice(-1)];
-    args.push(...JSON.parse(pupArgs));
-    logger.debug("pupargs", args);
-    return args;
-  }
-  logger.debug("procargv", process.argv);
-  return process.argv;
-}
 function exec(cmd, options) {
   const parts = cmd.split(" ").filter((s) => s.length);
   const [command, ...args] = parts;
@@ -177,116 +285,7 @@ function exec(cmd, options) {
   return { process: proc, wait: logger.attach(proc, command) };
 }
 
-// src/base/schema.ts
-import z from "zod";
-var DEFAULT_WIDTH = 1920;
-var DEFAULT_HEIGHT = 1080;
-var DEFAULT_FPS = 30;
-var DEFAULT_DURATION = 5;
-var DEFAULT_OUT_DIR = "out";
-var RecordSchema = z.object({
-  duration: z.number().optional().default(DEFAULT_DURATION).describe("Recording duration in seconds"),
-  width: z.number().optional().default(DEFAULT_WIDTH).describe("Video width"),
-  height: z.number().optional().default(DEFAULT_HEIGHT).describe("Video height"),
-  fps: z.number().optional().default(DEFAULT_FPS).describe("Frames per second"),
-  withAlphaChannel: z.boolean().optional().default(false).describe("Output with alpha channel"),
-  outDir: z.string().optional().default(DEFAULT_OUT_DIR).describe("Output directory"),
-  useInnerProxy: z.boolean().optional().default(false).describe("Use bilibili inner proxy for resource access")
-});
-
-// src/common.ts
-function makeCLI(name, callback) {
-  program.name(name).argument("<source>", "file://, http(s)://, \u6216 data: URI").option("-w, --width <number>", "\u89C6\u9891\u5BBD\u5EA6", `${DEFAULT_WIDTH}`).option("-h, --height <number>", "\u89C6\u9891\u9AD8\u5EA6", `${DEFAULT_HEIGHT}`).option("-f, --fps <number>", "\u5E27\u7387", `${DEFAULT_FPS}`).option("-t, --duration <number>", "\u5F55\u5236\u65F6\u957F\uFF08\u79D2\uFF09", `${DEFAULT_DURATION}`).option("-o, --out-dir <path>", "\u8F93\u51FA\u76EE\u5F55", `${DEFAULT_OUT_DIR}`).option("-a, --with-alpha-channel", "\u8F93\u51FA\u5305\u542B alpha \u901A\u9053\u7684\u89C6\u9891", false).option(
-    "--use-inner-proxy",
-    "\u4F7F\u7528 B \u7AD9\u5185\u7F51\u4EE3\u7406\u52A0\u901F\u8D44\u6E90\u8BBF\u95EE",
-    pupUseInnerProxy
-  ).action(async (source, opts) => {
-    try {
-      await callback(source, {
-        width: noerr(parseNumber, DEFAULT_WIDTH)(opts.width),
-        height: noerr(parseNumber, DEFAULT_HEIGHT)(opts.height),
-        fps: noerr(parseNumber, DEFAULT_FPS)(opts.fps),
-        duration: noerr(parseNumber, DEFAULT_DURATION)(opts.duration),
-        outDir: opts.outDir ?? DEFAULT_OUT_DIR,
-        withAlphaChannel: opts.withAlphaChannel ?? false,
-        useInnerProxy: opts.useInnerProxy ?? pupUseInnerProxy
-      });
-    } catch (e) {
-      logger.fatal(e);
-    }
-  });
-  program.parse(pargs());
-}
-
-// src/pup.ts
-import { spawn as spawn2 } from "child_process";
-import { readFile, rm } from "fs/promises";
-import { join as join3 } from "path";
-
-// src/base/abort.ts
-var AbortLink = class _AbortLink {
-  constructor(query, interval = 1e3) {
-    this.query = query;
-    this.interval = interval;
-    if (query) {
-      this.tick();
-    }
-  }
-  _callback;
-  _aborted;
-  _stopped = false;
-  static start(query, interval) {
-    return new _AbortLink(query, interval);
-  }
-  get aborted() {
-    return !this._stopped && this._aborted;
-  }
-  get stopped() {
-    return this._stopped;
-  }
-  async onAbort(callback) {
-    if (this._aborted) {
-      await callback();
-    } else {
-      this._callback = callback;
-    }
-  }
-  wait(...handles) {
-    const abort = new Promise((_, reject) => {
-      this.onAbort(async () => {
-        handles.forEach((h) => h.process.kill());
-        reject(new Error("aborted"));
-      });
-    });
-    return Promise.race([
-      abort,
-      Promise.all(handles.map((h) => h.wait))
-      //
-    ]);
-  }
-  stop() {
-    this._stopped = true;
-  }
-  tick() {
-    setTimeout(async () => {
-      if (this._stopped) {
-        return;
-      }
-      this._aborted = await this.query?.();
-      if (this._stopped) {
-        return;
-      }
-      if (this._aborted) {
-        await this._callback?.();
-      } else {
-        this.tick();
-      }
-    }, this.interval);
-  }
-};
-
 // src/base/electron.ts
-import electron from "electron";
 var ELECTRON_OPTS = [
   "no-sandbox",
   "disable-setuid-sandbox",
@@ -680,6 +679,42 @@ async function pup(source, options) {
   }
 }
 
-// src/cli.ts
-makeCLI("pup", pup);
-//# sourceMappingURL=cli.js.map
+// src/ai/mcp.ts
+var PupMCPSchema = z2.object({ source: z2.string().describe("file://, http(s)://, or data: URI") }).extend(RecordSchema.shape);
+var MCP_TOOL_NAME = package_default.name;
+var MCP_TOOL_TITLE = "Record Webpage";
+var MCP_TOOL_DESC = "Record a webpage to video";
+function mcpAddPup(server) {
+  server.registerTool(
+    MCP_TOOL_NAME,
+    {
+      title: MCP_TOOL_TITLE,
+      description: MCP_TOOL_DESC,
+      inputSchema: PupMCPSchema
+    },
+    async (args) => {
+      try {
+        const result = await pup(args.source, args);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }]
+        };
+      } catch (error) {
+        return {
+          isError: true,
+          content: [
+            { type: "text", text: JSON.stringify({ error: String(error) }) }
+          ]
+        };
+      }
+    }
+  );
+}
+async function startMCPServer() {
+  const server = new McpServer(package_default);
+  mcpAddPup(server);
+  await server.connect(new StdioServerTransport());
+}
+
+// src/mcp_server.ts
+startMCPServer();
+//# sourceMappingURL=mcp_server.js.map

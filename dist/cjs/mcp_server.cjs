@@ -1,14 +1,172 @@
-// src/common.ts
-import { program } from "commander";
+"use strict";
+var __create = Object.create;
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
+
+// ../../node_modules/.bun/tsup@8.5.1+3f29b90437d001ad/node_modules/tsup/assets/cjs_shims.js
+var getImportMetaUrl = () => typeof document === "undefined" ? new URL(`file:${__filename}`).href : document.currentScript && document.currentScript.tagName.toUpperCase() === "SCRIPT" ? document.currentScript.src : new URL("main.js", document.baseURI).href;
+var importMetaUrl = /* @__PURE__ */ getImportMetaUrl();
+
+// src/ai/mcp.ts
+var import_mcp = require("@modelcontextprotocol/sdk/server/mcp.js");
+var import_stdio = require("@modelcontextprotocol/sdk/server/stdio.js");
+var import_zod2 = __toESM(require("zod"), 1);
+
+// package.json
+var package_default = {
+  name: "pup-recorder",
+  version: "0.0.11",
+  description: "High-performance webview recording tool.",
+  license: "MIT",
+  type: "module",
+  bin: {
+    pup: "./dist/cli.js",
+    "pup-cjs": "./dist/cjs/cli.cjs",
+    "pup-mcp-server": "./dist/mcp_server.js",
+    "pup-mcp-server-cjs": "./dist/cjs/mcp_server.cjs"
+  },
+  exports: {
+    ".": {
+      types: "./dist/index.d.ts",
+      import: "./dist/index.js",
+      require: "./dist/cjs/index.cjs"
+    }
+  },
+  engines: {
+    bun: ">= 1",
+    node: ">= 20"
+  },
+  engineStrict: true,
+  devDependencies: {
+    "@types/bun": "latest",
+    "@types/node": "^20.0.0",
+    "@typescript/native-preview": "latest",
+    tsup: "latest",
+    typescript: "latest"
+  },
+  dependencies: {
+    "@modelcontextprotocol/sdk": "latest",
+    "@opencode-ai/plugin": "latest",
+    commander: "latest",
+    electron: "latest",
+    zod: "latest"
+  },
+  scripts: {
+    build: "bun build.ts && bun build_rust.ts"
+  }
+};
+
+// src/base/schema.ts
+var import_zod = __toESM(require("zod"), 1);
+var DEFAULT_WIDTH = 1920;
+var DEFAULT_HEIGHT = 1080;
+var DEFAULT_FPS = 30;
+var DEFAULT_DURATION = 5;
+var DEFAULT_OUT_DIR = "out";
+var RecordSchema = import_zod.default.object({
+  duration: import_zod.default.number().optional().default(DEFAULT_DURATION).describe("Recording duration in seconds"),
+  width: import_zod.default.number().optional().default(DEFAULT_WIDTH).describe("Video width"),
+  height: import_zod.default.number().optional().default(DEFAULT_HEIGHT).describe("Video height"),
+  fps: import_zod.default.number().optional().default(DEFAULT_FPS).describe("Frames per second"),
+  withAlphaChannel: import_zod.default.boolean().optional().default(false).describe("Output with alpha channel"),
+  outDir: import_zod.default.string().optional().default(DEFAULT_OUT_DIR).describe("Output directory"),
+  useInnerProxy: import_zod.default.boolean().optional().default(false).describe("Use bilibili inner proxy for resource access")
+});
+
+// src/pup.ts
+var import_child_process2 = require("child_process");
+var import_promises = require("fs/promises");
+var import_path4 = require("path");
+
+// src/base/abort.ts
+var AbortLink = class _AbortLink {
+  constructor(query, interval = 1e3) {
+    this.query = query;
+    this.interval = interval;
+    if (query) {
+      this.tick();
+    }
+  }
+  _callback;
+  _aborted;
+  _stopped = false;
+  static start(query, interval) {
+    return new _AbortLink(query, interval);
+  }
+  get aborted() {
+    return !this._stopped && this._aborted;
+  }
+  get stopped() {
+    return this._stopped;
+  }
+  async onAbort(callback) {
+    if (this._aborted) {
+      await callback();
+    } else {
+      this._callback = callback;
+    }
+  }
+  wait(...handles) {
+    const abort = new Promise((_, reject) => {
+      this.onAbort(async () => {
+        handles.forEach((h) => h.process.kill());
+        reject(new Error("aborted"));
+      });
+    });
+    return Promise.race([
+      abort,
+      Promise.all(handles.map((h) => h.wait))
+      //
+    ]);
+  }
+  stop() {
+    this._stopped = true;
+  }
+  tick() {
+    setTimeout(async () => {
+      if (this._stopped) {
+        return;
+      }
+      this._aborted = await this.query?.();
+      if (this._stopped) {
+        return;
+      }
+      if (this._aborted) {
+        await this._callback?.();
+      } else {
+        this.tick();
+      }
+    }, this.interval);
+  }
+};
 
 // src/base/constants.ts
-import { existsSync } from "fs";
-import { join } from "path";
+var import_fs = require("fs");
+var import_path2 = require("path");
 
 // src/base/basedir.ts
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-var basedir = dirname(fileURLToPath(import.meta.url));
+var import_path = require("path");
+var import_url = require("url");
+var basedir = (0, import_path.dirname)((0, import_url.fileURLToPath)(importMetaUrl));
 
 // src/base/env.ts
 function penv(name, parser, defaultValue) {
@@ -33,18 +191,24 @@ function parseNumber(value) {
 
 // src/base/constants.ts
 var pupAppSearchPaths = [
-  join(basedir, "cjs/app.cjs"),
+  (0, import_path2.join)(basedir, "cjs/app.cjs"),
   // process from dist
-  join(basedir, "app.cjs"),
+  (0, import_path2.join)(basedir, "app.cjs"),
   // process from dist/cjs
-  join(basedir, "../../cjs/app.cjs")
+  (0, import_path2.join)(basedir, "../../cjs/app.cjs")
   // process from src
 ];
-var pupAppPath = pupAppSearchPaths.find(existsSync);
+var pupAppPath = pupAppSearchPaths.find(import_fs.existsSync);
 var env = process.env;
 var pupLogLevel = penv("PUP_LOG_LEVEL", parseNumber, 2);
 var pupUseInnerProxy = env["PUP_USE_INNER_PROXY"] === "1";
 var pupFFmpegPath = env["FFMPEG_BIN"] ?? `ffmpeg`;
+
+// src/base/electron.ts
+var import_electron = __toESM(require("electron"), 1);
+
+// src/base/process.ts
+var import_child_process = require("child_process");
 
 // src/base/logging.ts
 var DEBUG = "<pup@debug>";
@@ -137,156 +301,19 @@ var Logger = class {
 };
 var logger = new Logger();
 
-// src/base/noerr.ts
-function noerr(fn, defaultValue) {
-  return (...args) => {
-    try {
-      const ret = fn(...args);
-      if (ret instanceof Promise) {
-        return ret.catch(() => defaultValue);
-      }
-      return ret;
-    } catch {
-      return defaultValue;
-    }
-  };
-}
-
 // src/base/process.ts
-import { spawn } from "child_process";
-var PUP_ARGS_ENV_KEY = "__PUP_ARGS__";
-function pargs() {
-  const pupArgs = process.env[PUP_ARGS_ENV_KEY];
-  if (pupArgs) {
-    const args = ["exec", ...process.argv.slice(-1)];
-    args.push(...JSON.parse(pupArgs));
-    logger.debug("pupargs", args);
-    return args;
-  }
-  logger.debug("procargv", process.argv);
-  return process.argv;
-}
 function exec(cmd, options) {
   const parts = cmd.split(" ").filter((s) => s.length);
   const [command, ...args] = parts;
   if (!command) throw new Error("empty command");
-  const proc = spawn(command, args, {
+  const proc = (0, import_child_process.spawn)(command, args, {
     stdio: "inherit",
     ...options
   });
   return { process: proc, wait: logger.attach(proc, command) };
 }
 
-// src/base/schema.ts
-import z from "zod";
-var DEFAULT_WIDTH = 1920;
-var DEFAULT_HEIGHT = 1080;
-var DEFAULT_FPS = 30;
-var DEFAULT_DURATION = 5;
-var DEFAULT_OUT_DIR = "out";
-var RecordSchema = z.object({
-  duration: z.number().optional().default(DEFAULT_DURATION).describe("Recording duration in seconds"),
-  width: z.number().optional().default(DEFAULT_WIDTH).describe("Video width"),
-  height: z.number().optional().default(DEFAULT_HEIGHT).describe("Video height"),
-  fps: z.number().optional().default(DEFAULT_FPS).describe("Frames per second"),
-  withAlphaChannel: z.boolean().optional().default(false).describe("Output with alpha channel"),
-  outDir: z.string().optional().default(DEFAULT_OUT_DIR).describe("Output directory"),
-  useInnerProxy: z.boolean().optional().default(false).describe("Use bilibili inner proxy for resource access")
-});
-
-// src/common.ts
-function makeCLI(name, callback) {
-  program.name(name).argument("<source>", "file://, http(s)://, \u6216 data: URI").option("-w, --width <number>", "\u89C6\u9891\u5BBD\u5EA6", `${DEFAULT_WIDTH}`).option("-h, --height <number>", "\u89C6\u9891\u9AD8\u5EA6", `${DEFAULT_HEIGHT}`).option("-f, --fps <number>", "\u5E27\u7387", `${DEFAULT_FPS}`).option("-t, --duration <number>", "\u5F55\u5236\u65F6\u957F\uFF08\u79D2\uFF09", `${DEFAULT_DURATION}`).option("-o, --out-dir <path>", "\u8F93\u51FA\u76EE\u5F55", `${DEFAULT_OUT_DIR}`).option("-a, --with-alpha-channel", "\u8F93\u51FA\u5305\u542B alpha \u901A\u9053\u7684\u89C6\u9891", false).option(
-    "--use-inner-proxy",
-    "\u4F7F\u7528 B \u7AD9\u5185\u7F51\u4EE3\u7406\u52A0\u901F\u8D44\u6E90\u8BBF\u95EE",
-    pupUseInnerProxy
-  ).action(async (source, opts) => {
-    try {
-      await callback(source, {
-        width: noerr(parseNumber, DEFAULT_WIDTH)(opts.width),
-        height: noerr(parseNumber, DEFAULT_HEIGHT)(opts.height),
-        fps: noerr(parseNumber, DEFAULT_FPS)(opts.fps),
-        duration: noerr(parseNumber, DEFAULT_DURATION)(opts.duration),
-        outDir: opts.outDir ?? DEFAULT_OUT_DIR,
-        withAlphaChannel: opts.withAlphaChannel ?? false,
-        useInnerProxy: opts.useInnerProxy ?? pupUseInnerProxy
-      });
-    } catch (e) {
-      logger.fatal(e);
-    }
-  });
-  program.parse(pargs());
-}
-
-// src/pup.ts
-import { spawn as spawn2 } from "child_process";
-import { readFile, rm } from "fs/promises";
-import { join as join3 } from "path";
-
-// src/base/abort.ts
-var AbortLink = class _AbortLink {
-  constructor(query, interval = 1e3) {
-    this.query = query;
-    this.interval = interval;
-    if (query) {
-      this.tick();
-    }
-  }
-  _callback;
-  _aborted;
-  _stopped = false;
-  static start(query, interval) {
-    return new _AbortLink(query, interval);
-  }
-  get aborted() {
-    return !this._stopped && this._aborted;
-  }
-  get stopped() {
-    return this._stopped;
-  }
-  async onAbort(callback) {
-    if (this._aborted) {
-      await callback();
-    } else {
-      this._callback = callback;
-    }
-  }
-  wait(...handles) {
-    const abort = new Promise((_, reject) => {
-      this.onAbort(async () => {
-        handles.forEach((h) => h.process.kill());
-        reject(new Error("aborted"));
-      });
-    });
-    return Promise.race([
-      abort,
-      Promise.all(handles.map((h) => h.wait))
-      //
-    ]);
-  }
-  stop() {
-    this._stopped = true;
-  }
-  tick() {
-    setTimeout(async () => {
-      if (this._stopped) {
-        return;
-      }
-      this._aborted = await this.query?.();
-      if (this._stopped) {
-        return;
-      }
-      if (this._aborted) {
-        await this._callback?.();
-      } else {
-        this.tick();
-      }
-    }, this.interval);
-  }
-};
-
 // src/base/electron.ts
-import electron from "electron";
 var ELECTRON_OPTS = [
   "no-sandbox",
   "disable-setuid-sandbox",
@@ -320,7 +347,7 @@ function runElectronApp(size, app, args) {
       `--server-args='-screen 0 ${size.width}x${size.height}x24'`
     );
   }
-  cmdParts.push(electron, ...electronArgs, app);
+  cmdParts.push(import_electron.default, ...electronArgs, app);
   return exec(cmdParts.join(" "), {
     stdio: ["ignore", "pipe", "pipe"],
     shell: true,
@@ -334,19 +361,19 @@ function runElectronApp(size, app, args) {
 }
 
 // src/base/ffmpeg.ts
-import { existsSync as existsSync2 } from "fs";
-import { join as join2 } from "path";
-import { arch, platform } from "process";
+var import_fs2 = require("fs");
+var import_path3 = require("path");
+var import_process2 = require("process");
 var quiet = ["-hide_banner", "-loglevel", "error", "-nostats"];
 function resolveX265() {
-  const path = `x265/${platform}-${arch}`;
+  const path = `x265/${import_process2.platform}-${import_process2.arch}`;
   const dirs = [
-    join2(basedir, `../../${path}`),
+    (0, import_path3.join)(basedir, `../../${path}`),
     // process from src
-    join2(basedir, `../${path}`)
+    (0, import_path3.join)(basedir, `../${path}`)
     // process from dist
   ];
-  const found = dirs.find(existsSync2);
+  const found = dirs.find(import_fs2.existsSync);
   if (!found) {
     throw new Error("x265 not found");
   }
@@ -629,16 +656,16 @@ async function pup(source, options) {
   await link.wait(handle);
   await counter.end();
   logger.info(TAG, `capture cost ${Math.round(performance.now() - t0)}ms`);
-  const metaPath = join3(outDir, "record.json");
-  const meta = JSON.parse(await readFile(metaPath, "utf-8"));
+  const metaPath = (0, import_path4.join)(outDir, "record.json");
+  const meta = JSON.parse(await (0, import_promises.readFile)(metaPath, "utf-8"));
   const { bgraPath, written, options: recordOptions } = meta;
   const { fps, width, height, withAlphaChannel } = recordOptions;
   const size = { width, height };
   const outputs = {
-    mp4: withAlphaChannel ? void 0 : join3(outDir, "output.mp4"),
-    webm: withAlphaChannel ? join3(outDir, "output.webm") : void 0,
-    mov: withAlphaChannel ? join3(outDir, "output.mov") : void 0,
-    cover: join3(outDir, "cover.png")
+    mp4: withAlphaChannel ? void 0 : (0, import_path4.join)(outDir, "output.mp4"),
+    webm: withAlphaChannel ? (0, import_path4.join)(outDir, "output.webm") : void 0,
+    mov: withAlphaChannel ? (0, import_path4.join)(outDir, "output.mov") : void 0,
+    cover: (0, import_path4.join)(outDir, "cover.png")
   };
   try {
     const t1 = performance.now();
@@ -658,14 +685,14 @@ async function pup(source, options) {
     if (coverSrc) {
       const coverCmd = createCoverCommand(coverSrc, outputs.cover);
       await waitAll(
-        spawn2(coverCmd.command, coverCmd.args, { stdio: "inherit" })
+        (0, import_child_process2.spawn)(coverCmd.command, coverCmd.args, { stdio: "inherit" })
       );
     }
     link.stop();
     logger.info(TAG, `encoding cost ${Math.round(performance.now() - t1)}ms`);
     await Promise.all([
-      rm(bgraPath, { force: true }),
-      rm(metaPath, { force: true })
+      (0, import_promises.rm)(bgraPath, { force: true }),
+      (0, import_promises.rm)(metaPath, { force: true })
     ]);
     return {
       ...outputs,
@@ -675,11 +702,47 @@ async function pup(source, options) {
       duration: Math.ceil(written / fps)
     };
   } catch (error) {
-    await rm(outDir, { recursive: true, force: true });
+    await (0, import_promises.rm)(outDir, { recursive: true, force: true });
     throw error;
   }
 }
 
-// src/cli.ts
-makeCLI("pup", pup);
-//# sourceMappingURL=cli.js.map
+// src/ai/mcp.ts
+var PupMCPSchema = import_zod2.default.object({ source: import_zod2.default.string().describe("file://, http(s)://, or data: URI") }).extend(RecordSchema.shape);
+var MCP_TOOL_NAME = package_default.name;
+var MCP_TOOL_TITLE = "Record Webpage";
+var MCP_TOOL_DESC = "Record a webpage to video";
+function mcpAddPup(server) {
+  server.registerTool(
+    MCP_TOOL_NAME,
+    {
+      title: MCP_TOOL_TITLE,
+      description: MCP_TOOL_DESC,
+      inputSchema: PupMCPSchema
+    },
+    async (args) => {
+      try {
+        const result = await pup(args.source, args);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }]
+        };
+      } catch (error) {
+        return {
+          isError: true,
+          content: [
+            { type: "text", text: JSON.stringify({ error: String(error) }) }
+          ]
+        };
+      }
+    }
+  );
+}
+async function startMCPServer() {
+  const server = new import_mcp.McpServer(package_default);
+  mcpAddPup(server);
+  await server.connect(new import_stdio.StdioServerTransport());
+}
+
+// src/mcp_server.ts
+startMCPServer();
+//# sourceMappingURL=mcp_server.cjs.map

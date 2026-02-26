@@ -5,7 +5,7 @@ import { join } from "path";
 import { arch, platform } from "process";
 import { basedir } from "./basedir";
 import { pupFFmpegPath } from "./constants";
-import type { VideoFiles, VideoSpec } from "./types";
+import type { VideoFiles, VideoSpec } from "./schema";
 
 interface Command {
   command: string;

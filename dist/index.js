@@ -1,3 +1,136 @@
+// src/ai/mcp.ts
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import z2 from "zod";
+
+// package.json
+var package_default = {
+  name: "pup-recorder",
+  version: "0.0.11",
+  description: "High-performance webview recording tool.",
+  license: "MIT",
+  type: "module",
+  bin: {
+    pup: "./dist/cli.js",
+    "pup-cjs": "./dist/cjs/cli.cjs",
+    "pup-mcp-server": "./dist/mcp_server.js",
+    "pup-mcp-server-cjs": "./dist/cjs/mcp_server.cjs"
+  },
+  exports: {
+    ".": {
+      types: "./dist/index.d.ts",
+      import: "./dist/index.js",
+      require: "./dist/cjs/index.cjs"
+    }
+  },
+  engines: {
+    bun: ">= 1",
+    node: ">= 20"
+  },
+  engineStrict: true,
+  devDependencies: {
+    "@types/bun": "latest",
+    "@types/node": "^20.0.0",
+    "@typescript/native-preview": "latest",
+    tsup: "latest",
+    typescript: "latest"
+  },
+  dependencies: {
+    "@modelcontextprotocol/sdk": "latest",
+    "@opencode-ai/plugin": "latest",
+    commander: "latest",
+    electron: "latest",
+    zod: "latest"
+  },
+  scripts: {
+    build: "bun build.ts && bun build_rust.ts"
+  }
+};
+
+// src/base/schema.ts
+import z from "zod";
+var DEFAULT_WIDTH = 1920;
+var DEFAULT_HEIGHT = 1080;
+var DEFAULT_FPS = 30;
+var DEFAULT_DURATION = 5;
+var DEFAULT_OUT_DIR = "out";
+var RecordSchema = z.object({
+  duration: z.number().optional().default(DEFAULT_DURATION).describe("Recording duration in seconds"),
+  width: z.number().optional().default(DEFAULT_WIDTH).describe("Video width"),
+  height: z.number().optional().default(DEFAULT_HEIGHT).describe("Video height"),
+  fps: z.number().optional().default(DEFAULT_FPS).describe("Frames per second"),
+  withAlphaChannel: z.boolean().optional().default(false).describe("Output with alpha channel"),
+  outDir: z.string().optional().default(DEFAULT_OUT_DIR).describe("Output directory"),
+  useInnerProxy: z.boolean().optional().default(false).describe("Use bilibili inner proxy for resource access")
+});
+
+// src/pup.ts
+import { spawn as spawn2 } from "child_process";
+import { readFile, rm } from "fs/promises";
+import { join as join3 } from "path";
+
+// src/base/abort.ts
+var AbortLink = class _AbortLink {
+  constructor(query, interval = 1e3) {
+    this.query = query;
+    this.interval = interval;
+    if (query) {
+      this.tick();
+    }
+  }
+  _callback;
+  _aborted;
+  _stopped = false;
+  static start(query, interval) {
+    return new _AbortLink(query, interval);
+  }
+  get aborted() {
+    return !this._stopped && this._aborted;
+  }
+  get stopped() {
+    return this._stopped;
+  }
+  async onAbort(callback) {
+    if (this._aborted) {
+      await callback();
+    } else {
+      this._callback = callback;
+    }
+  }
+  wait(...handles) {
+    const abort = new Promise((_, reject) => {
+      this.onAbort(async () => {
+        handles.forEach((h) => h.process.kill());
+        reject(new Error("aborted"));
+      });
+    });
+    return Promise.race([
+      abort,
+      Promise.all(handles.map((h) => h.wait))
+      //
+    ]);
+  }
+  stop() {
+    this._stopped = true;
+  }
+  tick() {
+    setTimeout(async () => {
+      if (this._stopped) {
+        return;
+      }
+      this._aborted = await this.query?.();
+      if (this._stopped) {
+        return;
+      }
+      if (this._aborted) {
+        await this._callback?.();
+      } else {
+        this.tick();
+      }
+    }, this.interval);
+  }
+};
+
 // src/base/constants.ts
 import { existsSync } from "fs";
 import { join } from "path";
@@ -43,75 +176,11 @@ var pupLogLevel = penv("PUP_LOG_LEVEL", parseNumber, 2);
 var pupUseInnerProxy = env["PUP_USE_INNER_PROXY"] === "1";
 var pupFFmpegPath = env["FFMPEG_BIN"] ?? `ffmpeg`;
 
-// src/base/lazy.ts
-var Lazy = class {
-  constructor(makeValue) {
-    this.makeValue = makeValue;
-  }
-  get value() {
-    if (!this._initialized) {
-      this._value = this.makeValue();
-      this._initialized = true;
-    }
-    return this._value;
-  }
-  get initialized() {
-    return this._initialized;
-  }
-  _initialized = false;
-  _value;
-};
+// src/base/electron.ts
+import electron from "electron";
 
-// src/base/limiter.ts
-var ConcurrencyLimiter = class {
-  constructor(maxConcurrency) {
-    this.maxConcurrency = maxConcurrency;
-  }
-  _active = 0;
-  _queue = [];
-  _pending = 0;
-  _ended = false;
-  get active() {
-    return this._active;
-  }
-  get pending() {
-    return this._pending;
-  }
-  async schedule(fn) {
-    if (this._ended) {
-      throw new Error("ended");
-    }
-    return new Promise((resolve, reject) => {
-      const run = () => {
-        this._active++;
-        this._pending--;
-        fn().then(resolve).catch(reject).finally(() => {
-          this._active--;
-          this.next();
-        });
-      };
-      this._pending++;
-      if (this._active < this.maxConcurrency) {
-        run();
-      } else {
-        this._queue.push(run);
-      }
-    });
-  }
-  async end() {
-    if (!this._ended) {
-      this._ended = true;
-      while (this._active > 0 || this._pending > 0) {
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
-    }
-  }
-  next() {
-    if (this._active < this.maxConcurrency && this._queue.length > 0) {
-      this._queue.shift()?.();
-    }
-  }
-};
+// src/base/process.ts
+import { spawn } from "child_process";
 
 // src/base/logging.ts
 var DEBUG = "<pup@debug>";
@@ -204,23 +273,7 @@ var Logger = class {
 };
 var logger = new Logger();
 
-// src/base/noerr.ts
-function noerr(fn, defaultValue) {
-  return (...args) => {
-    try {
-      const ret = fn(...args);
-      if (ret instanceof Promise) {
-        return ret.catch(() => defaultValue);
-      }
-      return ret;
-    } catch {
-      return defaultValue;
-    }
-  };
-}
-
 // src/base/process.ts
-import { spawn } from "child_process";
 var PUP_ARGS_ENV_KEY = "__PUP_ARGS__";
 function pargs() {
   const pupArgs = process.env[PUP_ARGS_ENV_KEY];
@@ -244,128 +297,7 @@ function exec(cmd, options) {
   return { process: proc, wait: logger.attach(proc, command) };
 }
 
-// src/base/retry.ts
-import { setTimeout as setTimeout2 } from "timers/promises";
-
-// src/base/timing.ts
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-function periodical(callback, ms) {
-  let token;
-  let closed = false;
-  async function tick(count) {
-    await callback(count);
-    if (closed) return;
-    token = setTimeout(() => tick(count + 1), ms);
-  }
-  token = setTimeout(() => tick(0), ms);
-  return () => {
-    closed = true;
-    clearTimeout(token);
-  };
-}
-
-// src/base/retry.ts
-function useRetry({
-  fn,
-  maxAttempts = 3,
-  timeout
-}) {
-  const timeoutError = new Error(`timeout over ${timeout}ms`);
-  return async function(...args) {
-    let attempt = 0;
-    while (true) {
-      try {
-        const promises = [fn(...args)];
-        if (timeout) {
-          promises.push(
-            setTimeout2(timeout).then(() => {
-              throw timeoutError;
-            })
-          );
-        }
-        return await Promise.race(promises);
-      } catch (e) {
-        attempt++;
-        if (attempt >= maxAttempts) {
-          throw e;
-        }
-        await sleep(Math.pow(2, attempt) * 100 + Math.random() * 100);
-      }
-    }
-  };
-}
-
-// src/pup.ts
-import { spawn as spawn2 } from "child_process";
-import { readFile, rm } from "fs/promises";
-import { join as join3 } from "path";
-
-// src/base/abort.ts
-var AbortLink = class _AbortLink {
-  constructor(query, interval = 1e3) {
-    this.query = query;
-    this.interval = interval;
-    if (query) {
-      this.tick();
-    }
-  }
-  _callback;
-  _aborted;
-  _stopped = false;
-  static start(query, interval) {
-    return new _AbortLink(query, interval);
-  }
-  get aborted() {
-    return !this._stopped && this._aborted;
-  }
-  get stopped() {
-    return this._stopped;
-  }
-  async onAbort(callback) {
-    if (this._aborted) {
-      await callback();
-    } else {
-      this._callback = callback;
-    }
-  }
-  wait(...handles) {
-    const abort = new Promise((_, reject) => {
-      this.onAbort(async () => {
-        handles.forEach((h) => h.process.kill());
-        reject(new Error("aborted"));
-      });
-    });
-    return Promise.race([
-      abort,
-      Promise.all(handles.map((h) => h.wait))
-      //
-    ]);
-  }
-  stop() {
-    this._stopped = true;
-  }
-  tick() {
-    setTimeout(async () => {
-      if (this._stopped) {
-        return;
-      }
-      this._aborted = await this.query?.();
-      if (this._stopped) {
-        return;
-      }
-      if (this._aborted) {
-        await this._callback?.();
-      } else {
-        this.tick();
-      }
-    }, this.interval);
-  }
-};
-
 // src/base/electron.ts
-import electron from "electron";
 var ELECTRON_OPTS = [
   "no-sandbox",
   "disable-setuid-sandbox",
@@ -597,6 +529,57 @@ function encodeBgraToMov(bgraPath, movPath, spec) {
   });
 }
 
+// src/base/limiter.ts
+var ConcurrencyLimiter = class {
+  constructor(maxConcurrency) {
+    this.maxConcurrency = maxConcurrency;
+  }
+  _active = 0;
+  _queue = [];
+  _pending = 0;
+  _ended = false;
+  get active() {
+    return this._active;
+  }
+  get pending() {
+    return this._pending;
+  }
+  async schedule(fn) {
+    if (this._ended) {
+      throw new Error("ended");
+    }
+    return new Promise((resolve, reject) => {
+      const run = () => {
+        this._active++;
+        this._pending--;
+        fn().then(resolve).catch(reject).finally(() => {
+          this._active--;
+          this.next();
+        });
+      };
+      this._pending++;
+      if (this._active < this.maxConcurrency) {
+        run();
+      } else {
+        this._queue.push(run);
+      }
+    });
+  }
+  async end() {
+    if (!this._ended) {
+      this._ended = true;
+      while (this._active > 0 || this._pending > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    }
+  }
+  next() {
+    if (this._active < this.maxConcurrency && this._queue.length > 0) {
+      this._queue.shift()?.();
+    }
+  }
+};
+
 // src/base/stream.ts
 function waitAll(...procs) {
   return Promise.all(
@@ -612,11 +595,6 @@ function waitAll(...procs) {
   );
 }
 
-// src/common.ts
-import { program } from "commander";
-var DEFAULT_WIDTH = 1920;
-var DEFAULT_HEIGHT = 1080;
-
 // src/pup.ts
 var TAG = "[pup]";
 var PROGRESS_TAG = " progress: ";
@@ -629,6 +607,7 @@ function runPupApp(source, options) {
   if (options.duration) args.push("--duration", `${options.duration}`);
   if (options.outDir) args.push("--out-dir", options.outDir);
   if (options.withAlphaChannel) args.push("--with-alpha-channel");
+  if (options.useInnerProxy) args.push("--use-inner-proxy");
   const w = options.width ?? DEFAULT_WIDTH;
   const h = options.height ?? DEFAULT_HEIGHT;
   const handle = runElectronApp({ width: w, height: h }, pupAppPath, args);
@@ -711,12 +690,179 @@ async function pup(source, options) {
     throw error;
   }
 }
+
+// src/ai/mcp.ts
+var PupMCPSchema = z2.object({ source: z2.string().describe("file://, http(s)://, or data: URI") }).extend(RecordSchema.shape);
+var MCP_TOOL_NAME = package_default.name;
+var MCP_TOOL_TITLE = "Record Webpage";
+var MCP_TOOL_DESC = "Record a webpage to video";
+function mcpAddPup(server) {
+  server.registerTool(
+    MCP_TOOL_NAME,
+    {
+      title: MCP_TOOL_TITLE,
+      description: MCP_TOOL_DESC,
+      inputSchema: PupMCPSchema
+    },
+    async (args) => {
+      try {
+        const result = await pup(args.source, args);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }]
+        };
+      } catch (error) {
+        return {
+          isError: true,
+          content: [
+            { type: "text", text: JSON.stringify({ error: String(error) }) }
+          ]
+        };
+      }
+    }
+  );
+}
+async function startMCPServer() {
+  const server = new McpServer(package_default);
+  mcpAddPup(server);
+  await server.connect(new StdioServerTransport());
+}
+
+// src/ai/opencode.ts
+import { tool } from "@opencode-ai/plugin";
+var z3 = tool.schema;
+var PupPluginSchema = z3.object({
+  source: z3.string().describe(PupMCPSchema.shape.source.description),
+  duration: z3.number().optional().default(DEFAULT_DURATION).describe(PupMCPSchema.shape.duration.description),
+  width: z3.number().optional().default(DEFAULT_WIDTH).describe(PupMCPSchema.shape.width.description),
+  height: z3.number().optional().default(DEFAULT_HEIGHT).describe(PupMCPSchema.shape.height.description),
+  fps: z3.number().optional().default(DEFAULT_FPS).describe(PupMCPSchema.shape.fps.description),
+  withAlphaChannel: z3.boolean().optional().default(false).describe(PupMCPSchema.shape.withAlphaChannel.description),
+  outDir: z3.string().optional().default(DEFAULT_OUT_DIR).describe(PupMCPSchema.shape.outDir.description),
+  useInnerProxy: z3.boolean().optional().default(false).describe(PupMCPSchema.shape.useInnerProxy.description)
+});
+var PupOpenCodePlugin = async () => {
+  return {
+    tool: {
+      [MCP_TOOL_NAME]: tool({
+        description: MCP_TOOL_DESC,
+        args: PupPluginSchema.shape,
+        async execute(args) {
+          try {
+            const result = await pup(args.source, args);
+            return JSON.stringify(result, null, 2);
+          } catch (error) {
+            return JSON.stringify({ error: String(error) });
+          }
+        }
+      })
+    }
+  };
+};
+
+// src/base/lazy.ts
+var Lazy = class {
+  constructor(makeValue) {
+    this.makeValue = makeValue;
+  }
+  get value() {
+    if (!this._initialized) {
+      this._value = this.makeValue();
+      this._initialized = true;
+    }
+    return this._value;
+  }
+  get initialized() {
+    return this._initialized;
+  }
+  _initialized = false;
+  _value;
+};
+
+// src/base/noerr.ts
+function noerr(fn, defaultValue) {
+  return (...args) => {
+    try {
+      const ret = fn(...args);
+      if (ret instanceof Promise) {
+        return ret.catch(() => defaultValue);
+      }
+      return ret;
+    } catch {
+      return defaultValue;
+    }
+  };
+}
+
+// src/base/retry.ts
+import { setTimeout as setTimeout2 } from "timers/promises";
+
+// src/base/timing.ts
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+function periodical(callback, ms) {
+  let token;
+  let closed = false;
+  async function tick(count) {
+    await callback(count);
+    if (closed) return;
+    token = setTimeout(() => tick(count + 1), ms);
+  }
+  token = setTimeout(() => tick(0), ms);
+  return () => {
+    closed = true;
+    clearTimeout(token);
+  };
+}
+
+// src/base/retry.ts
+function useRetry({
+  fn,
+  maxAttempts = 3,
+  timeout
+}) {
+  const timeoutError = new Error(`timeout over ${timeout}ms`);
+  return async function(...args) {
+    let attempt = 0;
+    while (true) {
+      try {
+        const promises = [fn(...args)];
+        if (timeout) {
+          promises.push(
+            setTimeout2(timeout).then(() => {
+              throw timeoutError;
+            })
+          );
+        }
+        return await Promise.race(promises);
+      } catch (e) {
+        attempt++;
+        if (attempt >= maxAttempts) {
+          throw e;
+        }
+        await sleep(Math.pow(2, attempt) * 100 + Math.random() * 100);
+      }
+    }
+  };
+}
 export {
   ConcurrencyLimiter,
+  DEFAULT_DURATION,
+  DEFAULT_FPS,
+  DEFAULT_HEIGHT,
+  DEFAULT_OUT_DIR,
+  DEFAULT_WIDTH,
   Lazy,
+  MCP_TOOL_DESC,
+  MCP_TOOL_NAME,
+  MCP_TOOL_TITLE,
   PUP_ARGS_ENV_KEY,
+  PupMCPSchema,
+  PupOpenCodePlugin,
+  RecordSchema,
   exec,
   logger,
+  mcpAddPup,
   noerr,
   pargs,
   parseNumber,
@@ -728,6 +874,7 @@ export {
   pupLogLevel,
   pupUseInnerProxy,
   sleep,
+  startMCPServer,
   useRetry
 };
 //# sourceMappingURL=index.js.map

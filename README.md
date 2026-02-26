@@ -1,4 +1,4 @@
-# pup(1) -- High-performance webview recorder
+# pup(1)
 
 ## NAME
 
@@ -6,90 +6,83 @@ pup - record web pages as video
 
 ## SYNOPSIS
 
-**pup** \<source\> [**-w** _width_] [**-h** _height_] [**-f** _fps_] [**-t** _duration_] [**-o** _dir_] [**-a**] [**--use-inner-proxy**]
+```
+pup <source> [-w width] [-h height] [-f fps] [-t duration] [-o dir] [-a]
+pup-mcp-server
+```
 
 ## DESCRIPTION
 
-**pup** captures a web page as video using Electron offscreen rendering.
+Captures web pages as video using Electron offscreen rendering. Outputs MP4
+by default; with `-a` outputs WebM (VP9) and MOV (HEVC alpha).
 
-Without **-a**, produces MP4 (H.264). With **-a**, produces WebM (VP9) and
-MOV (HEVC with alpha channel). A cover image (PNG) is extracted from the
-first frame.
+`pup-mcp-server` exposes pup as an MCP tool for AI assistants.
 
 ## OPTIONS
 
-- **\<source\>**
-  URL or HTML string to record.
-
-- **-w**, **--width** _number_
-  Video width. Default: 1920.
-
-- **-h**, **--height** _number_
-  Video height. Default: 1080.
-
-- **-f**, **--fps** _number_
-  Frames per second. Default: 30.
-
-- **-t**, **--duration** _number_
-  Recording duration in seconds. Default: 5.
-
-- **-o**, **--out-dir** _path_
-  Output directory. Default: out.
-
-- **-a**, **--with-alpha-channel**
-  Produce WebM + MOV with alpha channel instead of MP4.
-
-- **--use-inner-proxy**
-  Use Bilibili internal proxy. Default: `$PUP_USE_INNER_PROXY`.
+```
+<source>                file://, http(s)://, or data: URI
+-w, --width <n>         default 1920
+-h, --height <n>        default 1080
+-f, --fps <n>           default 30
+-t, --duration <n>      seconds, default 5
+-o, --out-dir <path>    default "out"
+-a, --with-alpha-channel
+--use-inner-proxy       bilibili internal proxy
+```
 
 ## ENVIRONMENT
 
-- `PUP_LOG_LEVEL` (default: 2)
-  0=error, 1=warn, 2=info, 3=debug.
-
-- `PUP_USE_INNER_PROXY` (default: 0)
-  Set to 1 to enable Bilibili internal proxy.
-
-- `FFMPEG_BIN` (default: ffmpeg)
-  Path to FFmpeg binary.
+```
+PUP_LOG_LEVEL        0=error 1=warn 2=info 3=debug, default 2
+PUP_USE_INNER_PROXY  1=on, default 0
+FFMPEG_BIN           default "ffmpeg"
+```
 
 ## API
 
 ```typescript
-import { pup, type PupOptions } from "pup-recorder";
+import { pup } from "pup-recorder";
 
-const result = await pup("https://example.com", {
-  width: 1920,
-  height: 1080,
-  fps: 30,
-  duration: 5,
-  outDir: "out",
-  withAlphaChannel: false,
-  onProgress: (progress) => console.log(progress),
-});
+const { mp4, cover, width, height, fps, duration } = await pup(
+  "https://example.com",
+  {
+    width: 1920,
+    height: 1080,
+    fps: 30,
+    duration: 5,
+    withAlphaChannel: false,
+  },
+);
 ```
 
-**PupOptions**: `width`, `height`, `fps`, `duration`, `outDir`,
-`withAlphaChannel`, `cancelQuery`, `onProgress`.
+Returns `{ mp4?, webm?, mov?, cover, width, height, fps, duration }`.
 
-**Returns**: `{ mp4?, webm?, mov?, cover, width, height, fps, duration }`.
+## AI INTEGRATION
+
+Supports MCP and OpenCode.
 
 ## FILES
 
-    bin/pup.js            CLI entry point
-    dist/index.js         Library entry point
-    rust/*.node           Precompiled native binaries
-    x265/*                Precompiled x265 binaries
+```
+dist/cli.js           CLI
+dist/mcp_server.js    MCP server
+dist/index.js         library
+rust/*.node           native module
+x265/*                x265 binaries
+```
 
 ## EXAMPLES
 
-    pup https://example.com -w 1280 -h 720 -t 5
-    pup "file:///path/to/page.html" -a
-    pup https://example.com -f 60 -o ./output
+```
+pup https://example.com -t 5
+pup file:///path/to/page.html -a
+pup https://example.com -w 1280 -h 720 -f 60
+```
 
 ## SEE ALSO
 
-**pup-server**(1), **pup**(7)
+pup-server(1), pup(7)
 
 ## AUTHOR
 

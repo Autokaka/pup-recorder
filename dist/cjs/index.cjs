@@ -31,10 +31,22 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var index_exports = {};
 __export(index_exports, {
   ConcurrencyLimiter: () => ConcurrencyLimiter,
+  DEFAULT_DURATION: () => DEFAULT_DURATION,
+  DEFAULT_FPS: () => DEFAULT_FPS,
+  DEFAULT_HEIGHT: () => DEFAULT_HEIGHT,
+  DEFAULT_OUT_DIR: () => DEFAULT_OUT_DIR,
+  DEFAULT_WIDTH: () => DEFAULT_WIDTH,
   Lazy: () => Lazy,
+  MCP_TOOL_DESC: () => MCP_TOOL_DESC,
+  MCP_TOOL_NAME: () => MCP_TOOL_NAME,
+  MCP_TOOL_TITLE: () => MCP_TOOL_TITLE,
   PUP_ARGS_ENV_KEY: () => PUP_ARGS_ENV_KEY,
+  PupMCPSchema: () => PupMCPSchema,
+  PupOpenCodePlugin: () => PupOpenCodePlugin,
+  RecordSchema: () => RecordSchema,
   exec: () => exec,
   logger: () => logger,
+  mcpAddPup: () => mcpAddPup,
   noerr: () => noerr,
   pargs: () => pargs,
   parseNumber: () => parseNumber,
@@ -46,6 +58,7 @@ __export(index_exports, {
   pupLogLevel: () => pupLogLevel,
   pupUseInnerProxy: () => pupUseInnerProxy,
   sleep: () => sleep,
+  startMCPServer: () => startMCPServer,
   useRetry: () => useRetry
 });
 module.exports = __toCommonJS(index_exports);
@@ -53,6 +66,139 @@ module.exports = __toCommonJS(index_exports);
 // ../../node_modules/.bun/tsup@8.5.1+3f29b90437d001ad/node_modules/tsup/assets/cjs_shims.js
 var getImportMetaUrl = () => typeof document === "undefined" ? new URL(`file:${__filename}`).href : document.currentScript && document.currentScript.tagName.toUpperCase() === "SCRIPT" ? document.currentScript.src : new URL("main.js", document.baseURI).href;
 var importMetaUrl = /* @__PURE__ */ getImportMetaUrl();
+
+// src/ai/mcp.ts
+var import_mcp = require("@modelcontextprotocol/sdk/server/mcp.js");
+var import_stdio = require("@modelcontextprotocol/sdk/server/stdio.js");
+var import_zod2 = __toESM(require("zod"), 1);
+
+// package.json
+var package_default = {
+  name: "pup-recorder",
+  version: "0.0.11",
+  description: "High-performance webview recording tool.",
+  license: "MIT",
+  type: "module",
+  bin: {
+    pup: "./dist/cli.js",
+    "pup-cjs": "./dist/cjs/cli.cjs",
+    "pup-mcp-server": "./dist/mcp_server.js",
+    "pup-mcp-server-cjs": "./dist/cjs/mcp_server.cjs"
+  },
+  exports: {
+    ".": {
+      types: "./dist/index.d.ts",
+      import: "./dist/index.js",
+      require: "./dist/cjs/index.cjs"
+    }
+  },
+  engines: {
+    bun: ">= 1",
+    node: ">= 20"
+  },
+  engineStrict: true,
+  devDependencies: {
+    "@types/bun": "latest",
+    "@types/node": "^20.0.0",
+    "@typescript/native-preview": "latest",
+    tsup: "latest",
+    typescript: "latest"
+  },
+  dependencies: {
+    "@modelcontextprotocol/sdk": "latest",
+    "@opencode-ai/plugin": "latest",
+    commander: "latest",
+    electron: "latest",
+    zod: "latest"
+  },
+  scripts: {
+    build: "bun build.ts && bun build_rust.ts"
+  }
+};
+
+// src/base/schema.ts
+var import_zod = __toESM(require("zod"), 1);
+var DEFAULT_WIDTH = 1920;
+var DEFAULT_HEIGHT = 1080;
+var DEFAULT_FPS = 30;
+var DEFAULT_DURATION = 5;
+var DEFAULT_OUT_DIR = "out";
+var RecordSchema = import_zod.default.object({
+  duration: import_zod.default.number().optional().default(DEFAULT_DURATION).describe("Recording duration in seconds"),
+  width: import_zod.default.number().optional().default(DEFAULT_WIDTH).describe("Video width"),
+  height: import_zod.default.number().optional().default(DEFAULT_HEIGHT).describe("Video height"),
+  fps: import_zod.default.number().optional().default(DEFAULT_FPS).describe("Frames per second"),
+  withAlphaChannel: import_zod.default.boolean().optional().default(false).describe("Output with alpha channel"),
+  outDir: import_zod.default.string().optional().default(DEFAULT_OUT_DIR).describe("Output directory"),
+  useInnerProxy: import_zod.default.boolean().optional().default(false).describe("Use bilibili inner proxy for resource access")
+});
+
+// src/pup.ts
+var import_child_process2 = require("child_process");
+var import_promises = require("fs/promises");
+var import_path4 = require("path");
+
+// src/base/abort.ts
+var AbortLink = class _AbortLink {
+  constructor(query, interval = 1e3) {
+    this.query = query;
+    this.interval = interval;
+    if (query) {
+      this.tick();
+    }
+  }
+  _callback;
+  _aborted;
+  _stopped = false;
+  static start(query, interval) {
+    return new _AbortLink(query, interval);
+  }
+  get aborted() {
+    return !this._stopped && this._aborted;
+  }
+  get stopped() {
+    return this._stopped;
+  }
+  async onAbort(callback) {
+    if (this._aborted) {
+      await callback();
+    } else {
+      this._callback = callback;
+    }
+  }
+  wait(...handles) {
+    const abort = new Promise((_, reject) => {
+      this.onAbort(async () => {
+        handles.forEach((h) => h.process.kill());
+        reject(new Error("aborted"));
+      });
+    });
+    return Promise.race([
+      abort,
+      Promise.all(handles.map((h) => h.wait))
+      //
+    ]);
+  }
+  stop() {
+    this._stopped = true;
+  }
+  tick() {
+    setTimeout(async () => {
+      if (this._stopped) {
+        return;
+      }
+      this._aborted = await this.query?.();
+      if (this._stopped) {
+        return;
+      }
+      if (this._aborted) {
+        await this._callback?.();
+      } else {
+        this.tick();
+      }
+    }, this.interval);
+  }
+};
 
 // src/base/constants.ts
 var import_fs = require("fs");
@@ -99,75 +245,11 @@ var pupLogLevel = penv("PUP_LOG_LEVEL", parseNumber, 2);
 var pupUseInnerProxy = env["PUP_USE_INNER_PROXY"] === "1";
 var pupFFmpegPath = env["FFMPEG_BIN"] ?? `ffmpeg`;
 
-// src/base/lazy.ts
-var Lazy = class {
-  constructor(makeValue) {
-    this.makeValue = makeValue;
-  }
-  get value() {
-    if (!this._initialized) {
-      this._value = this.makeValue();
-      this._initialized = true;
-    }
-    return this._value;
-  }
-  get initialized() {
-    return this._initialized;
-  }
-  _initialized = false;
-  _value;
-};
+// src/base/electron.ts
+var import_electron = __toESM(require("electron"), 1);
 
-// src/base/limiter.ts
-var ConcurrencyLimiter = class {
-  constructor(maxConcurrency) {
-    this.maxConcurrency = maxConcurrency;
-  }
-  _active = 0;
-  _queue = [];
-  _pending = 0;
-  _ended = false;
-  get active() {
-    return this._active;
-  }
-  get pending() {
-    return this._pending;
-  }
-  async schedule(fn) {
-    if (this._ended) {
-      throw new Error("ended");
-    }
-    return new Promise((resolve, reject) => {
-      const run = () => {
-        this._active++;
-        this._pending--;
-        fn().then(resolve).catch(reject).finally(() => {
-          this._active--;
-          this.next();
-        });
-      };
-      this._pending++;
-      if (this._active < this.maxConcurrency) {
-        run();
-      } else {
-        this._queue.push(run);
-      }
-    });
-  }
-  async end() {
-    if (!this._ended) {
-      this._ended = true;
-      while (this._active > 0 || this._pending > 0) {
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
-    }
-  }
-  next() {
-    if (this._active < this.maxConcurrency && this._queue.length > 0) {
-      this._queue.shift()?.();
-    }
-  }
-};
+// src/base/process.ts
+var import_child_process = require("child_process");
 
 // src/base/logging.ts
 var DEBUG = "<pup@debug>";
@@ -260,23 +342,7 @@ var Logger = class {
 };
 var logger = new Logger();
 
-// src/base/noerr.ts
-function noerr(fn, defaultValue) {
-  return (...args) => {
-    try {
-      const ret = fn(...args);
-      if (ret instanceof Promise) {
-        return ret.catch(() => defaultValue);
-      }
-      return ret;
-    } catch {
-      return defaultValue;
-    }
-  };
-}
-
 // src/base/process.ts
-var import_child_process = require("child_process");
 var PUP_ARGS_ENV_KEY = "__PUP_ARGS__";
 function pargs() {
   const pupArgs = process.env[PUP_ARGS_ENV_KEY];
@@ -300,128 +366,7 @@ function exec(cmd, options) {
   return { process: proc, wait: logger.attach(proc, command) };
 }
 
-// src/base/retry.ts
-var import_promises = require("timers/promises");
-
-// src/base/timing.ts
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-function periodical(callback, ms) {
-  let token;
-  let closed = false;
-  async function tick(count) {
-    await callback(count);
-    if (closed) return;
-    token = setTimeout(() => tick(count + 1), ms);
-  }
-  token = setTimeout(() => tick(0), ms);
-  return () => {
-    closed = true;
-    clearTimeout(token);
-  };
-}
-
-// src/base/retry.ts
-function useRetry({
-  fn,
-  maxAttempts = 3,
-  timeout
-}) {
-  const timeoutError = new Error(`timeout over ${timeout}ms`);
-  return async function(...args) {
-    let attempt = 0;
-    while (true) {
-      try {
-        const promises = [fn(...args)];
-        if (timeout) {
-          promises.push(
-            (0, import_promises.setTimeout)(timeout).then(() => {
-              throw timeoutError;
-            })
-          );
-        }
-        return await Promise.race(promises);
-      } catch (e) {
-        attempt++;
-        if (attempt >= maxAttempts) {
-          throw e;
-        }
-        await sleep(Math.pow(2, attempt) * 100 + Math.random() * 100);
-      }
-    }
-  };
-}
-
-// src/pup.ts
-var import_child_process2 = require("child_process");
-var import_promises2 = require("fs/promises");
-var import_path4 = require("path");
-
-// src/base/abort.ts
-var AbortLink = class _AbortLink {
-  constructor(query, interval = 1e3) {
-    this.query = query;
-    this.interval = interval;
-    if (query) {
-      this.tick();
-    }
-  }
-  _callback;
-  _aborted;
-  _stopped = false;
-  static start(query, interval) {
-    return new _AbortLink(query, interval);
-  }
-  get aborted() {
-    return !this._stopped && this._aborted;
-  }
-  get stopped() {
-    return this._stopped;
-  }
-  async onAbort(callback) {
-    if (this._aborted) {
-      await callback();
-    } else {
-      this._callback = callback;
-    }
-  }
-  wait(...handles) {
-    const abort = new Promise((_, reject) => {
-      this.onAbort(async () => {
-        handles.forEach((h) => h.process.kill());
-        reject(new Error("aborted"));
-      });
-    });
-    return Promise.race([
-      abort,
-      Promise.all(handles.map((h) => h.wait))
-      //
-    ]);
-  }
-  stop() {
-    this._stopped = true;
-  }
-  tick() {
-    setTimeout(async () => {
-      if (this._stopped) {
-        return;
-      }
-      this._aborted = await this.query?.();
-      if (this._stopped) {
-        return;
-      }
-      if (this._aborted) {
-        await this._callback?.();
-      } else {
-        this.tick();
-      }
-    }, this.interval);
-  }
-};
-
 // src/base/electron.ts
-var import_electron = __toESM(require("electron"), 1);
 var ELECTRON_OPTS = [
   "no-sandbox",
   "disable-setuid-sandbox",
@@ -653,6 +598,57 @@ function encodeBgraToMov(bgraPath, movPath, spec) {
   });
 }
 
+// src/base/limiter.ts
+var ConcurrencyLimiter = class {
+  constructor(maxConcurrency) {
+    this.maxConcurrency = maxConcurrency;
+  }
+  _active = 0;
+  _queue = [];
+  _pending = 0;
+  _ended = false;
+  get active() {
+    return this._active;
+  }
+  get pending() {
+    return this._pending;
+  }
+  async schedule(fn) {
+    if (this._ended) {
+      throw new Error("ended");
+    }
+    return new Promise((resolve, reject) => {
+      const run = () => {
+        this._active++;
+        this._pending--;
+        fn().then(resolve).catch(reject).finally(() => {
+          this._active--;
+          this.next();
+        });
+      };
+      this._pending++;
+      if (this._active < this.maxConcurrency) {
+        run();
+      } else {
+        this._queue.push(run);
+      }
+    });
+  }
+  async end() {
+    if (!this._ended) {
+      this._ended = true;
+      while (this._active > 0 || this._pending > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    }
+  }
+  next() {
+    if (this._active < this.maxConcurrency && this._queue.length > 0) {
+      this._queue.shift()?.();
+    }
+  }
+};
+
 // src/base/stream.ts
 function waitAll(...procs) {
   return Promise.all(
@@ -668,11 +664,6 @@ function waitAll(...procs) {
   );
 }
 
-// src/common.ts
-var import_commander = require("commander");
-var DEFAULT_WIDTH = 1920;
-var DEFAULT_HEIGHT = 1080;
-
 // src/pup.ts
 var TAG = "[pup]";
 var PROGRESS_TAG = " progress: ";
@@ -685,6 +676,7 @@ function runPupApp(source, options) {
   if (options.duration) args.push("--duration", `${options.duration}`);
   if (options.outDir) args.push("--out-dir", options.outDir);
   if (options.withAlphaChannel) args.push("--with-alpha-channel");
+  if (options.useInnerProxy) args.push("--use-inner-proxy");
   const w = options.width ?? DEFAULT_WIDTH;
   const h = options.height ?? DEFAULT_HEIGHT;
   const handle = runElectronApp({ width: w, height: h }, pupAppPath, args);
@@ -718,7 +710,7 @@ async function pup(source, options) {
   await counter.end();
   logger.info(TAG, `capture cost ${Math.round(performance.now() - t0)}ms`);
   const metaPath = (0, import_path4.join)(outDir, "record.json");
-  const meta = JSON.parse(await (0, import_promises2.readFile)(metaPath, "utf-8"));
+  const meta = JSON.parse(await (0, import_promises.readFile)(metaPath, "utf-8"));
   const { bgraPath, written, options: recordOptions } = meta;
   const { fps, width, height, withAlphaChannel } = recordOptions;
   const size = { width, height };
@@ -752,8 +744,8 @@ async function pup(source, options) {
     link.stop();
     logger.info(TAG, `encoding cost ${Math.round(performance.now() - t1)}ms`);
     await Promise.all([
-      (0, import_promises2.rm)(bgraPath, { force: true }),
-      (0, import_promises2.rm)(metaPath, { force: true })
+      (0, import_promises.rm)(bgraPath, { force: true }),
+      (0, import_promises.rm)(metaPath, { force: true })
     ]);
     return {
       ...outputs,
@@ -763,17 +755,184 @@ async function pup(source, options) {
       duration: Math.ceil(written / fps)
     };
   } catch (error) {
-    await (0, import_promises2.rm)(outDir, { recursive: true, force: true });
+    await (0, import_promises.rm)(outDir, { recursive: true, force: true });
     throw error;
   }
+}
+
+// src/ai/mcp.ts
+var PupMCPSchema = import_zod2.default.object({ source: import_zod2.default.string().describe("file://, http(s)://, or data: URI") }).extend(RecordSchema.shape);
+var MCP_TOOL_NAME = package_default.name;
+var MCP_TOOL_TITLE = "Record Webpage";
+var MCP_TOOL_DESC = "Record a webpage to video";
+function mcpAddPup(server) {
+  server.registerTool(
+    MCP_TOOL_NAME,
+    {
+      title: MCP_TOOL_TITLE,
+      description: MCP_TOOL_DESC,
+      inputSchema: PupMCPSchema
+    },
+    async (args) => {
+      try {
+        const result = await pup(args.source, args);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }]
+        };
+      } catch (error) {
+        return {
+          isError: true,
+          content: [
+            { type: "text", text: JSON.stringify({ error: String(error) }) }
+          ]
+        };
+      }
+    }
+  );
+}
+async function startMCPServer() {
+  const server = new import_mcp.McpServer(package_default);
+  mcpAddPup(server);
+  await server.connect(new import_stdio.StdioServerTransport());
+}
+
+// src/ai/opencode.ts
+var import_plugin = require("@opencode-ai/plugin");
+var z3 = import_plugin.tool.schema;
+var PupPluginSchema = z3.object({
+  source: z3.string().describe(PupMCPSchema.shape.source.description),
+  duration: z3.number().optional().default(DEFAULT_DURATION).describe(PupMCPSchema.shape.duration.description),
+  width: z3.number().optional().default(DEFAULT_WIDTH).describe(PupMCPSchema.shape.width.description),
+  height: z3.number().optional().default(DEFAULT_HEIGHT).describe(PupMCPSchema.shape.height.description),
+  fps: z3.number().optional().default(DEFAULT_FPS).describe(PupMCPSchema.shape.fps.description),
+  withAlphaChannel: z3.boolean().optional().default(false).describe(PupMCPSchema.shape.withAlphaChannel.description),
+  outDir: z3.string().optional().default(DEFAULT_OUT_DIR).describe(PupMCPSchema.shape.outDir.description),
+  useInnerProxy: z3.boolean().optional().default(false).describe(PupMCPSchema.shape.useInnerProxy.description)
+});
+var PupOpenCodePlugin = async () => {
+  return {
+    tool: {
+      [MCP_TOOL_NAME]: (0, import_plugin.tool)({
+        description: MCP_TOOL_DESC,
+        args: PupPluginSchema.shape,
+        async execute(args) {
+          try {
+            const result = await pup(args.source, args);
+            return JSON.stringify(result, null, 2);
+          } catch (error) {
+            return JSON.stringify({ error: String(error) });
+          }
+        }
+      })
+    }
+  };
+};
+
+// src/base/lazy.ts
+var Lazy = class {
+  constructor(makeValue) {
+    this.makeValue = makeValue;
+  }
+  get value() {
+    if (!this._initialized) {
+      this._value = this.makeValue();
+      this._initialized = true;
+    }
+    return this._value;
+  }
+  get initialized() {
+    return this._initialized;
+  }
+  _initialized = false;
+  _value;
+};
+
+// src/base/noerr.ts
+function noerr(fn, defaultValue) {
+  return (...args) => {
+    try {
+      const ret = fn(...args);
+      if (ret instanceof Promise) {
+        return ret.catch(() => defaultValue);
+      }
+      return ret;
+    } catch {
+      return defaultValue;
+    }
+  };
+}
+
+// src/base/retry.ts
+var import_promises2 = require("timers/promises");
+
+// src/base/timing.ts
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+function periodical(callback, ms) {
+  let token;
+  let closed = false;
+  async function tick(count) {
+    await callback(count);
+    if (closed) return;
+    token = setTimeout(() => tick(count + 1), ms);
+  }
+  token = setTimeout(() => tick(0), ms);
+  return () => {
+    closed = true;
+    clearTimeout(token);
+  };
+}
+
+// src/base/retry.ts
+function useRetry({
+  fn,
+  maxAttempts = 3,
+  timeout
+}) {
+  const timeoutError = new Error(`timeout over ${timeout}ms`);
+  return async function(...args) {
+    let attempt = 0;
+    while (true) {
+      try {
+        const promises = [fn(...args)];
+        if (timeout) {
+          promises.push(
+            (0, import_promises2.setTimeout)(timeout).then(() => {
+              throw timeoutError;
+            })
+          );
+        }
+        return await Promise.race(promises);
+      } catch (e) {
+        attempt++;
+        if (attempt >= maxAttempts) {
+          throw e;
+        }
+        await sleep(Math.pow(2, attempt) * 100 + Math.random() * 100);
+      }
+    }
+  };
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   ConcurrencyLimiter,
+  DEFAULT_DURATION,
+  DEFAULT_FPS,
+  DEFAULT_HEIGHT,
+  DEFAULT_OUT_DIR,
+  DEFAULT_WIDTH,
   Lazy,
+  MCP_TOOL_DESC,
+  MCP_TOOL_NAME,
+  MCP_TOOL_TITLE,
   PUP_ARGS_ENV_KEY,
+  PupMCPSchema,
+  PupOpenCodePlugin,
+  RecordSchema,
   exec,
   logger,
+  mcpAddPup,
   noerr,
   pargs,
   parseNumber,
@@ -785,6 +944,7 @@ async function pup(source, options) {
   pupLogLevel,
   pupUseInnerProxy,
   sleep,
+  startMCPServer,
   useRetry
 });
 //# sourceMappingURL=index.cjs.map
