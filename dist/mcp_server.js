@@ -6,9 +6,12 @@ import z2 from "zod";
 // package.json
 var package_default = {
   name: "pup-recorder",
-  version: "0.0.12",
+  version: "0.0.15",
   description: "A nice webview recording tool.",
-  homepage: "https://github.com/Autokaka/pup-recorder",
+  repository: {
+    type: "git",
+    url: "https://github.com/Autokaka/pup-recorder.git"
+  },
   license: "MIT",
   author: "autokaka",
   type: "module",
