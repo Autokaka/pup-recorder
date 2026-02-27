@@ -8,15 +8,12 @@ pup - record web pages as video
 
 ```
 pup <source> [-w width] [-h height] [-f fps] [-t duration] [-o dir] [-a]
-pup-mcp-server
 ```
 
 ## DESCRIPTION
 
 Captures web pages as video using Electron offscreen rendering. Outputs MP4
 by default; with `-a` outputs WebM (VP9) and MOV (HEVC alpha).
-
-`pup-mcp-server` exposes pup as an MCP tool for AI assistants.
 
 ## OPTIONS
 
@@ -58,15 +55,10 @@ const { mp4, cover, width, height, fps, duration } = await pup(
 
 Returns `{ mp4?, webm?, mov?, cover, width, height, fps, duration }`.
 
-## AI INTEGRATION
-
-Supports MCP and OpenCode.
-
 ## FILES
 
 ```
 dist/cli.js           CLI
-dist/mcp_server.js    MCP server
 dist/index.js         library
 rust/*.node           native module
 x265/*                x265 binaries
@@ -82,7 +74,7 @@ pup https://example.com -w 1280 -h 720 -f 60
 
 ## SEE ALSO
 
-pup-server(1), pup(7)
+pup-recorder-mcp(1), pup-recorder-opencode(7), pup-server(1), pup(7)
 
 ## AUTHOR
 

@@ -30,7 +30,6 @@ await Promise.all([
     entry: [
       "src/index.ts", //
       "src/cli.ts",
-      "src/mcp_server.ts",
     ],
     format: "esm",
     outDir: "dist",
@@ -41,7 +40,6 @@ await Promise.all([
     entry: [
       "src/index.ts", //
       "src/cli.ts",
-      "src/mcp_server.ts",
       "src/app.ts",
     ],
     format: "cjs",
