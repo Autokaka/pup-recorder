@@ -1,8 +1,8 @@
-# pup(1)
+# pup-recorder(1)
 
 ## NAME
 
-pup - record web pages as video
+pup-recorder - record web pages as video
 
 ## SYNOPSIS
 
@@ -12,7 +12,7 @@ pup <source> [-w width] [-h height] [-f fps] [-t duration] [-o dir] [-a]
 
 ## DESCRIPTION
 
-Captures web pages as video using Electron offscreen rendering. Outputs MP4
+Captures a web page as video via Electron offscreen rendering. Outputs MP4
 by default; with `-a` outputs WebM (VP9) and MOV (HEVC alpha).
 
 ## OPTIONS
@@ -25,7 +25,7 @@ by default; with `-a` outputs WebM (VP9) and MOV (HEVC alpha).
 -t, --duration <n>      seconds, default 5
 -o, --out-dir <path>    default "out"
 -a, --with-alpha-channel
---use-inner-proxy       bilibili internal proxy
+    --use-inner-proxy   bilibili internal proxy
 ```
 
 ## ENVIRONMENT
@@ -41,35 +41,32 @@ FFMPEG_BIN           default "ffmpeg"
 ```typescript
 import { pup } from "pup-recorder";
 
-const { mp4, cover, width, height, fps, duration } = await pup(
-  "https://example.com",
-  {
-    width: 1920,
-    height: 1080,
-    fps: 30,
-    duration: 5,
-    withAlphaChannel: false,
-  },
-);
+const { mp4, webm, mov, cover, width, height, fps, duration } =
+  await pup("https://example.com", {
+    width: 1920, height: 1080, fps: 30, duration: 5,
+    withAlphaChannel: false, outDir: "out", useInnerProxy: false,
+    cancelQuery: () => boolean,
+    onProgress: (pct: number) => void,
+  });
 ```
 
-Returns `{ mp4?, webm?, mov?, cover, width, height, fps, duration }`.
+`mp4` when `withAlphaChannel` is false; `webm`+`mov` when true.
 
 ## FILES
 
 ```
-dist/cli.js           CLI
-dist/index.js         library
-rust/*.node           native module
-x265/*                x265 binaries
+dist/cli.js     CLI
+dist/index.js   library
+rust/*.node     native module
+x265/*          x265 binaries
 ```
 
 ## EXAMPLES
 
-```
+```sh
 pup https://example.com -t 5
 pup file:///path/to/page.html -a
-pup https://example.com -w 1280 -h 720 -f 60
+pup https://example.com -w 1280 -h 720 -f 60 -t 10 -o /tmp/out
 ```
 
 ## SEE ALSO

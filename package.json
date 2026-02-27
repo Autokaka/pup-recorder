@@ -1,6 +1,6 @@
 {
   "name": "pup-recorder",
-  "version": "0.0.17",
+  "version": "0.0.22",
   "description": "A nice webview recording tool.",
   "repository": {
     "type": "git",
