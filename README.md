@@ -74,7 +74,7 @@ pup https://example.com -w 1280 -h 720 -f 60
 
 ## SEE ALSO
 
-pup-recorder-mcp(1), pup-recorder-opencode(7), pup-server(1), pup(7)
+pup-recorder-mcp(1), pup-server(1), pup(7)
 
 ## AUTHOR
 
