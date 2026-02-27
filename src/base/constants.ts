@@ -17,3 +17,4 @@ const env = process.env;
 export const pupLogLevel = penv("PUP_LOG_LEVEL", parseNumber, 2);
 export const pupUseInnerProxy = env["PUP_USE_INNER_PROXY"] === "1";
 export const pupFFmpegPath = env["FFMPEG_BIN"] ?? `ffmpeg`;
+export const pupDisableGPU = env["PUP_DISABLE_GPU"] === "1";

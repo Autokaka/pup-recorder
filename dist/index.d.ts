@@ -6,6 +6,7 @@ declare const pupAppPath: string;
 declare const pupLogLevel: number;
 declare const pupUseInnerProxy: boolean;
 declare const pupFFmpegPath: string;
+declare const pupDisableGPU: boolean;
 
 type EnvParser<T> = (value: unknown) => T;
 declare function penv<T>(name: string, parser: EnvParser<T>, defaultValue: T): T;
@@ -59,7 +60,7 @@ declare function noerr<Fn extends (...args: any[]) => any, D>(fn: Fn, defaultVal
 
 declare function parseNumber(value: unknown): number;
 
-declare const PUP_ARGS_ENV_KEY = "__PUP_ARGS__";
+declare const PUP_ARGS_KEY = "--pup-priv-args";
 declare function pargs(): string[];
 interface ProcessHandle {
     process: ChildProcess;
@@ -137,4 +138,4 @@ declare function pup(source: string, options: PupOptions): Promise<{
     mov?: string;
 }>;
 
-export { ConcurrencyLimiter, DEFAULT_DURATION, DEFAULT_FPS, DEFAULT_HEIGHT, DEFAULT_OUT_DIR, DEFAULT_WIDTH, type EnvParser, Lazy, type LoggerLike, PUP_ARGS_ENV_KEY, type ProcessHandle, type PupOptions, type PupProgressCallback, type RecordOptions, type RecordResult, RecordSchema, type RetryOptions, type VideoFiles, type VideoFilesWithCover, type VideoSpec, exec, logger, noerr, pargs, parseNumber, penv, periodical, pup, pupAppPath, pupFFmpegPath, pupLogLevel, pupUseInnerProxy, sleep, useRetry };
+export { ConcurrencyLimiter, DEFAULT_DURATION, DEFAULT_FPS, DEFAULT_HEIGHT, DEFAULT_OUT_DIR, DEFAULT_WIDTH, type EnvParser, Lazy, type LoggerLike, PUP_ARGS_KEY, type ProcessHandle, type PupOptions, type PupProgressCallback, type RecordOptions, type RecordResult, RecordSchema, type RetryOptions, type VideoFiles, type VideoFilesWithCover, type VideoSpec, exec, logger, noerr, pargs, parseNumber, penv, periodical, pup, pupAppPath, pupDisableGPU, pupFFmpegPath, pupLogLevel, pupUseInnerProxy, sleep, useRetry };

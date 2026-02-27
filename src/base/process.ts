@@ -3,19 +3,20 @@
 import { spawn, type ChildProcess, type SpawnOptions } from "child_process";
 import { logger } from "./logging";
 
-export const PUP_ARGS_ENV_KEY = "__PUP_ARGS__";
+export const PUP_ARGS_KEY = "--pup-priv-args";
 
 export function pargs() {
-  const pupArgs = process.env[PUP_ARGS_ENV_KEY];
-  if (pupArgs) {
-    const args = ["exec", ...process.argv.slice(-1)];
-    args.push(...JSON.parse(pupArgs));
-    logger.debug("pupargs", args);
-    return args;
+  const argv = process.argv;
+  let priv = argv.find((arg) => arg.startsWith(PUP_ARGS_KEY));
+  if (!priv) {
+    logger.debug("procargv", argv);
+    return process.argv;
   }
-
-  logger.debug("procargv", process.argv);
-  return process.argv;
+  const args = ["exec", ...argv.slice(-1)];
+  priv = Buffer.from(priv.split("=")[1]!, "base64").toString();
+  args.push(...JSON.parse(priv));
+  logger.debug("pupargs", args);
+  return args;
 }
 
 export interface ProcessHandle {

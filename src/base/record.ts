@@ -1,96 +1,16 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/09.
 
-import { BrowserWindow, session, type NativeImage } from "electron";
+import { type NativeImage } from "electron";
 import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 import { FixedBufferWriter } from "../rust/lib";
-import {
-  buildWrapperHTML,
-  decodeTimestamp,
-  startSync,
-  stopSync,
-} from "./frame_sync";
-import { checkHTML } from "./html_check";
+import { decodeTimestamp, startSync, stopSync } from "./frame_sync";
 import { isEmpty } from "./image";
 import { logger } from "./logging";
-import { enableProxy, proxiedUrl } from "./proxy";
-import { useRetry } from "./retry";
 import type { RecordOptions, RecordResult } from "./schema";
+import { loadWindow } from "./window";
 
 const TAG = "[Record]";
-
-async function loadWindow(source: string, options: RecordOptions) {
-  checkHTML(source);
-
-  const { width, height, useInnerProxy } = options;
-
-  // Remove X-Frame-Options and CSP headers to allow iframe loading
-  // Note: Electron's onHeadersReceived uses REPLACE behavior (not append).
-  // Only the last attached listener is used, so no cleanup needed.
-  // Ref: https://www.electronjs.org/docs/latest/api/web-request
-  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    const responseHeaders = { ...details.responseHeaders };
-    delete responseHeaders["x-frame-options"];
-    delete responseHeaders["X-Frame-Options"];
-    delete responseHeaders["content-security-policy"];
-    delete responseHeaders["Content-Security-Policy"];
-    callback({ cancel: false, responseHeaders });
-  });
-
-  let src = source;
-  if (useInnerProxy) {
-    src = proxiedUrl(source);
-    enableProxy();
-  }
-
-  const win = new BrowserWindow({
-    width: width,
-    height: height + 1,
-    show: false,
-    transparent: true,
-    backgroundColor: undefined,
-    webPreferences: {
-      offscreen: true,
-      backgroundThrottling: false,
-      nodeIntegration: true,
-      contextIsolation: false,
-      webSecurity: false,
-      allowRunningInsecureContent: true,
-      experimentalFeatures: true,
-    },
-  });
-
-  win.webContents.on("console-message", (event) => {
-    if (event.level === "error") {
-      logger.error(TAG, "console:", event.message);
-    }
-  });
-
-  const wrapperHTML = buildWrapperHTML(src, { width, height });
-  const dataURL = `data:text/html;charset=utf-8,${encodeURIComponent(wrapperHTML)}`;
-  let token: NodeJS.Timeout | undefined;
-
-  await new Promise<void>((resolve, reject) => {
-    token = setTimeout(() => {
-      reject(new Error("load window timeout"));
-    }, 20 * 1000);
-
-    win.webContents.once("did-finish-load", resolve);
-
-    win.webContents.once("did-fail-load", (_event, code, desc, url) => {
-      reject(new Error(`failed to load ${url}: [${code}] ${desc}`));
-    });
-
-    win.webContents.once("render-process-gone", (_event, details) => {
-      const { exitCode, reason } = details;
-      reject(new Error(`renderer crashed: ${exitCode}, ${reason}`));
-    });
-
-    win.loadURL(dataURL);
-  });
-  clearTimeout(token);
-  return win;
-}
 
 export async function record(
   source: string,
@@ -99,10 +19,7 @@ export async function record(
   logger.info(TAG, `progress: 0%`);
   const { outDir, fps, width, height, duration } = options;
 
-  const win = await useRetry({ fn: loadWindow, maxAttempts: 2 })(
-    source,
-    options,
-  );
+  const win = await loadWindow(source, options);
 
   await mkdir(outDir, { recursive: true });
 

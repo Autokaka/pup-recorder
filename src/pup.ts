@@ -31,7 +31,7 @@ export interface PupOptions extends Partial<RecordOptions> {
   onProgress?: PupProgressCallback;
 }
 
-function runPupApp(source: string, options: PupOptions) {
+async function runPupApp(source: string, options: PupOptions) {
   logger.debug(TAG, `runPupApp`, source, options);
 
   const args: string[] = [source];
@@ -45,7 +45,11 @@ function runPupApp(source: string, options: PupOptions) {
 
   const w = options.width ?? DEFAULT_WIDTH;
   const h = options.height ?? DEFAULT_HEIGHT;
-  const handle = runElectronApp({ width: w, height: h }, pupAppPath, args);
+  const handle = await runElectronApp({
+    size: { width: w, height: h },
+    app: pupAppPath,
+    args,
+  });
   const counter = new ConcurrencyLimiter(1);
   handle.process.stdout?.on("data", (data: Buffer) => {
     let message = data.toString().trim();
@@ -74,7 +78,7 @@ export async function pup(source: string, options: PupOptions) {
   const outDir = options.outDir ?? "out";
 
   const t0 = performance.now();
-  const { handle, counter } = runPupApp(source, { ...options, outDir });
+  const { handle, counter } = await runPupApp(source, { ...options, outDir });
 
   await link.wait(handle);
   await counter.end();
