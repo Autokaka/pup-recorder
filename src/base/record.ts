@@ -4,6 +4,7 @@ import { type NativeImage } from "electron";
 import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 import { FixedBufferWriter } from "../rust/lib";
+import { setupAudioCapture } from "./audio_capture";
 import { decodeTimestamp, startSync, stopSync } from "./frame_sync";
 import { isEmpty } from "./image";
 import { logger } from "./logging";
@@ -17,11 +18,14 @@ export async function record(
   options: RecordOptions,
 ): Promise<void> {
   logger.info(TAG, `progress: 0%`);
-  const { outDir, fps, width, height, duration } = options;
-
-  const win = await loadWindow(source, options);
+  const { outDir, fps, width, height, duration, withAudio } = options;
 
   await mkdir(outDir, { recursive: true });
+
+  const pcmPath = join(outDir, "output.pcm");
+  const audioCapture = withAudio ? await setupAudioCapture(pcmPath) : undefined;
+
+  const win = await loadWindow(source, options);
 
   const cdp = win.webContents.debugger;
   cdp.attach("1.3");
@@ -31,12 +35,12 @@ export async function record(
     win.webContents.startPainting();
   }
 
-  const bgraPath = join(outDir, "output.bgra");
+  const bgra = join(outDir, "output.bgra");
   const total = Math.ceil(fps * duration);
   const frameInterval = 1000 / fps;
   const bufferSize = width * height * 4;
 
-  const writer = new FixedBufferWriter(bgraPath, bufferSize, fps);
+  const writer = new FixedBufferWriter(bgra, bufferSize, fps);
 
   let written = 0;
   let lastWrittenTime: number | undefined;
@@ -113,6 +117,7 @@ export async function record(
     await stopSync(cdp);
     win.webContents.off("paint", paint);
     await writer.close();
+    await audioCapture?.teardown();
   }
 
   if (frameError || written === 0) {
@@ -120,7 +125,10 @@ export async function record(
   }
 
   try {
-    const result: RecordResult = { options, written, bgraPath };
+    const audio = audioCapture?.sampleRate
+      ? { pcmPath, sampleRate: audioCapture.sampleRate }
+      : undefined;
+    const result: RecordResult = { options, written, bgra, audio };
     await writeFile(join(outDir, "record.json"), JSON.stringify(result));
     logger.info(TAG, `progress: 100%, ${written} frames written`);
   } finally {

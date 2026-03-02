@@ -7,47 +7,51 @@ import { hasGpu } from "./hwaccel";
 import { logger } from "./logging";
 import { exec, PUP_ARGS_KEY } from "./process";
 
-const ELECTRON_OPTS_BASE = [
-  "no-sandbox",
-  "disable-setuid-sandbox",
-  "disable-dev-shm-usage",
-  "disable-web-security",
-  "disable-site-isolation-trials",
-  "disable-features=IsolateOrigins,site-per-process",
-  "allow-insecure-localhost",
-  "ignore-certificate-errors",
-  "disable-blink-features=AutomationControlled",
-  "mute-audio",
-  "disable-extensions",
-  "disable-background-networking",
-  "address-family=ipv4",
-  "disable-async-dns",
-  "force-device-scale-factor=1",
-  "trace-warnings",
-  "force-color-profile=srgb",
-  "disable-color-correct-rendering",
-  "log-level=3",
-  "ignore-gpu-blocklist",
-  "gpu-shader-disk-cache-size-kb=524288",
-];
-
-export const ELECTRON_OPTS = [
-  ...ELECTRON_OPTS_BASE,
-  "use-gl=angle",
-  "use-angle=swiftshader",
-  "enable-unsafe-swiftshader",
-];
-
-export const ELECTRON_OPTS_GPU = [
-  ...ELECTRON_OPTS_BASE,
-  "in-process-gpu",
-  "use-gl=angle",
-  process.platform === "darwin"
-    ? "use-angle=metal"
-    : process.platform === "win32"
-      ? "use-angle=d3d11"
-      : "use-angle=vulkan",
-];
+export async function electronOpts() {
+  const opts = [
+    "no-sandbox",
+    "disable-setuid-sandbox",
+    "disable-dev-shm-usage",
+    "disable-web-security",
+    "disable-site-isolation-trials",
+    "disable-features=IsolateOrigins,site-per-process",
+    "allow-insecure-localhost",
+    "ignore-certificate-errors",
+    "disable-blink-features=AutomationControlled",
+    "mute-audio", // do not leak audio on capture
+    "autoplay-policy=no-user-gesture-required",
+    "disable-extensions",
+    "disable-background-networking",
+    "address-family=ipv4",
+    "disable-async-dns",
+    "force-device-scale-factor=1",
+    "trace-warnings",
+    "force-color-profile=srgb",
+    "disable-color-correct-rendering",
+    "log-level=3",
+    "ignore-gpu-blocklist",
+    "gpu-shader-disk-cache-size-kb=524288",
+  ];
+  const enableGpu = (await hasGpu) && !pupDisableGPU;
+  if (enableGpu) {
+    opts.push(
+      "in-process-gpu",
+      "use-gl=angle",
+      process.platform === "darwin"
+        ? "use-angle=metal"
+        : process.platform === "win32"
+          ? "use-angle=d3d11"
+          : "use-angle=vulkan",
+    );
+  } else {
+    opts.push(
+      "use-gl=angle",
+      "use-angle=swiftshader",
+      "enable-unsafe-swiftshader",
+    );
+  }
+  return opts;
+}
 
 export interface ElectronAppOptions {
   size: Size;
@@ -67,8 +71,7 @@ export async function runElectronApp(options: ElectronAppOptions) {
       `--server-args='-screen 0 ${size.width}x${size.height}x24'`,
     );
   }
-  const enableGpu = (await hasGpu) && !pupDisableGPU;
-  const opts = enableGpu ? ELECTRON_OPTS_GPU : ELECTRON_OPTS;
+  const opts = await electronOpts();
   logger.debug(TAG, "opts", opts);
   const electronArgs = opts.map((a) => `--${a}`);
   const base64Args = Buffer.from(JSON.stringify(args)).toString("base64");

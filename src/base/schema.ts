@@ -43,6 +43,11 @@ export const RecordSchema = z.object({
     .optional()
     .default(false)
     .describe("Output with alpha channel"),
+  withAudio: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe("Capture and encode audio"),
   outDir: z
     .string()
     .optional()
@@ -61,12 +66,19 @@ export interface RecordOptions {
   height: number;
   fps: number;
   withAlphaChannel: boolean;
+  withAudio: boolean;
   outDir: string;
   useInnerProxy: boolean;
+}
+
+export interface AudioSpec {
+  pcmPath: string;
+  sampleRate: number;
 }
 
 export interface RecordResult {
   options: RecordOptions;
   written: number;
-  bgraPath: string;
+  bgra: string;
+  audio?: AudioSpec;
 }

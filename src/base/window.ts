@@ -66,6 +66,7 @@ async function openWindow(
       offscreen: true,
       backgroundThrottling: false,
       nodeIntegration: true,
+      nodeIntegrationInSubFrames: true,
       contextIsolation: false,
       webSecurity: false,
       allowRunningInsecureContent: true,

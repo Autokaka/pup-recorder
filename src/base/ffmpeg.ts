@@ -5,7 +5,7 @@ import { join } from "path";
 import { arch, platform } from "process";
 import { basedir } from "./basedir";
 import { pupFFmpegPath } from "./constants";
-import type { VideoFiles, VideoSpec } from "./schema";
+import type { AudioSpec, VideoSpec } from "./schema";
 
 interface Command {
   command: string;
@@ -27,11 +27,22 @@ function resolveX265() {
   return found;
 }
 
-export function createBgraFileCommand(
-  bgraPath: string,
-  spec: VideoSpec,
-  files: VideoFiles,
-): Command {
+export interface BGRAFileOptions {
+  bgra: string;
+  outFile: string;
+  spec: VideoSpec;
+  audio?: AudioSpec;
+}
+
+const ALLOWED_FILE_EXTS = [".mp4", ".webm"];
+
+export function createBGRAFileCommand(options: BGRAFileOptions): Command {
+  const { bgra, spec, outFile, audio } = options;
+  const ext = ALLOWED_FILE_EXTS.find((ext) => outFile.endsWith(ext));
+  if (!ext) {
+    throw new Error(`out file must end with ${ALLOWED_FILE_EXTS}`);
+  }
+
   const { fps, frames } = spec;
   const args = [
     "-y",
@@ -45,11 +56,29 @@ export function createBgraFileCommand(
     "-r",
     `${fps}`,
     "-i",
-    bgraPath,
-    "-frames:v",
-    `${Math.floor(frames)}`,
+    bgra,
   ];
-  if (files.mp4) {
+
+  if (audio) {
+    args.push(
+      "-f",
+      "f32le",
+      "-ar",
+      `${audio.sampleRate}`,
+      "-ac",
+      "2",
+      "-i",
+      audio.pcmPath,
+    );
+  }
+
+  args.push("-frames:v", `${Math.floor(frames)}`);
+
+  if (audio) {
+    args.push("-map", "0:v", "-map", "1:a", "-shortest");
+  }
+
+  if (ext === ".mp4") {
     args.push(
       "-colorspace",
       "bt709",
@@ -67,10 +96,12 @@ export function createBgraFileCommand(
       "yuv420p",
       "-movflags",
       "+faststart",
-      files.mp4,
     );
+    if (audio) args.push("-c:a", "aac");
+    args.push(outFile);
   }
-  if (files.webm) {
+
+  if (ext === ".webm") {
     args.push(
       "-c:v",
       "libvpx-vp9",
@@ -84,9 +115,11 @@ export function createBgraFileCommand(
       "yuva420p",
       "-auto-alt-ref",
       "0",
-      files.webm,
     );
+    if (audio) args.push("-c:a", "libopus");
+    args.push(outFile);
   }
+
   return { command: pupFFmpegPath, args };
 }
 
@@ -96,12 +129,47 @@ interface X265Pipeline {
   mux: Command;
 }
 
-export function createBgraToMovPipeline(
-  bgraPath: string,
-  spec: VideoSpec,
-  mov: string,
-): X265Pipeline {
+export function createBGRA2MOVPipeline(options: BGRAFileOptions): X265Pipeline {
+  const { bgra, spec, outFile, audio } = options;
+  if (!outFile.endsWith(".mov")) {
+    throw new Error("out file must end with .mov");
+  }
+
   const { fps, size } = spec;
+
+  const muxArgs = [
+    "-y",
+    ...quiet,
+    "-f",
+    "hevc",
+    "-r",
+    `${fps}`,
+    "-i",
+    "pipe:0",
+  ];
+
+  if (audio) {
+    muxArgs.push(
+      "-f",
+      "f32le",
+      "-ar",
+      `${audio.sampleRate}`,
+      "-ac",
+      "2",
+      "-i",
+      audio.pcmPath,
+      "-c:v",
+      "copy",
+      "-c:a",
+      "aac",
+      "-shortest",
+    );
+  } else {
+    muxArgs.push("-c:v", "copy");
+  }
+
+  muxArgs.push("-tag:v", "hvc1", "-movflags", "+faststart", outFile);
+
   return {
     raw: {
       command: pupFFmpegPath,
@@ -117,7 +185,7 @@ export function createBgraToMovPipeline(
         "-r",
         `${fps}`,
         "-i",
-        bgraPath,
+        bgra,
         "-f",
         "rawvideo",
         "-pix_fmt",
@@ -160,23 +228,7 @@ export function createBgraToMovPipeline(
     },
     mux: {
       command: pupFFmpegPath,
-      args: [
-        "-y",
-        ...quiet,
-        "-f",
-        "hevc",
-        "-r",
-        `${fps}`,
-        "-i",
-        "pipe:0",
-        "-c:v",
-        "copy",
-        "-tag:v",
-        "hvc1",
-        "-movflags",
-        "+faststart",
-        mov,
-      ],
+      args: muxArgs,
     },
   };
 }

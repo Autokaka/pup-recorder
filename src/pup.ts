@@ -6,7 +6,7 @@ import { join } from "path";
 import { AbortLink, type AbortQuery } from "./base/abort";
 import { pupAppPath } from "./base/constants";
 import { runElectronApp } from "./base/electron";
-import { encodeBgraFile, encodeBgraToMov } from "./base/encoder";
+import { encodeBGRAFile, encodeBgraToMov } from "./base/encoder";
 import { createCoverCommand } from "./base/ffmpeg";
 import { ConcurrencyLimiter } from "./base/limiter";
 import { logger } from "./base/logging";
@@ -41,6 +41,7 @@ async function runPupApp(source: string, options: PupOptions) {
   if (options.duration) args.push("--duration", `${options.duration}`);
   if (options.outDir) args.push("--out-dir", options.outDir);
   if (options.withAlphaChannel) args.push("--with-alpha-channel");
+  if (options.withAudio) args.push("--with-audio");
   if (options.useInnerProxy) args.push("--use-inner-proxy");
 
   const w = options.width ?? DEFAULT_WIDTH;
@@ -87,8 +88,9 @@ export async function pup(source: string, options: PupOptions) {
   const metaPath = join(outDir, "record.json");
   const meta = JSON.parse(await readFile(metaPath, "utf-8")) as RecordResult;
 
-  const { bgraPath, written, options: recordOptions } = meta;
-  const { fps, width, height, withAlphaChannel } = recordOptions;
+  const { bgra, written, options: rec, audio } = meta;
+  const { fps, width, height, withAlphaChannel } = rec;
+  const pcm = audio?.pcmPath;
   const size: Size = { width, height };
 
   const outputs: VideoFilesWithCover = {
@@ -104,13 +106,17 @@ export async function pup(source: string, options: PupOptions) {
     const spec: VideoSpec = { fps, frames: written, size };
     const handles: ProcessHandle[] = [];
     if (outputs.mp4) {
-      handles.push(encodeBgraFile(bgraPath, outputs.mp4, spec, "mp4"));
+      handles.push(encodeBGRAFile({ bgra, outFile: outputs.mp4, spec, audio }));
     }
     if (outputs.webm) {
-      handles.push(encodeBgraFile(bgraPath, outputs.webm, spec, "webm"));
+      handles.push(
+        encodeBGRAFile({ bgra, outFile: outputs.webm, spec, audio }),
+      );
     }
     if (outputs.mov) {
-      handles.push(encodeBgraToMov(bgraPath, outputs.mov, spec));
+      handles.push(
+        encodeBgraToMov({ bgra, outFile: outputs.mov, spec, audio }),
+      );
     }
     await link.wait(...handles);
 
@@ -125,8 +131,9 @@ export async function pup(source: string, options: PupOptions) {
     logger.info(TAG, `encoding cost ${Math.round(performance.now() - t1)}ms`);
 
     await Promise.all([
-      rm(bgraPath, { force: true }),
+      rm(bgra, { force: true }),
       rm(metaPath, { force: true }),
+      pcm && rm(pcm, { force: true }),
     ]);
     return {
       ...outputs,

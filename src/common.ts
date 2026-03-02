@@ -30,6 +30,7 @@ export function makeCLI(name: string, callback: CLICallback) {
     .option("-t, --duration <number>", "录制时长（秒）", `${DEFAULT_DURATION}`)
     .option("-o, --out-dir <path>", "输出目录", `${DEFAULT_OUT_DIR}`)
     .option("-a, --with-alpha-channel", "输出包含 alpha 通道的视频", false)
+    .option("-s, --with-audio", "捕获并混入音频", false)
     .option(
       "--use-inner-proxy",
       "使用 B 站内网代理加速资源访问",
@@ -44,6 +45,7 @@ export function makeCLI(name: string, callback: CLICallback) {
           duration: noerr(parseNumber, DEFAULT_DURATION)(opts.duration),
           outDir: opts.outDir ?? DEFAULT_OUT_DIR,
           withAlphaChannel: opts.withAlphaChannel ?? false,
+          withAudio: opts.withAudio ?? false,
           useInnerProxy: opts.useInnerProxy ?? pupUseInnerProxy,
         });
       } catch (e) {

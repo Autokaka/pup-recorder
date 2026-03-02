@@ -99,6 +99,7 @@ declare const RecordSchema: z.ZodObject<{
     height: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
     fps: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
     withAlphaChannel: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    withAudio: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
     outDir: z.ZodDefault<z.ZodOptional<z.ZodString>>;
     useInnerProxy: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
 }, z.core.$strip>;
@@ -108,13 +109,19 @@ interface RecordOptions {
     height: number;
     fps: number;
     withAlphaChannel: boolean;
+    withAudio: boolean;
     outDir: string;
     useInnerProxy: boolean;
+}
+interface AudioSpec {
+    pcmPath: string;
+    sampleRate: number;
 }
 interface RecordResult {
     options: RecordOptions;
     written: number;
-    bgraPath: string;
+    bgra: string;
+    audio?: AudioSpec;
 }
 
 declare function sleep(ms: number): Promise<void>;
@@ -138,4 +145,4 @@ declare function pup(source: string, options: PupOptions): Promise<{
     mov?: string;
 }>;
 
-export { ConcurrencyLimiter, DEFAULT_DURATION, DEFAULT_FPS, DEFAULT_HEIGHT, DEFAULT_OUT_DIR, DEFAULT_WIDTH, type EnvParser, Lazy, type LoggerLike, PUP_ARGS_KEY, type ProcessHandle, type PupOptions, type PupProgressCallback, type RecordOptions, type RecordResult, RecordSchema, type RetryOptions, type VideoFiles, type VideoFilesWithCover, type VideoSpec, exec, logger, noerr, pargs, parseNumber, penv, periodical, pup, pupAppPath, pupDisableGPU, pupFFmpegPath, pupLogLevel, pupUseInnerProxy, sleep, useRetry };
+export { type AudioSpec, ConcurrencyLimiter, DEFAULT_DURATION, DEFAULT_FPS, DEFAULT_HEIGHT, DEFAULT_OUT_DIR, DEFAULT_WIDTH, type EnvParser, Lazy, type LoggerLike, PUP_ARGS_KEY, type ProcessHandle, type PupOptions, type PupProgressCallback, type RecordOptions, type RecordResult, RecordSchema, type RetryOptions, type VideoFiles, type VideoFilesWithCover, type VideoSpec, exec, logger, noerr, pargs, parseNumber, penv, periodical, pup, pupAppPath, pupDisableGPU, pupFFmpegPath, pupLogLevel, pupUseInnerProxy, sleep, useRetry };

@@ -1,7 +1,7 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/01/30.
 
 import { app } from "electron";
-import { ELECTRON_OPTS } from "./base/electron";
+import { electronOpts } from "./base/electron";
 import { record } from "./base/record";
 import { makeCLI } from "./common";
 
@@ -9,7 +9,17 @@ process.once("exit", () => app.quit());
 
 makeCLI("app", async (source, options) => {
   try {
-    ELECTRON_OPTS.forEach((o) => app.commandLine.appendSwitch(o));
+    const opts = await electronOpts();
+    opts.forEach((o) => {
+      const eq = o.indexOf("=");
+      if (eq < 0) {
+        app.commandLine.appendSwitch(o);
+      } else {
+        const key = o.slice(0, eq);
+        const value = o.slice(eq + 1);
+        app.commandLine.appendSwitch(key, value);
+      }
+    });
     app.dock?.hide();
     await app.whenReady();
     await record(source, options);
