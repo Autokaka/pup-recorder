@@ -76,9 +76,14 @@ async function openWindow(
   wins.splice(0).forEach((w) => w.destroy());
   wins.push(win);
 
-  win.webContents.on("console-message", ({ level, message }) => {
-    if (level === "error") logger.error(TAG, "console:", message);
-  });
+  win.webContents.on(
+    "console-message",
+    ({ level, message, lineNumber, sourceId }) => {
+      if (level === "error") {
+        logger.error(TAG, "console:", { message, lineNumber, sourceId });
+      }
+    },
+  );
 
   const wrapperHTML = buildWrapperHTML(src, { width, height });
   const dataURL = `data:text/html;charset=utf-8,${encodeURIComponent(wrapperHTML)}`;
@@ -91,12 +96,18 @@ export async function loadWindow(
   source: string,
   options: RecordOptions,
 ): Promise<BrowserWindow> {
-  const wins: BrowserWindow[] = [];
-  const win = await useRetry({ fn: openWindow, maxAttempts: 2 })(
-    wins,
-    source,
-    options,
-  );
-  await waitForFinish(win, () => win.reload());
-  return win;
+  try {
+    const wins: BrowserWindow[] = [];
+    const win = await useRetry({ fn: openWindow, maxAttempts: 2 })(
+      wins,
+      source,
+      options,
+    );
+    await waitForFinish(win, () => win.reload());
+    return win;
+  } catch (e) {
+    const { message, stack } = e as Error;
+    const desc = { source, message, stack };
+    throw new Error(`failed to load window: ${JSON.stringify(desc)}`);
+  }
 }
