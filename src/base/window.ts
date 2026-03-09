@@ -50,6 +50,17 @@ async function openWindow(
     },
   );
 
+  session.defaultSession.webRequest.onErrorOccurred(
+    ({ method, url, error }) => {
+      logger.error(TAG, `request:`, {
+        url,
+        method,
+        error,
+        source,
+      });
+    },
+  );
+
   let src = source;
   if (useInnerProxy) {
     src = proxiedUrl(source);
@@ -80,7 +91,12 @@ async function openWindow(
     "console-message",
     ({ level, message, lineNumber, sourceId }) => {
       if (level === "error") {
-        logger.error(TAG, "console:", { message, lineNumber, sourceId });
+        logger.error(TAG, "console:", {
+          message,
+          lineNumber,
+          sourceId,
+          source,
+        });
       }
     },
   );

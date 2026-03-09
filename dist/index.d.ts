@@ -2,6 +2,32 @@ import { ChildProcess, SpawnOptions } from 'child_process';
 import { Size } from 'electron';
 import z from 'zod';
 
+declare const PUP_ARGS_KEY = "--pup-priv-args";
+declare function pargs(): string[];
+interface ProcessHandle {
+    process: ChildProcess;
+    wait: Promise<void>;
+}
+declare function exec(cmd: string, options?: SpawnOptions): ProcessHandle;
+
+type AsyncTask = () => Promise<void> | void;
+type AbortQuery = () => Promise<boolean> | boolean;
+declare class AbortLink {
+    readonly query?: AbortQuery | undefined;
+    readonly interval: number;
+    private _callback?;
+    private _aborted?;
+    private _stopped;
+    private constructor();
+    static start(query?: AbortQuery, interval?: number): AbortLink;
+    get aborted(): boolean | undefined;
+    get stopped(): boolean;
+    onAbort(callback: AsyncTask): Promise<void>;
+    wait(...handles: ProcessHandle[]): Promise<unknown>;
+    stop(): void;
+    private tick;
+}
+
 declare const pupAppPath: string;
 declare const pupLogLevel: number;
 declare const pupUseInnerProxy: boolean;
@@ -59,14 +85,6 @@ declare const logger: Logger;
 declare function noerr<Fn extends (...args: any[]) => any, D>(fn: Fn, defaultValue: D): (...args: Parameters<Fn>) => ReturnType<Fn> | D;
 
 declare function parseNumber(value: unknown): number;
-
-declare const PUP_ARGS_KEY = "--pup-priv-args";
-declare function pargs(): string[];
-interface ProcessHandle {
-    process: ChildProcess;
-    wait: Promise<void>;
-}
-declare function exec(cmd: string, options?: SpawnOptions): ProcessHandle;
 
 interface RetryOptions<Args extends any[], Ret> {
     fn: (...args: Args) => Promise<Ret>;
@@ -127,22 +145,15 @@ interface RecordResult {
 declare function sleep(ms: number): Promise<void>;
 declare function periodical(callback: (count: number) => Promise<void> | void, ms: number): () => void;
 
-type AbortQuery = () => Promise<boolean> | boolean;
-
 type PupProgressCallback = (progress: number) => Promise<void> | void;
 interface PupOptions extends Partial<RecordOptions> {
     cancelQuery?: AbortQuery;
     onProgress?: PupProgressCallback;
 }
-declare function pup(source: string, options: PupOptions): Promise<{
-    width: number;
-    height: number;
-    fps: number;
-    duration: number;
-    cover: string;
-    mp4?: string;
-    webm?: string;
-    mov?: string;
-}>;
+interface PupResult {
+    options: RecordOptions;
+    files: VideoFilesWithCover;
+}
+declare function pup(source: string, options: PupOptions): Promise<PupResult>;
 
-export { type AudioSpec, ConcurrencyLimiter, DEFAULT_DURATION, DEFAULT_FPS, DEFAULT_HEIGHT, DEFAULT_OUT_DIR, DEFAULT_WIDTH, type EnvParser, Lazy, type LoggerLike, PUP_ARGS_KEY, type ProcessHandle, type PupOptions, type PupProgressCallback, type RecordOptions, type RecordResult, RecordSchema, type RetryOptions, type VideoFiles, type VideoFilesWithCover, type VideoSpec, exec, logger, noerr, pargs, parseNumber, penv, periodical, pup, pupAppPath, pupDisableGPU, pupFFmpegPath, pupLogLevel, pupUseInnerProxy, sleep, useRetry };
+export { AbortLink, type AbortQuery, type AsyncTask, type AudioSpec, ConcurrencyLimiter, DEFAULT_DURATION, DEFAULT_FPS, DEFAULT_HEIGHT, DEFAULT_OUT_DIR, DEFAULT_WIDTH, type EnvParser, Lazy, type LoggerLike, PUP_ARGS_KEY, type ProcessHandle, type PupOptions, type PupProgressCallback, type PupResult, type RecordOptions, type RecordResult, RecordSchema, type RetryOptions, type VideoFiles, type VideoFilesWithCover, type VideoSpec, exec, logger, noerr, pargs, parseNumber, penv, periodical, pup, pupAppPath, pupDisableGPU, pupFFmpegPath, pupLogLevel, pupUseInnerProxy, sleep, useRetry };

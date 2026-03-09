@@ -30,10 +30,13 @@ export function enableProxy() {
     const url = details.url;
     const proxied = proxiedUrl(url);
     if (proxied === url) {
-      return callback({ cancel: false });
+      callback({ cancel: false });
     } else {
       logger.debug(TAG, `${url} -> ${proxied}`);
       callback({ cancel: false, redirectURL: proxied });
     }
+    fetch(proxied).catch(() => {
+      logger.debug(TAG, `fetch@${details.method} "${url}" may fail`);
+    });
   });
 }

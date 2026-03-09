@@ -1,5 +1,6 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/01/30.
 
+export * from "./base/abort";
 export * from "./base/constants";
 export * from "./base/env";
 export * from "./base/lazy";

@@ -2,10 +2,13 @@
 
 import { app } from "electron";
 import { electronOpts } from "./base/electron";
+import { logger } from "./base/logging";
 import { record } from "./base/record";
 import { makeCLI } from "./common";
 
 process.once("exit", () => app.quit());
+
+const TAG = "[App]";
 
 makeCLI("app", async (source, options) => {
   try {
@@ -22,6 +25,9 @@ makeCLI("app", async (source, options) => {
     });
     app.dock?.hide();
     await app.whenReady();
+    app.once("gpu-info-update", () => {
+      logger.debug(TAG, "gpu:", app.getGPUFeatureStatus());
+    });
     await record(source, options);
   } finally {
     app.quit();

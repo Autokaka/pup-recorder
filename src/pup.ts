@@ -31,6 +31,11 @@ export interface PupOptions extends Partial<RecordOptions> {
   onProgress?: PupProgressCallback;
 }
 
+export interface PupResult {
+  options: RecordOptions;
+  files: VideoFilesWithCover;
+}
+
 async function runPupApp(source: string, options: PupOptions) {
   logger.debug(TAG, `runPupApp`, source, options);
 
@@ -72,7 +77,10 @@ async function runPupApp(source: string, options: PupOptions) {
   return { handle, counter };
 }
 
-export async function pup(source: string, options: PupOptions) {
+export async function pup(
+  source: string,
+  options: PupOptions,
+): Promise<PupResult> {
   logger.debug(TAG, `pup`, source, options);
 
   const link = AbortLink.start(options.cancelQuery);
@@ -135,13 +143,7 @@ export async function pup(source: string, options: PupOptions) {
       rm(metaPath, { force: true }),
       pcm && rm(pcm, { force: true }),
     ]);
-    return {
-      ...outputs,
-      width,
-      height,
-      fps,
-      duration: Math.ceil(written / fps),
-    };
+    return { options: meta.options, files: outputs };
   } catch (error) {
     await rm(outDir, { recursive: true, force: true });
     throw error;
