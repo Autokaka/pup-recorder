@@ -1,7 +1,7 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/25.
 
 import electron, { type Size } from "electron";
-import { platform } from "process";
+import { platform } from "os";
 import { pupDisableGPU, pupLogLevel } from "./constants";
 import { hasGpu } from "./hwaccel";
 import { logger } from "./logging";
@@ -39,9 +39,10 @@ export async function electronOpts() {
   }
 
   opts.push("disable-gpu-sandbox", "enable-unsafe-webgpu");
-  if (process.platform === "darwin") {
+  const plat = platform();
+  if (plat === "darwin") {
     opts.push("use-angle=metal");
-  } else if (process.platform === "win32") {
+  } else if (plat === "win32") {
     opts.push("use-angle=d3d11");
   } else {
     opts.push(
@@ -64,7 +65,8 @@ const TAG = "[Electron]";
 export async function runElectronApp(options: ElectronAppOptions) {
   const { app, args, size } = options;
   const cmdParts: unknown[] = [];
-  if (platform === "linux") {
+  const plat = platform();
+  if (plat === "linux") {
     cmdParts.push(
       `xvfb-run`,
       `--auto-servernum`,
@@ -80,10 +82,7 @@ export async function runElectronApp(options: ElectronAppOptions) {
   logger.debug(TAG, cmd);
   return exec(cmd, {
     stdio: ["ignore", "pipe", "pipe"],
-    shell: platform === "linux",
-    env: {
-      ...process.env,
-      RUST_BACKTRACE: "full",
-    },
+    shell: plat === "linux",
+    env: { ...process.env, RUST_BACKTRACE: "full" },
   });
 }

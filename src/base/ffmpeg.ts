@@ -1,8 +1,8 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/09.
 
 import { existsSync } from "fs";
+import { arch, platform } from "os";
 import { join } from "path";
-import { arch, platform } from "process";
 import { basedir } from "./basedir";
 import { pupFFmpegPath } from "./constants";
 import type { AudioSpec, VideoSpec } from "./schema";
@@ -15,7 +15,7 @@ interface Command {
 const quiet = ["-hide_banner", "-loglevel", "error", "-nostats"];
 
 function resolveX265() {
-  const path = `x265/${platform}-${arch}`;
+  const path = `x265/${platform()}-${arch()}`;
   const dirs = [
     join(basedir, `../../${path}`), // process from src
     join(basedir, `../${path}`), // process from dist

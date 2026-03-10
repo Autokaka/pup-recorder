@@ -1,12 +1,11 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/10.
 
 import { existsSync } from "fs";
+import { arch, platform } from "os";
 import { join } from "path";
 import { basedir } from "../base/basedir";
 
-const { platform, arch } = process;
-
-const rustPath = `rust/${platform}-${arch}.node`;
+const rustPath = `rust/${platform()}-${arch()}.node`;
 
 const nativeSearchPaths = [
   join(basedir, `../../${rustPath}`), // process start from src
