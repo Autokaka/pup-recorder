@@ -3,7 +3,7 @@
 import electron, { type Size } from "electron";
 import { platform } from "os";
 import { pupDisableGPU, pupLogLevel } from "./constants";
-import { hasGpu } from "./hwaccel";
+import { canIUseGPU } from "./hwaccel";
 import { logger } from "./logging";
 import { exec, PUP_ARGS_KEY } from "./process";
 
@@ -32,7 +32,7 @@ export async function electronOpts() {
     opts.push("log-level=3");
   }
 
-  const enableGpu = (await hasGpu) && !pupDisableGPU;
+  const enableGpu = (await canIUseGPU) && !pupDisableGPU;
   if (!enableGpu) {
     opts.push("use-angle=swiftshader", "enable-unsafe-swiftshader");
     return opts;

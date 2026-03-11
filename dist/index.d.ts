@@ -51,11 +51,11 @@ declare class ConcurrencyLimiter {
     readonly maxConcurrency: number;
     private _active;
     private _queue;
-    private _pending;
     private _ended;
     constructor(maxConcurrency: number);
     get active(): number;
     get pending(): number;
+    get stats(): string;
     schedule<T>(fn: () => Promise<T>): Promise<T>;
     end(): Promise<void>;
     private next;

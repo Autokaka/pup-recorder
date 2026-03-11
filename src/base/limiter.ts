@@ -3,7 +3,6 @@
 export class ConcurrencyLimiter {
   private _active = 0;
   private _queue: VoidFunction[] = [];
-  private _pending = 0;
   private _ended = false;
 
   constructor(readonly maxConcurrency: number) {}
@@ -13,7 +12,11 @@ export class ConcurrencyLimiter {
   }
 
   get pending(): number {
-    return this._pending;
+    return this._queue.length;
+  }
+
+  get stats(): string {
+    return `active: ${this.active}, pending: ${this.pending}`;
   }
 
   async schedule<T>(fn: () => Promise<T>): Promise<T> {
@@ -23,35 +26,35 @@ export class ConcurrencyLimiter {
     return new Promise<T>((resolve, reject) => {
       const run = () => {
         this._active++;
-        this._pending--;
         fn()
-          .then(resolve)
-          .catch(reject)
-          .finally(() => {
+          .then((v) => {
             this._active--;
+            resolve(v);
+            this.next();
+          })
+          .catch((e) => {
+            this._active--;
+            reject(e);
             this.next();
           });
       };
-      this._pending++;
-      if (this._active < this.maxConcurrency) {
-        run();
-      } else {
-        this._queue.push(run);
-      }
+      this._queue.push(run);
+      this.next();
     });
   }
 
   async end() {
-    if (!this._ended) {
-      this._ended = true;
-      while (this._active > 0 || this._pending > 0) {
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
+    if (this._ended) {
+      return;
+    }
+    this._ended = true;
+    while (this._active > 0 || this.pending > 0) {
+      await new Promise((r) => setTimeout(r, 50));
     }
   }
 
   private next() {
-    if (this._active < this.maxConcurrency && this._queue.length > 0) {
+    if (this._active < this.maxConcurrency) {
       this._queue.shift()?.();
     }
   }

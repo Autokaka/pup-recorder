@@ -20,7 +20,7 @@ export type CLICallback = (
   options: RecordOptions,
 ) => Promise<unknown>;
 
-export function makeCLI(name: string, callback: CLICallback) {
+export async function makeCLI(name: string, callback: CLICallback) {
   program
     .name(name)
     .argument("<source>", "file://, http(s)://, 或 data: URI")
@@ -52,5 +52,5 @@ export function makeCLI(name: string, callback: CLICallback) {
         logger.fatal(e);
       }
     });
-  program.parse(pargs());
+  await program.parseAsync(pargs());
 }

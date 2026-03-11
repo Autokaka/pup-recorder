@@ -1,10 +1,10 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/27.
 
-import { BrowserWindow, session } from "electron";
+import { BrowserWindow } from "electron";
 import { buildWrapperHTML } from "./frame_sync";
 import { checkHTML } from "./html_check";
 import { logger } from "./logging";
-import { enableProxy, proxiedUrl } from "./proxy";
+import { proxiedUrl, setInterceptor, unsetInterceptor } from "./network";
 import { useRetry } from "./retry";
 import type { RecordOptions } from "./schema";
 
@@ -14,7 +14,7 @@ function waitForFinish(win: BrowserWindow, action: () => void) {
   return new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(
       () => reject(new Error("load window timeout")),
-      20_000,
+      30_000,
     );
     const done = (err?: Error) => {
       clearTimeout(timeout);
@@ -40,33 +40,16 @@ async function openWindow(
 
   const { width, height, useInnerProxy } = options;
 
-  session.defaultSession.webRequest.onHeadersReceived(
-    ({ responseHeaders }, callback) => {
-      delete responseHeaders?.["x-frame-options"];
-      delete responseHeaders?.["X-Frame-Options"];
-      delete responseHeaders?.["content-security-policy"];
-      delete responseHeaders?.["Content-Security-Policy"];
-      callback({ cancel: false, responseHeaders });
-    },
-  );
-
-  session.defaultSession.webRequest.onErrorOccurred(
-    ({ method, url, error }) => {
-      logger.error(TAG, `request:`, {
-        url,
-        method,
-        error,
-        source,
-      });
-    },
-  );
-
   let src = source;
   if (useInnerProxy) {
     src = proxiedUrl(source);
-    enableProxy();
   }
 
+  wins.forEach((w) => {
+    w.webContents.removeAllListeners();
+    unsetInterceptor(w);
+    logger.debug(TAG, `destroy window:`, w.id);
+  });
   const win = new BrowserWindow({
     width,
     height: height + 1,
@@ -78,12 +61,14 @@ async function openWindow(
       backgroundThrottling: false,
       nodeIntegration: true,
       nodeIntegrationInSubFrames: true,
+      nodeIntegrationInWorker: true,
       contextIsolation: false,
       webSecurity: false,
       allowRunningInsecureContent: true,
       experimentalFeatures: true,
     },
   });
+  setInterceptor({ source, window: win, useInnerProxy });
   wins.splice(0).forEach((w) => w.destroy());
   wins.push(win);
 
