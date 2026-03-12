@@ -7,6 +7,7 @@ import {
   type BGRAFileOptions,
 } from "./ffmpeg";
 import { exec, type ProcessHandle } from "./process";
+import { mountX265, unmountX265 } from "./x265";
 
 const stdio: StdioOptions = ["ignore", "inherit", "inherit"];
 
@@ -16,11 +17,14 @@ export function encodeBGRAFile(options: BGRAFileOptions): ProcessHandle {
 }
 
 export function encodeBgraToMov(options: BGRAFileOptions): ProcessHandle {
-  const x265 = createBGRA2MOVPipeline(options);
+  const x265 = mountX265();
+  const pipeline = createBGRA2MOVPipeline(x265, options);
   const cmd = [
-    `${x265.raw.command} ${x265.raw.args.join(" ")}`,
-    `${x265.x265.command} ${x265.x265.args.join(" ")}`,
-    `${x265.mux.command} ${x265.mux.args.join(" ")}`,
+    `${pipeline.raw.command} ${pipeline.raw.args.join(" ")}`,
+    `${pipeline.x265.command} ${pipeline.x265.args.join(" ")}`,
+    `${pipeline.mux.command} ${pipeline.mux.args.join(" ")}`,
   ].join(" | ");
-  return exec(cmd, { stdio, shell: true });
+  const handle = exec(cmd, { stdio, shell: true });
+  handle.wait.finally(() => unmountX265(x265));
+  return handle;
 }

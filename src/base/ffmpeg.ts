@@ -2,7 +2,6 @@
 
 import { pupFFmpegPath } from "./constants";
 import type { AudioSpec, VideoSpec } from "./schema";
-import { x265 } from "./x265";
 
 interface Command {
   command: string;
@@ -113,7 +112,10 @@ interface X265Pipeline {
   mux: Command;
 }
 
-export function createBGRA2MOVPipeline(options: BGRAFileOptions): X265Pipeline {
+export function createBGRA2MOVPipeline(
+  x265: string,
+  options: BGRAFileOptions,
+): X265Pipeline {
   const { bgra, spec, outFile, audio } = options;
   if (!outFile.endsWith(".mov")) {
     throw new Error("out file must end with .mov");

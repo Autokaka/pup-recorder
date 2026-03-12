@@ -25,10 +25,9 @@ ok(bin, `Unsupported platform: ${platform()} ${arch()}`);
 
 const path = join(tmpdir(), `pup-rust-${randomUUID()}.node`);
 writeFileSync(path, bin);
-process.once("exit", () => rmSync(path, { force: true }));
-
 const require = createRequire(import.meta.url);
 const lib = require(path) as Record<string, unknown>;
+rmSync(path, { force: true });
 
 export interface FixedBufferWriter {
   new (

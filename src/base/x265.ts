@@ -22,7 +22,12 @@ const bin = new Map([
 ]).get(`${platform()}-${arch()}`);
 ok(bin, `Unsupported platform: ${platform()} ${arch()}`);
 
-const path = join(tmpdir(), `pup-x265-${randomUUID()}.exe`);
-writeFileSync(path, bin, { mode: 0o755 });
-process.once("exit", () => rmSync(path, { force: true }));
-export const x265 = path;
+export function mountX265() {
+  const path = join(tmpdir(), `pup-x265-${randomUUID()}.exe`);
+  writeFileSync(path, bin!, { mode: 0o755 });
+  return path;
+}
+
+export function unmountX265(path: string) {
+  rmSync(path, { force: true });
+}
