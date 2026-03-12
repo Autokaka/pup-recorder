@@ -1,6 +1,6 @@
 {
   "name": "pup-recorder",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "A nice webview recording tool.",
   "repository": {
     "type": "git",
@@ -12,7 +12,9 @@
     "email": "qq1909698494@gmail.com"
   },
   "type": "module",
-  "bin": "dist/cli.js",
+  "bin": {
+    "pup": "dist/cli.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
