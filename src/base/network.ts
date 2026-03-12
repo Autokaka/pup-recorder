@@ -39,14 +39,14 @@ export function setInterceptor({
   useInnerProxy,
 }: NetworkOptions) {
   const req = window.webContents.session.webRequest;
-  const limiter = new ConcurrencyLimiter(10);
+  const limiter = new ConcurrencyLimiter(64);
   const events = new Map<string, WaitableEvent>();
 
   async function wait(key: string, onTimeout?: () => void) {
     const event = new WaitableEvent();
     events.set(key, event);
     await event
-      .wait({ timeout: 10_000, onTimeout })
+      .wait({ timeout: 5_000, onTimeout })
       .finally(() => events.delete(key));
   }
 

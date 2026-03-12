@@ -2,7 +2,6 @@
 
 import type { Size } from "electron";
 import { readFile, rm } from "fs/promises";
-import { platform } from "os";
 import { join } from "path";
 import { AbortLink, type AbortQuery } from "./base/abort";
 import { pupAppPath } from "./base/constants";
@@ -82,10 +81,6 @@ export async function pup(
   source: string,
   options: PupOptions,
 ): Promise<PupResult> {
-  if (platform() === "win32") {
-    throw new Error("windows is not supported");
-  }
-
   logger.debug(TAG, `pup`, source, options);
 
   const link = AbortLink.start(options.cancelQuery);

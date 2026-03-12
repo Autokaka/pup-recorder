@@ -18,7 +18,9 @@ function resolveX265() {
   const path = `x265/${platform()}-${arch()}`;
   const dirs = [
     join(basedir, `../../${path}`), // process from src
+    join(basedir, `../../${path}.exe`), // process from src
     join(basedir, `../${path}`), // process from dist
+    join(basedir, `../${path}.exe`), // process from dist
   ];
   const found = dirs.find(existsSync);
   if (!found) {

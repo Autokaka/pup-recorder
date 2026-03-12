@@ -99,13 +99,8 @@ export async function loadWindow(
 ): Promise<BrowserWindow> {
   try {
     const wins: BrowserWindow[] = [];
-    const win = await useRetry({ fn: openWindow, maxAttempts: 2 })(
-      wins,
-      source,
-      options,
-    );
-    await waitForFinish(win, () => win.reload());
-    return win;
+    await useRetry({ fn: openWindow, maxAttempts: 2 })(wins, source, options);
+    return await openWindow(wins, source, options);
   } catch (e) {
     const { message, stack } = e as Error;
     const desc = { source, message, stack };
