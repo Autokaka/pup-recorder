@@ -12,12 +12,12 @@ import {
   DEFAULT_HEIGHT,
   DEFAULT_OUT_DIR,
   DEFAULT_WIDTH,
-  type RecordOptions,
-} from "./base/schema";
+  type RenderOptions,
+} from "./renderer/schema";
 
 export type CLICallback = (
   source: string,
-  options: RecordOptions,
+  options: RenderOptions,
 ) => Promise<unknown>;
 
 export async function makeCLI(name: string, callback: CLICallback) {

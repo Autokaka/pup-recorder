@@ -4,35 +4,35 @@ import type { Size } from "electron";
 import { readFile, rm } from "fs/promises";
 import { join } from "path";
 import { AbortLink, type AbortQuery } from "./base/abort";
-import { pupAppPath } from "./base/constants";
-import { runElectronApp } from "./base/electron";
+import { pupNoCleanup } from "./base/constants";
 import { encodeBGRAFile, encodeBgraToMov } from "./base/encoder";
 import { createCoverCommand } from "./base/ffmpeg";
 import { ConcurrencyLimiter } from "./base/limiter";
 import { logger } from "./base/logging";
 import { parseNumber } from "./base/parser";
 import { exec, type ProcessHandle } from "./base/process";
+import { runElectronApp } from "./renderer/electron";
 import {
   DEFAULT_HEIGHT,
   DEFAULT_WIDTH,
-  type RecordOptions,
-  type RecordResult,
+  type RenderOptions,
+  type RenderResult,
   type VideoFilesWithCover,
   type VideoSpec,
-} from "./base/schema";
+} from "./renderer/schema";
 
 const TAG = "[pup]";
 const PROGRESS_TAG = " progress: ";
 
 export type PupProgressCallback = (progress: number) => Promise<void> | void;
 
-export interface PupOptions extends Partial<RecordOptions> {
+export interface PupOptions extends Partial<RenderOptions> {
   cancelQuery?: AbortQuery;
   onProgress?: PupProgressCallback;
 }
 
 export interface PupResult {
-  options: RecordOptions;
+  options: RenderOptions;
   files: VideoFilesWithCover;
 }
 
@@ -51,11 +51,7 @@ async function runPupApp(source: string, options: PupOptions) {
 
   const w = options.width ?? DEFAULT_WIDTH;
   const h = options.height ?? DEFAULT_HEIGHT;
-  const handle = await runElectronApp({
-    size: { width: w, height: h },
-    app: pupAppPath,
-    args,
-  });
+  const handle = await runElectronApp({ width: w, height: h }, args);
   const counter = new ConcurrencyLimiter(1);
   handle.process.stdout?.on("data", (data: Buffer) => {
     let message = data.toString().trim();
@@ -93,8 +89,8 @@ export async function pup(
   await counter.end();
   logger.info(TAG, `capture cost ${Math.round(performance.now() - t0)}ms`);
 
-  const metaPath = join(outDir, "record.json");
-  const meta = JSON.parse(await readFile(metaPath, "utf-8")) as RecordResult;
+  const metaPath = join(outDir, "render.json");
+  const meta = JSON.parse(await readFile(metaPath, "utf-8")) as RenderResult;
 
   const { bgra, written, options: rec, audio } = meta;
   const { fps, width, height, withAlphaChannel } = rec;
@@ -138,14 +134,18 @@ export async function pup(
     link.stop();
     logger.info(TAG, `encoding cost ${Math.round(performance.now() - t1)}ms`);
 
-    await Promise.all([
-      rm(bgra, { force: true }),
-      rm(metaPath, { force: true }),
-      pcm && rm(pcm, { force: true }),
-    ]);
+    if (!pupNoCleanup) {
+      await Promise.all([
+        rm(bgra, { force: true }),
+        rm(metaPath, { force: true }),
+        pcm && rm(pcm, { force: true }),
+      ]);
+    }
     return { options: meta.options, files: outputs };
   } catch (error) {
-    await rm(outDir, { recursive: true, force: true });
+    if (!pupNoCleanup) {
+      await rm(outDir, { recursive: true, force: true });
+    }
     throw error;
   }
 }

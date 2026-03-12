@@ -21,7 +21,7 @@ const bin = new Map([
   ["win32-arm64", win32Arm64],
   ["win32-x64", win32X64],
 ]).get(`${platform()}-${arch()}`);
-ok(bin, `Unsupported platform: ${platform()} ${arch()}`);
+ok(bin instanceof Uint8Array, `Unsupported platform: ${platform()} ${arch()}`);
 
 const path = join(tmpdir(), `pup-rust-${randomUUID()}.node`);
 writeFileSync(path, bin);

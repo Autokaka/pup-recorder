@@ -28,11 +28,11 @@
   },
   "engineStrict": true,
   "devDependencies": {
+    "@microsoft/api-extractor": "latest",
     "@types/bun": "latest",
     "@types/node": "^20.0.0",
     "@typescript/native-preview": "latest",
-    "tsup": "latest",
-    "typescript": "latest"
+    "tsup": "latest"
   },
   "dependencies": {
     "commander": "latest",
@@ -42,6 +42,7 @@
     "zod": "latest"
   },
   "scripts": {
-    "build": "bun build.ts"
+    "build": "bun build.ts",
+    "pup": "bun src/cli.ts"
   }
 }

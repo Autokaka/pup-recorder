@@ -1,7 +1,7 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/09.
 
+import type { AudioSpec, VideoSpec } from "../renderer/schema";
 import { pupFFmpegPath } from "./constants";
-import type { AudioSpec, VideoSpec } from "./schema";
 
 interface Command {
   command: string;

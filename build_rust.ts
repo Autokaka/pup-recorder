@@ -33,7 +33,7 @@ async function copyArtifact(platform: string, arch: string, dir: string) {
   const src = join(dir, libName);
   const destDir = join("rust");
   const dest = join(destDir, `${platform}-${arch}.bin`);
-  const dts = `declare const sth: Uint8Array;\nexport = sth;\n`;
+  const dts = `declare const sth: unknown;\nexport = sth;\n`;
   await mkdir(destDir, { recursive: true });
   await copyFile(src, dest);
   await writeFile(`${dest}.d.ts`, dts);

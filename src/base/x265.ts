@@ -2,7 +2,7 @@
 
 import { ok } from "assert";
 import { randomUUID } from "crypto";
-import { rmSync, writeFileSync } from "fs";
+import { copyFileSync, rmSync, writeFileSync } from "fs";
 import { arch, platform, tmpdir } from "os";
 import { join } from "path";
 import darwinArm64 from "../../x265/darwin-arm64.bin";
@@ -11,6 +11,7 @@ import linuxArm64 from "../../x265/linux-arm64.bin";
 import linuxX64 from "../../x265/linux-x64.bin";
 import win32Arm64 from "../../x265/win32-arm64.bin";
 import win32X64 from "../../x265/win32-x64.bin";
+import { pupNoCleanup } from "./constants";
 
 const bin = new Map([
   ["darwin-arm64", darwinArm64],
@@ -24,10 +25,15 @@ ok(bin, `Unsupported platform: ${platform()} ${arch()}`);
 
 export function mountX265() {
   const path = join(tmpdir(), `pup-x265-${randomUUID()}.exe`);
-  writeFileSync(path, bin!, { mode: 0o755 });
+  if (typeof bin === "string") {
+    copyFileSync(bin, path);
+  } else {
+    ok(bin instanceof Uint8Array, "Invalid x265 binary");
+    writeFileSync(path, bin, { mode: 0o755 });
+  }
   return path;
 }
 
 export function unmountX265(path: string) {
-  rmSync(path, { force: true });
+  !pupNoCleanup && rmSync(path, { force: true });
 }

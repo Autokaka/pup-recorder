@@ -33,7 +33,7 @@ await Promise.all([
     entry: ["src/index.ts", "src/cli.ts"],
     format: "esm",
     outDir: "dist",
-    dts: true,
+    experimentalDts: true,
   }),
   build({
     ...common,
