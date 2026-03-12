@@ -1,2 +1,6 @@
+bun
 node_modules
+rust
+src
 target
+x265

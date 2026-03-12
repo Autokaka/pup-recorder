@@ -1,7 +1,7 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/10.
 
 import { $ } from "bun";
-import { copyFile, mkdir } from "fs/promises";
+import { copyFile, mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 
 function getTriple(platform: string, arch: string) {
@@ -32,9 +32,11 @@ async function copyArtifact(platform: string, arch: string, dir: string) {
   if (!libName) return;
   const src = join(dir, libName);
   const destDir = join("rust");
-  const dest = join(destDir, `${platform}-${arch}.node`);
+  const dest = join(destDir, `${platform}-${arch}.bin`);
+  const dts = `declare const sth: Uint8Array;\nexport = sth;\n`;
   await mkdir(destDir, { recursive: true });
   await copyFile(src, dest);
+  await writeFile(`${dest}.d.ts`, dts);
 }
 
 async function cargoBuild(platform: string, arch: string) {
@@ -52,7 +54,7 @@ async function cargoBuild(platform: string, arch: string) {
 const PLATFORMS = ["darwin", "linux", "win32"];
 const ARCHS = ["x64", "arm64"];
 
-async function buildRust() {
+export async function buildRust() {
   await $`cargo install --quiet cargo-zigbuild cargo-xwin`;
   for (const platform of PLATFORMS) {
     for (const arch of ARCHS) {
@@ -60,5 +62,3 @@ async function buildRust() {
     }
   }
 }
-
-buildRust();
