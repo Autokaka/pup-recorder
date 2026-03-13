@@ -24,6 +24,13 @@ export const DEFAULT_HEIGHT = 1080;
 export const DEFAULT_FPS = 30;
 export const DEFAULT_DURATION = 5;
 export const DEFAULT_OUT_DIR = "out";
+export const VIDEO_FORMATS = ["mp4", "mov", "webm"] as const;
+
+export type VideoFormat = (typeof VIDEO_FORMATS)[number];
+
+export function isVideoFormat(s: string): s is VideoFormat {
+  return VIDEO_FORMATS.includes(s as VideoFormat);
+}
 
 export const RenderSchema = z.object({
   duration: z
@@ -38,11 +45,11 @@ export const RenderSchema = z.object({
     .default(DEFAULT_HEIGHT)
     .describe("Video height"),
   fps: z.number().optional().default(DEFAULT_FPS).describe("Frames per second"),
-  withAlphaChannel: z
-    .boolean()
+  formats: z
+    .array(z.enum(VIDEO_FORMATS))
     .optional()
-    .default(false)
-    .describe("Output with alpha channel"),
+    .default(["mp4"])
+    .describe(`Output video formats, allow ${VIDEO_FORMATS.join(", ")}`),
   withAudio: z
     .boolean()
     .optional()

@@ -45,7 +45,8 @@ async function runPupApp(source: string, options: PupOptions) {
   if (options.fps) args.push("--fps", `${options.fps}`);
   if (options.duration) args.push("--duration", `${options.duration}`);
   if (options.outDir) args.push("--out-dir", options.outDir);
-  if (options.withAlphaChannel) args.push("--with-alpha-channel");
+  if (options.formats?.length)
+    args.push("--formats", options.formats.join(","));
   if (options.withAudio) args.push("--with-audio");
   if (options.useInnerProxy) args.push("--use-inner-proxy");
 
@@ -93,14 +94,14 @@ export async function pup(
   const meta = JSON.parse(await readFile(metaPath, "utf-8")) as RenderResult;
 
   const { bgra, written, options: rec, audio } = meta;
-  const { fps, width, height, withAlphaChannel } = rec;
+  const { fps, width, height, formats = ["mp4"] } = rec;
   const pcm = audio?.pcmPath;
   const size: Size = { width, height };
 
   const outputs: VideoFilesWithCover = {
-    mp4: withAlphaChannel ? undefined : join(outDir, "output.mp4"),
-    webm: withAlphaChannel ? join(outDir, "output.webm") : undefined,
-    mov: withAlphaChannel ? join(outDir, "output.mov") : undefined,
+    mp4: formats.includes("mp4") ? join(outDir, "output.mp4") : undefined,
+    webm: formats.includes("webm") ? join(outDir, "output.webm") : undefined,
+    mov: formats.includes("mov") ? join(outDir, "output.mov") : undefined,
     cover: join(outDir, "cover.png"),
   };
 

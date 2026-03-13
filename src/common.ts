@@ -4,7 +4,7 @@ import { program } from "commander";
 import { pupUseInnerProxy } from "./base/constants";
 import { logger } from "./base/logging";
 import { noerr } from "./base/noerr";
-import { parseNumber } from "./base/parser";
+import { parseNumber, parseString } from "./base/parser";
 import { pargs } from "./base/process";
 import {
   DEFAULT_DURATION,
@@ -12,6 +12,8 @@ import {
   DEFAULT_HEIGHT,
   DEFAULT_OUT_DIR,
   DEFAULT_WIDTH,
+  isVideoFormat,
+  RenderSchema,
   type RenderOptions,
 } from "./renderer/schema";
 
@@ -21,19 +23,32 @@ export type CLICallback = (
 ) => Promise<unknown>;
 
 export async function makeCLI(name: string, callback: CLICallback) {
+  const shape = RenderSchema.shape;
   program
     .name(name)
     .argument("<source>", "file://, http(s)://, 或 data: URI")
-    .option("-w, --width <number>", "视频宽度", `${DEFAULT_WIDTH}`)
-    .option("-h, --height <number>", "视频高度", `${DEFAULT_HEIGHT}`)
-    .option("-f, --fps <number>", "帧率", `${DEFAULT_FPS}`)
-    .option("-t, --duration <number>", "录制时长（秒）", `${DEFAULT_DURATION}`)
-    .option("-o, --out-dir <path>", "输出目录", `${DEFAULT_OUT_DIR}`)
-    .option("-a, --with-alpha-channel", "输出包含 alpha 通道的视频", false)
-    .option("-s, --with-audio", "捕获并混入音频", false)
+    .option("-W, --width <number>", shape.width.description, `${DEFAULT_WIDTH}`)
+    .option(
+      "-H, --height <number>",
+      shape.height.description,
+      `${DEFAULT_HEIGHT}`,
+    )
+    .option("-f, --fps <number>", shape.fps.description, `${DEFAULT_FPS}`)
+    .option(
+      "-t, --duration <number>",
+      shape.duration.description,
+      `${DEFAULT_DURATION}`,
+    )
+    .option(
+      "-o, --out-dir <path>",
+      shape.outDir.description,
+      `${DEFAULT_OUT_DIR}`,
+    )
+    .option("-F, --formats <formats>", shape.formats.description, "mp4")
+    .option("-a, --with-audio", shape.withAudio.description, false)
     .option(
       "--use-inner-proxy",
-      "使用 B 站内网代理加速资源访问",
+      shape.useInnerProxy.description,
       pupUseInnerProxy,
     )
     .action(async (source: string, opts) => {
@@ -44,7 +59,10 @@ export async function makeCLI(name: string, callback: CLICallback) {
           fps: noerr(parseNumber, DEFAULT_FPS)(opts.fps),
           duration: noerr(parseNumber, DEFAULT_DURATION)(opts.duration),
           outDir: opts.outDir ?? DEFAULT_OUT_DIR,
-          withAlphaChannel: opts.withAlphaChannel ?? false,
+          formats: parseString(opts.formats)
+            .split(",")
+            .map((s) => s.trim())
+            .filter(isVideoFormat),
           withAudio: opts.withAudio ?? false,
           useInnerProxy: opts.useInnerProxy ?? pupUseInnerProxy,
         });
