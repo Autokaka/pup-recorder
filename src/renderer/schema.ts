@@ -65,6 +65,11 @@ export const RenderSchema = z.object({
     .optional()
     .default(false)
     .describe("Use bilibili inner proxy for resource access"),
+  deterministic: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe("Render by frame rather than recording"),
 });
 
 export type RenderOptions = z.infer<typeof RenderSchema>;

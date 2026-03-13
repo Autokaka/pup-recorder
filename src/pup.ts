@@ -49,6 +49,7 @@ async function runPupApp(source: string, options: PupOptions) {
     args.push("--formats", options.formats.join(","));
   if (options.withAudio) args.push("--with-audio");
   if (options.useInnerProxy) args.push("--use-inner-proxy");
+  if (options.deterministic) args.push("--deterministic");
 
   const w = options.width ?? DEFAULT_WIDTH;
   const h = options.height ?? DEFAULT_HEIGHT;

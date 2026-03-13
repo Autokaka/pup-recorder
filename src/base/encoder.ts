@@ -25,6 +25,9 @@ export function encodeBgraToMov(options: BGRAFileOptions): ProcessHandle {
     `${pipeline.mux.command} ${pipeline.mux.args.join(" ")}`,
   ].join(" | ");
   const handle = exec(cmd, { stdio, shell: true });
-  handle.wait.finally(() => unmountX265(x265));
+  // NOTE(Autokaka):
+  // Must reassign handle.wait or the new Promise will
+  // result in unhandled rejection if the process fails.
+  handle.wait = handle.wait.finally(() => unmountX265(x265));
   return handle;
 }

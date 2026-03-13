@@ -51,6 +51,7 @@ export async function makeCLI(name: string, callback: CLICallback) {
       shape.useInnerProxy.description,
       pupUseInnerProxy,
     )
+    .option("-d, --deterministic", shape.deterministic.description, false)
     .action(async (source: string, opts) => {
       try {
         await callback(source, {
@@ -65,6 +66,7 @@ export async function makeCLI(name: string, callback: CLICallback) {
             .filter(isVideoFormat),
           withAudio: opts.withAudio ?? false,
           useInnerProxy: opts.useInnerProxy ?? pupUseInnerProxy,
+          deterministic: opts.deterministic ?? false,
         });
       } catch (e) {
         logger.fatal(e);
