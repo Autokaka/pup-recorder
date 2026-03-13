@@ -13,8 +13,12 @@ import { loadWindow } from "./window";
 
 const TAG = "[Shoot]";
 
-const tickAnims = (frameMs: number): string =>
-  `document.getAnimations().forEach(function(a){a.pause();a.currentTime=${frameMs};})`;
+function tickAnims(tick: number) {
+  return `document.getAnimations().forEach((a) => {
+    a.pause();
+    a.currentTime += ${tick};
+  })`;
+}
 
 function awaitStegoFrame(
   win: BrowserWindow,
@@ -58,6 +62,9 @@ export async function shoot(
   cdp.attach("1.3");
 
   win.webContents.setFrameRate(240);
+  const rootFrame = win.webContents.mainFrame.frames[0];
+  await rootFrame?.executeJavaScript(tickAnims(0));
+
   if (!win.webContents.isPainting()) {
     win.webContents.startPainting();
   }
@@ -78,8 +85,7 @@ export async function shoot(
       const pending = awaitStegoFrame(win, width, height, frameMs - 1, frame);
 
       await advanceVirtualTime(cdp, frameInterval);
-      const rootFrame = win.webContents.mainFrame.frames[0];
-      await rootFrame?.executeJavaScript(tickAnims(frameMs));
+      await rootFrame?.executeJavaScript(tickAnims(frameInterval));
 
       writer.write(await pending);
       written++;
