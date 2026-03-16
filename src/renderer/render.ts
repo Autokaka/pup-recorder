@@ -64,11 +64,6 @@ export async function render(
       return;
     }
 
-    if (written >= total) {
-      resolver?.();
-      return;
-    }
-
     if (isEmpty(image)) return;
 
     const bitmap = image.toBitmap();
@@ -84,28 +79,30 @@ export async function render(
     if (lastWrittenTime === undefined) {
       scheduleWrite(cropped);
       lastWrittenTime = currentTime;
-      return;
-    }
-
-    const timeSinceLastFrame = currentTime - lastWrittenTime;
-    if (timeSinceLastFrame < frameInterval * 0.8) {
-      return;
-    }
-
-    if (timeSinceLastFrame <= frameInterval * 1.2) {
-      scheduleWrite(cropped);
     } else {
-      const framesToInsert = Math.round(timeSinceLastFrame / frameInterval);
-      for (let i = 0; i < framesToInsert && written < total; i++) {
-        scheduleWrite(cropped);
+      const timeDelta = currentTime - lastWrittenTime;
+      if (timeDelta >= frameInterval * 0.8) {
+        if (timeDelta <= frameInterval * 1.2) {
+          scheduleWrite(cropped);
+        } else {
+          const framesToInsert = Math.round(timeDelta / frameInterval);
+          for (let i = 0; i < framesToInsert && written < total; i++) {
+            scheduleWrite(cropped);
+          }
+        }
+        lastWrittenTime = currentTime;
       }
     }
-    lastWrittenTime = currentTime;
 
     const newProgress = Math.floor((written / total) * 100);
     if (Math.abs(newProgress - progress) > 10) {
       progress = newProgress;
       logger.info(TAG, `progress: ${Math.round(progress)}%`);
+    }
+
+    const durationMs = duration * 1000;
+    if (currentTime >= durationMs - frameInterval * 0.5 || written >= total) {
+      resolver?.();
     }
   };
 

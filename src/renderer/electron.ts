@@ -16,7 +16,7 @@ export async function electronOpts() {
     // 容器沙箱
     "no-sandbox",
     "disable-dev-shm-usage",
-    // 跨域/安全（录制场景需要加载任意资源）
+    // 跨域/安全
     "disable-web-security",
     "disable-site-isolation-trials",
     "ignore-certificate-errors",
@@ -31,6 +31,10 @@ export async function electronOpts() {
     "force-color-profile=srgb",
     "ignore-gpu-blocklist",
     "use-gl=angle",
+    // 资源控制
+    "num-raster-threads=2",
+    "disable-background-networking",
+    "js-flags=--max-old-space-size=4096",
   ];
   if (pupLogLevel < 3) {
     opts.push("log-level=3");
