@@ -37,7 +37,7 @@ function awaitStegoFrame(
       if (ts === undefined || ts <= afterTs) return;
       clearTimeout(timeout);
       win.webContents.off("paint", handler);
-      resolve(Buffer.from(bitmap.subarray(0, height * width * 4)));
+      resolve(Buffer.from(bitmap.buffer, bitmap.byteOffset, height * width * 4));
     };
     win.webContents.on("paint", handler);
   });
@@ -67,7 +67,7 @@ export async function shoot(source: string, options: RenderOptions): Promise<voi
 
     await startSync(cdp);
 
-    const pipeline = new EncoderPipeline({ width, height, fps, formats, outDir });
+    const pipeline = new EncoderPipeline({ width, height, fps, formats, outDir, withAudio });
     const total = Math.ceil(fps * duration);
     const frameInterval = 1000 / fps;
     const frameIntervalUs = Math.round(1_000_000 / fps);

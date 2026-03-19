@@ -74,8 +74,10 @@ impl BgraConverter {
 fn convert_parallel(src: &[u8], w: usize, h: usize, out_size: usize) -> Vec<u8> {
     let uw = (w + 1) / 2;
 
-    // Allocate output as u16 for clean plane arithmetic; reinterpret as u8 at the end.
-    let mut out: Vec<u16> = vec![0u16; out_size / 2];
+    // SAFETY: every element is written before read (each row-pair covers all of Y, A, U, V for
+    // its rows), so skipping zero-initialisation is safe and saves one ~6 MB memset per frame.
+    let mut out: Vec<u16> = Vec::with_capacity(out_size / 2);
+    unsafe { out.set_len(out_size / 2) };
 
     // Plane offsets in u16 units
     let y_off = 0;

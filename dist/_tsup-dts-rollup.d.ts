@@ -1,3 +1,4 @@
+import { AudioCodec } from 'mediabunny';
 import { BrowserWindow } from 'electron';
 import { ChildProcess } from 'child_process';
 import type { Debugger } from 'electron';
@@ -8,9 +9,12 @@ import type { EncodedVideoChunk as EncodedVideoChunk_2 } from '@napi-rs/webcodec
 import type { EncodedVideoChunkMetadataJs } from '@napi-rs/webcodecs';
 import { IsobmffOutputFormat } from 'mediabunny';
 import type { NativeImage } from 'electron';
+import { OutputFormat } from 'mediabunny';
 import { Size } from 'electron';
 import { SpawnOptions } from 'child_process';
 import { StreamTarget } from 'mediabunny';
+import { VideoCodec } from 'mediabunny';
+import { WebMOutputFormat } from 'mediabunny';
 import z from 'zod';
 
 declare class AbortLink {
@@ -47,13 +51,12 @@ export declare interface AudioCapture {
     teardown(): Promise<void>;
 }
 
-declare interface AudioInit {
-    sampleRate: number;
-    numberOfChannels: number;
-    description?: Uint8Array;
+declare interface AudioChunk {
+    data: Uint8Array;
+    type: EncodedAudioChunk_2["type"];
+    timestampS: number;
+    durationS: number;
 }
-export { AudioInit }
-export { AudioInit as AudioInit_alias_1 }
 
 export declare const basedir: string;
 
@@ -63,25 +66,6 @@ export declare interface BgraConverter {
 }
 
 export declare const BgraConverter: BgraConverter;
-
-declare interface BufferedAudio {
-    data: Uint8Array;
-    type: EncodedAudioChunk_2["type"];
-    timestampS: number;
-    durationS: number;
-}
-export { BufferedAudio }
-export { BufferedAudio as BufferedAudio_alias_1 }
-
-declare interface BufferedVideo {
-    data: Uint8Array;
-    alphaSideData?: Uint8Array;
-    type: EncodedVideoChunk_2["type"];
-    timestampS: number;
-    durationS: number;
-}
-export { BufferedVideo }
-export { BufferedVideo as BufferedVideo_alias_1 }
 
 export declare function buildRust(): Promise<void>;
 
@@ -142,16 +126,18 @@ export { DEFAULT_WIDTH as DEFAULT_WIDTH_alias_1 }
 export declare function electronOpts(): Promise<string[]>;
 
 export declare class EncoderPipeline {
+    private readonly _entries;
+    private readonly _encoders;
+    private readonly _converter;
     private readonly _width;
     private readonly _height;
     private readonly _fps;
-    private readonly _entries;
-    private readonly _converter;
     private _frameIndex;
-    constructor({ width, height, fps, formats, outDir }: EncoderPipelineOptions);
+    private _sampleRate;
+    constructor({ width, height, fps, formats, outDir, withAudio }: EncoderPipelineOptions);
     setupAudio(sampleRate: number): void;
-    encodeFrame(bgraBuffer: Buffer, timestampUs: number): Promise<void>;
-    encodeAudio(interleavedFloat32Buffer: Buffer, sampleRate: number): void;
+    encodeFrame(bgra: Buffer, timestampUs: number): Promise<void>;
+    encodeAudio(pcm: Buffer): void;
     flush(): Promise<void>;
     finalize(): Promise<Partial<Record<VideoFormat, string>>>;
 }
@@ -162,6 +148,7 @@ export declare interface EncoderPipelineOptions {
     fps: number;
     formats: VideoFormat[];
     outDir: string;
+    withAudio?: boolean;
 }
 
 declare type EnvParser<T> = (value: unknown) => T;
@@ -177,9 +164,14 @@ export declare const FRAME_SYNC_MARKER_HEIGHT = 1;
 export declare const FRAME_SYNC_MARKER_WIDTH = 32;
 
 declare class HEVCIsobmffMuxer extends MediaMuxer {
-    private readonly format;
-    constructor(opts: MuxerOptions, format: IsobmffOutputFormat);
-    finalize(): Promise<string>;
+    private readonly _format;
+    constructor(opts: MuxerOptions, _format: IsobmffOutputFormat);
+    protected get format(): IsobmffOutputFormat;
+    protected get videoCodec(): VideoCodec;
+    protected get audioCodec(): AudioCodec;
+    protected get audioDecoderCodec(): string;
+    protected get videoConfig(): EncodedVideoChunkMetadata["decoderConfig"];
+    protected makeVideoPacket({ data, type, timestampS, durationS }: VideoChunk, isFirst: boolean): EncodedPacket;
 }
 
 export declare function isEmpty(image: NativeImage): boolean;
@@ -237,14 +229,24 @@ export declare function makeCLI(name: string, callback: CLICallback): Promise<vo
 
 declare abstract class MediaMuxer {
     protected readonly opts: MuxerOptions;
-    protected videoChunks: BufferedVideo[];
-    protected audioChunks: BufferedAudio[];
     protected videoDesc?: Uint8Array;
-    protected audioInit?: AudioInit;
+    private _chain;
+    private _videoSrc;
+    private _audioSrc?;
+    private _output;
+    private _firstVideo;
+    private _firstAudio;
+    protected abstract get format(): OutputFormat;
+    protected abstract get videoCodec(): VideoCodec;
+    protected abstract get audioCodec(): AudioCodec;
+    protected abstract get audioDecoderCodec(): string;
+    protected abstract get videoConfig(): EncodedVideoChunkMetadata["decoderConfig"];
+    protected abstract makeVideoPacket(chunk: VideoChunk, isFirst: boolean): EncodedPacket;
     constructor(opts: MuxerOptions);
-    addVideoChunk(chunk: EncodedVideoChunk_2, meta?: EncodedVideoChunkMetadataJs): void;
-    addAudioChunk(chunk: EncodedAudioChunk_2, meta?: EncodedAudioChunkMetadataJs): void;
-    abstract finalize(): Promise<string>;
+    private init;
+    addVideoChunk(raw: EncodedVideoChunk_2, meta?: EncodedVideoChunkMetadataJs): void;
+    addAudioChunk(raw: EncodedAudioChunk_2, meta?: EncodedAudioChunkMetadataJs): void;
+    finalize(): Promise<string>;
 }
 export { MediaMuxer }
 export { MediaMuxer as MediaMuxer_alias_1 }
@@ -254,6 +256,7 @@ declare interface MuxerOptions {
     height: number;
     fps: number;
     outPath: string;
+    withAudio?: boolean;
 }
 export { MuxerOptions }
 export { MuxerOptions as MuxerOptions_alias_1 }
@@ -395,7 +398,7 @@ export declare function startSync(cdp: Debugger): Promise<any>;
 
 export declare function stopSync(cdp: Debugger): Promise<any>;
 
-declare const toPacket: ({ data, type, timestampS, durationS }: BufferedVideo | BufferedAudio) => EncodedPacket;
+declare const toPacket: ({ data, type, timestampS, durationS }: VideoChunk | AudioChunk) => EncodedPacket;
 export { toPacket }
 export { toPacket as toPacket_alias_1 }
 
@@ -408,6 +411,16 @@ export { useRetry as useRetry_alias_1 }
 declare const VIDEO_FORMATS: readonly ["mp4", "mov", "webm"];
 export { VIDEO_FORMATS }
 export { VIDEO_FORMATS as VIDEO_FORMATS_alias_1 }
+
+declare interface VideoChunk {
+    data: Uint8Array;
+    alphaSideData?: Uint8Array;
+    type: EncodedVideoChunk_2["type"];
+    timestampS: number;
+    durationS: number;
+}
+export { VideoChunk }
+export { VideoChunk as VideoChunk_alias_1 }
 
 declare interface VideoFiles {
     cover: string;
@@ -422,12 +435,6 @@ declare type VideoFormat = (typeof VIDEO_FORMATS)[number];
 export { VideoFormat }
 export { VideoFormat as VideoFormat_alias_1 }
 
-declare class Vp9WebMMuxer extends MediaMuxer {
-    finalize(): Promise<string>;
-}
-export { Vp9WebMMuxer }
-export { Vp9WebMMuxer as Vp9WebMMuxer_alias_1 }
-
 export declare class WaitableEvent {
     private _promise?;
     private _resolve?;
@@ -440,5 +447,16 @@ export declare interface WaitOptions {
     timeout: number;
     onTimeout?: () => void;
 }
+
+declare class WebMMuxer extends MediaMuxer {
+    protected get format(): WebMOutputFormat;
+    protected get videoCodec(): VideoCodec;
+    protected get audioCodec(): AudioCodec;
+    protected get audioDecoderCodec(): string;
+    protected get videoConfig(): EncodedVideoChunkMetadata["decoderConfig"];
+    protected makeVideoPacket(chunk: VideoChunk): EncodedPacket;
+}
+export { WebMMuxer }
+export { WebMMuxer as WebMMuxer_alias_1 }
 
 export { }

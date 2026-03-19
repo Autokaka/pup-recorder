@@ -1,18 +1,11 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/03/14.
 
-import {
-  EncodedAudioPacketSource,
-  EncodedPacket,
-  EncodedVideoPacketSource,
-  Output,
-  WebMOutputFormat,
-} from "mediabunny";
-import { MediaMuxer, openFileStreamTarget, toPacket, type BufferedAudio, type BufferedVideo } from "./media_muxer";
+import { EncodedPacket, WebMOutputFormat, type AudioCodec, type VideoCodec } from "mediabunny";
+import { MediaMuxer, type VideoChunk } from "./media_muxer";
 
-// alphaSideData from @napi-rs/webcodecs follows the WebCodecs convention:
-// [8 bytes: block_additional_id as uint64 big-endian] + [raw VP9 alpha bitstream].
-// mediabunny expects only the raw VP9 bitstream, so we strip the 8-byte ID prefix.
-const toVp9Packet = ({ data, type, timestampS, durationS, alphaSideData }: BufferedVideo) =>
+// alphaSideData from @napi-rs/webcodecs: [8-byte block_additional_id] + [VP9 bitstream].
+// mediabunny expects only the raw bitstream, so strip the 8-byte prefix.
+const toVp9Packet = ({ data, type, timestampS, durationS, alphaSideData }: VideoChunk) =>
   new EncodedPacket(
     data,
     type,
@@ -23,44 +16,33 @@ const toVp9Packet = ({ data, type, timestampS, durationS, alphaSideData }: Buffe
     alphaSideData ? { alpha: alphaSideData.subarray(8) } : undefined,
   );
 
-export class Vp9WebMMuxer extends MediaMuxer {
-  async finalize(): Promise<string> {
-    if (this.videoChunks.length === 0) throw new Error("Vp9WebMMuxer: no video data");
+export class WebMMuxer extends MediaMuxer {
+  protected get format() {
+    return new WebMOutputFormat();
+  }
 
-    const target = await openFileStreamTarget(this.opts.outPath);
-    const output = new Output({ format: new WebMOutputFormat(), target });
+  protected get videoCodec(): VideoCodec {
+    return "vp9";
+  }
 
-    const videoSrc = new EncodedVideoPacketSource("vp9");
-    output.addVideoTrack(videoSrc, { frameRate: this.opts.fps });
+  protected get audioCodec(): AudioCodec {
+    return "opus";
+  }
 
-    const audioSrc = this.audioInit ? new EncodedAudioPacketSource("opus") : undefined;
-    if (audioSrc) output.addAudioTrack(audioSrc);
+  protected get audioDecoderCodec() {
+    return "opus";
+  }
 
-    await output.start();
+  protected get videoConfig(): EncodedVideoChunkMetadata["decoderConfig"] {
+    return {
+      codec: "vp09.00.31.08",
+      codedWidth: this.opts.width,
+      codedHeight: this.opts.height,
+      description: this.videoDesc,
+    };
+  }
 
-    const [first, ...rest] = this.videoChunks as [BufferedVideo, ...BufferedVideo[]];
-    await videoSrc.add(toVp9Packet(first), {
-      decoderConfig: {
-        codec: "vp09.00.31.08",
-        codedWidth: this.opts.width,
-        codedHeight: this.opts.height,
-        description: this.videoDesc,
-      },
-    });
-    for (const chunk of rest) await videoSrc.add(toVp9Packet(chunk));
-    videoSrc.close();
-
-    if (audioSrc && this.audioInit) {
-      const { sampleRate, numberOfChannels, description } = this.audioInit;
-      const [first, ...rest] = this.audioChunks as [BufferedAudio, ...BufferedAudio[]];
-      await audioSrc.add(toPacket(first), {
-        decoderConfig: { codec: "opus", sampleRate, numberOfChannels, description },
-      });
-      for (const chunk of rest) await audioSrc.add(toPacket(chunk));
-      audioSrc.close();
-    }
-
-    await output.finalize();
-    return this.opts.outPath;
+  protected makeVideoPacket(chunk: VideoChunk): EncodedPacket {
+    return toVp9Packet(chunk);
   }
 }

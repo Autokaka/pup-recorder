@@ -7,7 +7,7 @@ import type { VideoFormat } from "../renderer/schema";
 import { BgraConverter } from "../rust/lib";
 import { createMovMuxer, createMp4Muxer } from "./muxer/hevc_isobmff_muxer";
 import type { MediaMuxer, MuxerOptions } from "./muxer/media_muxer";
-import { Vp9WebMMuxer } from "./muxer/vp9_webm_muxer";
+import { WebMMuxer } from "./muxer/vp9_webm_muxer";
 
 type VideoProfile = Pick<VideoEncoderConfig, "codec" | "bitrate" | "alpha" | "hardwareAcceleration" | "latencyMode">;
 type AudioProfile = Pick<AudioEncoderConfig, "codec" | "bitrate">;
@@ -18,11 +18,10 @@ interface FormatProfile {
   createMuxer: (opts: MuxerOptions) => MediaMuxer;
 }
 
-interface PipelineEntry {
-  videoEncoder: VideoEncoder;
+interface FormatEntry {
   muxer: MediaMuxer;
   audioEncoder?: AudioEncoder;
-  audioTimestampUs: number;
+  audioTs: number;
 }
 
 export interface EncoderPipelineOptions {
@@ -31,9 +30,10 @@ export interface EncoderPipelineOptions {
   fps: number;
   formats: VideoFormat[];
   outDir: string;
+  withAudio?: boolean;
 }
 
-const HEVC_VIDEO: VideoProfile = {
+const HEVC: VideoProfile = {
   codec: "hvc1.2.6.L120.B0",
   bitrate: 8_000_000,
   alpha: "keep",
@@ -42,124 +42,133 @@ const HEVC_VIDEO: VideoProfile = {
 };
 
 const FORMAT_PROFILES: Record<VideoFormat, FormatProfile> = {
-  mp4: {
-    video: HEVC_VIDEO,
-    audio: { codec: "mp4a.40.2", bitrate: 128_000 },
-    createMuxer: createMp4Muxer,
-  },
-  mov: {
-    video: HEVC_VIDEO,
-    audio: { codec: "mp4a.40.2", bitrate: 128_000 },
-    createMuxer: createMovMuxer,
-  },
+  mp4: { video: HEVC, audio: { codec: "mp4a.40.2", bitrate: 128_000 }, createMuxer: createMp4Muxer },
+  mov: { video: HEVC, audio: { codec: "mp4a.40.2", bitrate: 128_000 }, createMuxer: createMovMuxer },
   webm: {
     video: { codec: "vp09.00.31.08", bitrate: 8_000_000, alpha: "keep", latencyMode: "realtime" },
     audio: { codec: "opus", bitrate: 128_000 },
-    createMuxer: (opts) => new Vp9WebMMuxer(opts),
+    createMuxer: (opts) => new WebMMuxer(opts),
   },
 };
 
 export class EncoderPipeline {
+  private readonly _entries = new Map<VideoFormat, FormatEntry>();
+  private readonly _encoders: VideoEncoder[] = [];
+  private readonly _converter: BgraConverter;
   private readonly _width: number;
   private readonly _height: number;
   private readonly _fps: number;
-  private readonly _entries = new Map<VideoFormat, PipelineEntry>();
-  private readonly _converter: BgraConverter;
   private _frameIndex = 0;
+  private _sampleRate = 0;
 
-  constructor({ width, height, fps, formats, outDir }: EncoderPipelineOptions) {
+  constructor({ width, height, fps, formats, outDir, withAudio }: EncoderPipelineOptions) {
     this._width = width;
     this._height = height;
     this._fps = fps;
     this._converter = new BgraConverter(width, height, 4);
 
-    for (const format of formats) {
-      const profile = FORMAT_PROFILES[format];
-      const muxer = profile.createMuxer({ width, height, fps, outPath: join(outDir, `output.${format}`) });
-      const videoEncoder = new VideoEncoder({
-        output: (chunk, meta) => muxer.addVideoChunk(chunk, meta ?? undefined),
-        error: (e) => console.error(`[${format} video encoder]`, e),
+    const muxerOpts = (format: VideoFormat): MuxerOptions => ({
+      width,
+      height,
+      fps,
+      outPath: join(outDir, `output.${format}`),
+      withAudio,
+    });
+
+    // mp4 + mov share one HEVC encoder and fan out to both muxers.
+    const hevcFormats = formats.filter((f) => f === "mp4" || f === "mov");
+    if (hevcFormats.length > 0) {
+      const muxers = hevcFormats.map((f) => FORMAT_PROFILES[f].createMuxer(muxerOpts(f)));
+      hevcFormats.forEach((f, i) => this._entries.set(f, { muxer: muxers[i]!, audioTs: 0 }));
+      const enc = new VideoEncoder({
+        output: (chunk, meta) => muxers.forEach((m) => m.addVideoChunk(chunk, meta ?? undefined)),
+        error: (e) => console.error("[hevc]", e),
       });
-      videoEncoder.configure({ ...profile.video, width, height, framerate: fps });
-      this._entries.set(format, { videoEncoder, muxer, audioTimestampUs: 0 });
+      enc.configure({ ...HEVC, width, height, framerate: fps });
+      this._encoders.push(enc);
+    }
+
+    for (const f of formats.filter((f) => f === "webm")) {
+      const muxer = FORMAT_PROFILES[f].createMuxer(muxerOpts(f));
+      this._entries.set(f, { muxer, audioTs: 0 });
+      const enc = new VideoEncoder({
+        output: (chunk, meta) => muxer.addVideoChunk(chunk, meta ?? undefined),
+        error: (e) => console.error("[vp9]", e),
+      });
+      enc.configure({ ...FORMAT_PROFILES.webm.video, width, height, framerate: fps });
+      this._encoders.push(enc);
     }
   }
 
   setupAudio(sampleRate: number): void {
+    this._sampleRate = sampleRate;
     for (const [format, entry] of this._entries) {
-      const profile = FORMAT_PROFILES[format];
+      const { audio } = FORMAT_PROFILES[format];
       const audioEncoder = new AudioEncoder({
         output: (chunk, meta) => entry.muxer.addAudioChunk(chunk, meta ?? undefined),
-        error: (e) => console.error(`[${format} audio encoder]`, e),
+        error: (e) => console.error(`[${format} audio]`, e),
       });
-      audioEncoder.configure({ ...profile.audio, sampleRate, numberOfChannels: 2 });
+      audioEncoder.configure({ ...audio, sampleRate, numberOfChannels: 2 });
       entry.audioEncoder = audioEncoder;
     }
   }
 
-  async encodeFrame(bgraBuffer: Buffer, timestampUs: number): Promise<void> {
-    const durationUs = Math.round(1_000_000 / this._fps);
-    const i420ap10 = await this._converter.convert(bgraBuffer);
-    const isKeyFrame = this._frameIndex % this._fps === 0;
+  async encodeFrame(bgra: Buffer, timestampUs: number): Promise<void> {
+    const { _width: width, _height: height, _fps: fps } = this;
+    const i420ap10 = await this._converter.convert(bgra);
+    const isKeyFrame = this._frameIndex % fps === 0;
     this._frameIndex++;
 
-    for (const entry of this._entries.values()) {
+    for (const enc of this._encoders) {
       const frame = new VideoFrame(i420ap10, {
         format: "I420AP10",
-        codedWidth: this._width,
-        codedHeight: this._height,
+        codedWidth: width,
+        codedHeight: height,
         timestamp: timestampUs,
-        duration: durationUs,
+        duration: Math.round(1_000_000 / fps),
       });
-      entry.videoEncoder.encode(frame, { keyFrame: isKeyFrame });
+      enc.encode(frame, { keyFrame: isKeyFrame });
       frame.close();
     }
   }
 
-  encodeAudio(interleavedFloat32Buffer: Buffer, sampleRate: number): void {
-    const data = new Float32Array(
-      interleavedFloat32Buffer.buffer,
-      interleavedFloat32Buffer.byteOffset,
-      interleavedFloat32Buffer.byteLength / 4,
-    );
+  encodeAudio(pcm: Buffer): void {
+    const { _sampleRate: sampleRate } = this;
+    const data = new Float32Array(pcm.buffer, pcm.byteOffset, pcm.byteLength / 4);
     const numberOfFrames = data.length / 2;
 
     for (const entry of this._entries.values()) {
-      if (!entry.audioEncoder) continue;
+      const { audioEncoder } = entry;
+      if (!audioEncoder) continue;
       const audioData = new AudioData({
         format: "f32",
         sampleRate,
         numberOfChannels: 2,
         numberOfFrames,
-        timestamp: entry.audioTimestampUs,
+        timestamp: entry.audioTs,
         data,
       });
-      entry.audioEncoder.encode(audioData);
+      audioEncoder.encode(audioData);
       audioData.close();
-      entry.audioTimestampUs += Math.round((numberOfFrames / sampleRate) * 1_000_000);
+      entry.audioTs += Math.round((numberOfFrames / sampleRate) * 1_000_000);
     }
   }
 
   async flush(): Promise<void> {
     const entries = [...this._entries.values()];
-    await Promise.all(
-      entries.flatMap(({ videoEncoder, audioEncoder }) => {
-        const promises: Promise<void>[] = [videoEncoder.flush()];
-        if (audioEncoder) promises.push(audioEncoder.flush());
-        return promises;
-      }),
-    );
-    for (const { videoEncoder, audioEncoder } of entries) {
-      videoEncoder.close();
-      audioEncoder?.close();
-    }
+    await Promise.all([
+      ...this._encoders.map((e) => e.flush()),
+      ...entries.flatMap(({ audioEncoder }) => (audioEncoder ? [audioEncoder.flush()] : [])),
+    ]);
+    for (const enc of this._encoders) enc.close();
+    for (const { audioEncoder } of entries) audioEncoder?.close();
   }
 
   async finalize(): Promise<Partial<Record<VideoFormat, string>>> {
     const result: Partial<Record<VideoFormat, string>> = {};
     await Promise.all(
-      [...this._entries.entries()].map(async ([format, entry]) => {
-        result[format] = await entry.muxer.finalize();
+      [...this._entries.entries()].map(async ([format, { muxer }]) => {
+        result[format] = await muxer.finalize();
       }),
     );
     return result;

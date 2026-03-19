@@ -1,15 +1,14 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/06.
 
 import {
-  EncodedAudioPacketSource,
   EncodedPacket,
-  EncodedVideoPacketSource,
+  type AudioCodec,
   type IsobmffOutputFormat,
   MovOutputFormat,
   Mp4OutputFormat,
-  Output,
+  type VideoCodec,
 } from "mediabunny";
-import { MediaMuxer, openFileStreamTarget, toPacket, type BufferedAudio, type BufferedVideo, type MuxerOptions } from "./media_muxer";
+import { MediaMuxer, type MuxerOptions, type VideoChunk } from "./media_muxer";
 
 // Apple HEVC-with-Alpha requires a PREFIX_SEI NALU (type=39) carrying
 // alpha_channel_information (SEI type=165) on the first frame to activate
@@ -39,52 +38,41 @@ const prependAlphaSei = (data: Uint8Array): Uint8Array => {
 const BT709 = { primaries: "bt709", transfer: "bt709", matrix: "bt709", fullRange: false } as const;
 
 class HEVCIsobmffMuxer extends MediaMuxer {
-  private readonly format: IsobmffOutputFormat;
-
-  constructor(opts: MuxerOptions, format: IsobmffOutputFormat) {
+  constructor(
+    opts: MuxerOptions,
+    private readonly _format: IsobmffOutputFormat,
+  ) {
     super(opts);
-    this.format = format;
   }
 
-  async finalize(): Promise<string> {
-    if (this.videoChunks.length === 0) throw new Error("HEVCIsobmffMuxer: no video data");
+  protected get format() {
+    return this._format;
+  }
 
-    const target = await openFileStreamTarget(this.opts.outPath);
-    const output = new Output({ format: this.format, target });
+  protected get videoCodec(): VideoCodec {
+    return "hevc";
+  }
 
-    const videoSrc = new EncodedVideoPacketSource("hevc");
-    output.addVideoTrack(videoSrc, { frameRate: this.opts.fps });
+  protected get audioCodec(): AudioCodec {
+    return "aac";
+  }
 
-    const audioSrc = this.audioInit ? new EncodedAudioPacketSource("aac") : undefined;
-    if (audioSrc) output.addAudioTrack(audioSrc);
+  protected get audioDecoderCodec() {
+    return "mp4a.40.2";
+  }
 
-    await output.start();
+  protected get videoConfig(): EncodedVideoChunkMetadata["decoderConfig"] {
+    return {
+      codec: "hvc1.2.6.L120.B0",
+      codedWidth: this.opts.width,
+      codedHeight: this.opts.height,
+      colorSpace: BT709,
+      description: this.videoDesc,
+    };
+  }
 
-    const [first, ...rest] = this.videoChunks as [BufferedVideo, ...BufferedVideo[]];
-    await videoSrc.add(new EncodedPacket(prependAlphaSei(first.data), first.type, first.timestampS, first.durationS), {
-      decoderConfig: {
-        codec: "hvc1.2.6.L120.B0",
-        codedWidth: this.opts.width,
-        codedHeight: this.opts.height,
-        colorSpace: BT709,
-        description: this.videoDesc,
-      },
-    });
-    for (const chunk of rest) await videoSrc.add(toPacket(chunk));
-    videoSrc.close();
-
-    if (audioSrc && this.audioInit) {
-      const { sampleRate, numberOfChannels, description } = this.audioInit;
-      const [first, ...rest] = this.audioChunks as [BufferedAudio, ...BufferedAudio[]];
-      await audioSrc.add(toPacket(first), {
-        decoderConfig: { codec: "mp4a.40.2", sampleRate, numberOfChannels, description },
-      });
-      for (const chunk of rest) await audioSrc.add(toPacket(chunk));
-      audioSrc.close();
-    }
-
-    await output.finalize();
-    return this.opts.outPath;
+  protected makeVideoPacket({ data, type, timestampS, durationS }: VideoChunk, isFirst: boolean): EncodedPacket {
+    return new EncodedPacket(isFirst ? prependAlphaSei(data) : data, type, timestampS, durationS);
   }
 }
 

@@ -21,7 +21,7 @@ export async function render(source: string, options: RenderOptions): Promise<vo
 
   await mkdir(outDir, { recursive: true });
 
-  const pipeline = new EncoderPipeline({ width, height, fps, formats, outDir });
+  const pipeline = new EncoderPipeline({ width, height, fps, formats, outDir, withAudio });
   const audioCapture = withAudio ? await setupAudioCapture(pipeline) : undefined;
 
   const win = await loadWindow(source, options);
@@ -46,10 +46,10 @@ export async function render(source: string, options: RenderOptions): Promise<vo
     let coverBgra: Buffer | undefined;
     const encodeQueue = new ConcurrencyLimiter(1);
 
-    const scheduleFrame = (cropped: Uint8Array, timestampUs: number) => {
+    const scheduleFrame = (frame: Buffer, timestampUs: number) => {
       written++;
       encodeQueue
-        .schedule(() => pipeline.encodeFrame(Buffer.from(cropped), timestampUs))
+        .schedule(() => pipeline.encodeFrame(frame, timestampUs))
         .catch((e) => (frameError ??= e));
     };
 
@@ -69,9 +69,9 @@ export async function render(source: string, options: RenderOptions): Promise<vo
       }
 
       const bytesPerRow = width * 4;
-      const cropped = bitmap.subarray(0, height * bytesPerRow);
+      const cropped = Buffer.from(bitmap.buffer, bitmap.byteOffset, height * bytesPerRow);
 
-      coverBgra ??= Buffer.from(cropped);
+      coverBgra ??= cropped;
 
       if (lastWrittenTime === undefined) {
         scheduleFrame(cropped, currentTime * 1000);

@@ -2,7 +2,7 @@
 
 import { $ } from "bun";
 import { zipSync } from "fflate";
-import { mkdir, readFile, writeFile } from "fs/promises";
+import { mkdir, readFile, stat, writeFile } from "fs/promises";
 import { join } from "path";
 
 function getTriple(platform: string, arch: string) {
@@ -31,6 +31,22 @@ function getArtifactName(platform: string) {
 const PLATFORMS = ["darwin", "linux", "win32"];
 const ARCHS = ["x64", "arm64"];
 const RUST_DIR = "rust";
+const ZIP_PATH = join(RUST_DIR, "native.zip");
+const RUST_SOURCES = ["src/rust/lib.rs", "build.rs", "Cargo.toml", "Cargo.lock"];
+
+async function needsRebuild(): Promise<boolean> {
+  const zipMtime = await stat(ZIP_PATH)
+    .then((s) => s.mtimeMs)
+    .catch(() => 0);
+  const mtimes = await Promise.all(
+    RUST_SOURCES.map((f) =>
+      stat(f)
+        .then((s) => s.mtimeMs)
+        .catch(() => Infinity),
+    ),
+  );
+  return mtimes.some((m) => m > zipMtime);
+}
 
 async function cargoBuild(platform: string, arch: string): Promise<[string, Uint8Array] | undefined> {
   const triple = getTriple(platform, arch);
@@ -48,6 +64,10 @@ async function cargoBuild(platform: string, arch: string): Promise<[string, Uint
 }
 
 export async function buildRust() {
+  if (!(await needsRebuild())) {
+    return;
+  }
+
   await $`cargo install --quiet cargo-zigbuild cargo-xwin`;
 
   const entries: [string, Uint8Array][] = [];
@@ -61,6 +81,6 @@ export async function buildRust() {
   await mkdir(RUST_DIR, { recursive: true });
 
   const zip = zipSync(Object.fromEntries(entries));
-  await writeFile(join(RUST_DIR, "native.zip"), zip);
+  await writeFile(ZIP_PATH, zip);
   await writeFile(join(RUST_DIR, "native.zip.d.ts"), `declare const data: Uint8Array;\nexport default data;\n`);
 }

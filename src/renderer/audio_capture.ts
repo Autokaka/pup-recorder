@@ -94,16 +94,14 @@ export async function setupAudioCapture(pipeline: EncoderPipeline): Promise<Audi
     filePath: preloadPath,
   });
 
-  let capturedSampleRate: number | undefined;
+  let audioReady = false;
 
   ipcMain.once("audio-meta", (_e, data: { sampleRate: number }) => {
-    capturedSampleRate = data.sampleRate;
     pipeline.setupAudio(data.sampleRate);
+    audioReady = true;
   });
   ipcMain.on("audio-chunk", (_e, buffer: Buffer) => {
-    if (capturedSampleRate !== undefined) {
-      pipeline.encodeAudio(buffer, capturedSampleRate);
-    }
+    if (audioReady) pipeline.encodeAudio(buffer);
   });
 
   return {
