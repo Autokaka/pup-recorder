@@ -4,10 +4,7 @@ export function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
-export function periodical(
-  callback: (count: number) => Promise<void> | void,
-  ms: number,
-) {
+export function periodical(callback: (count: number) => Promise<void> | void, ms: number) {
   let token: NodeJS.Timeout;
   let closed = false;
   async function tick(count: number) {

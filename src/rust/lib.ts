@@ -1,3 +1,5 @@
+// Created by Autokaka (qq1909698494@gmail.com) on 2026/03/14.
+
 import { ok } from "assert";
 import { randomUUID } from "crypto";
 import { rmSync, writeFileSync } from "fs";

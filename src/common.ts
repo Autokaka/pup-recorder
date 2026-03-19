@@ -17,10 +17,7 @@ import {
   type RenderOptions,
 } from "./renderer/schema";
 
-export type CLICallback = (
-  source: string,
-  options: RenderOptions,
-) => Promise<unknown>;
+export type CLICallback = (source: string, options: RenderOptions) => Promise<unknown>;
 
 export async function makeCLI(name: string, callback: CLICallback) {
   const shape = RenderSchema.shape;
@@ -28,29 +25,13 @@ export async function makeCLI(name: string, callback: CLICallback) {
     .name(name)
     .argument("<source>", "file://, http(s)://, 或 data: URI")
     .option("-W, --width <number>", shape.width.description, `${DEFAULT_WIDTH}`)
-    .option(
-      "-H, --height <number>",
-      shape.height.description,
-      `${DEFAULT_HEIGHT}`,
-    )
+    .option("-H, --height <number>", shape.height.description, `${DEFAULT_HEIGHT}`)
     .option("-f, --fps <number>", shape.fps.description, `${DEFAULT_FPS}`)
-    .option(
-      "-t, --duration <number>",
-      shape.duration.description,
-      `${DEFAULT_DURATION}`,
-    )
-    .option(
-      "-o, --out-dir <path>",
-      shape.outDir.description,
-      `${DEFAULT_OUT_DIR}`,
-    )
+    .option("-t, --duration <number>", shape.duration.description, `${DEFAULT_DURATION}`)
+    .option("-o, --out-dir <path>", shape.outDir.description, `${DEFAULT_OUT_DIR}`)
     .option("-F, --formats <formats>", shape.formats.description, "mp4")
     .option("-a, --with-audio", shape.withAudio.description, false)
-    .option(
-      "--use-inner-proxy",
-      shape.useInnerProxy.description,
-      pupUseInnerProxy,
-    )
+    .option("--use-inner-proxy", shape.useInnerProxy.description, pupUseInnerProxy)
     .option("-d, --deterministic", shape.deterministic.description, false)
     .action(async (source: string, opts) => {
       try {

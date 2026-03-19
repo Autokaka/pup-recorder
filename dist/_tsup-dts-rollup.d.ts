@@ -350,7 +350,7 @@ export { RetryOptions as RetryOptions_alias_1 }
 
 export declare function runElectronApp(size: Size, args: unknown[]): Promise<ProcessHandle>;
 
-export declare function setInterceptor({ source, window, useInnerProxy, }: NetworkOptions): void;
+export declare function setInterceptor({ source, window, useInnerProxy }: NetworkOptions): void;
 
 export declare function setupAudioCapture(pipeline: EncoderPipeline): Promise<AudioCapture>;
 
@@ -366,7 +366,7 @@ export declare function stopSync(cdp: Debugger): Promise<any>;
 
 export declare function unsetInterceptor(window: BrowserWindow): void;
 
-declare function useRetry<Args extends any[], Ret>({ fn, maxAttempts, timeout, }: RetryOptions<Args, Ret>): (...args: Args) => Promise<Ret>;
+declare function useRetry<Args extends any[], Ret>({ fn, maxAttempts, timeout }: RetryOptions<Args, Ret>): (...args: Args) => Promise<Ret>;
 export { useRetry }
 export { useRetry as useRetry_alias_1 }
 

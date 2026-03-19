@@ -98,10 +98,7 @@ export function buildWrapperHTML(targetURL: string, size: Size): string {
 </html>`;
 }
 
-export function decodeTimestamp(
-  bitmap: Buffer,
-  size: Size,
-): number | undefined {
+export function decodeTimestamp(bitmap: Buffer, size: Size): number | undefined {
   const { width, height } = size;
   if (width < FRAME_SYNC_MARKER_WIDTH || height < 2) {
     return undefined;

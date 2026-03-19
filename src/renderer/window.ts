@@ -12,10 +12,7 @@ const TAG = "[Window]";
 
 function waitForFinish(win: BrowserWindow, action: () => void) {
   return new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(
-      () => reject(new Error("load window timeout")),
-      30_000,
-    );
+    const timeout = setTimeout(() => reject(new Error("load window timeout")), 30_000);
     const done = (err?: Error) => {
       clearTimeout(timeout);
       err ? reject(err) : resolve();
@@ -31,11 +28,7 @@ function waitForFinish(win: BrowserWindow, action: () => void) {
   });
 }
 
-async function openWindow(
-  wins: BrowserWindow[],
-  source: string,
-  options: RenderOptions,
-): Promise<BrowserWindow> {
+async function openWindow(wins: BrowserWindow[], source: string, options: RenderOptions): Promise<BrowserWindow> {
   checkHTML(source);
 
   const { width, height, useInnerProxy } = options;
@@ -72,19 +65,16 @@ async function openWindow(
   wins.splice(0).forEach((w) => w.destroy());
   wins.push(win);
 
-  win.webContents.on(
-    "console-message",
-    ({ level, message, lineNumber, sourceId }) => {
-      if (level === "error") {
-        logger.error(TAG, "console:", {
-          message,
-          lineNumber,
-          sourceId,
-          source,
-        });
-      }
-    },
-  );
+  win.webContents.on("console-message", ({ level, message, lineNumber, sourceId }) => {
+    if (level === "error") {
+      logger.error(TAG, "console:", {
+        message,
+        lineNumber,
+        sourceId,
+        source,
+      });
+    }
+  });
 
   const wrapperHTML = buildWrapperHTML(src, { width, height });
   const dataURL = `data:text/html;charset=utf-8,${encodeURIComponent(wrapperHTML)}`;
@@ -93,10 +83,7 @@ async function openWindow(
   return win;
 }
 
-export async function loadWindow(
-  source: string,
-  options: RenderOptions,
-): Promise<BrowserWindow> {
+export async function loadWindow(source: string, options: RenderOptions): Promise<BrowserWindow> {
   try {
     const wins: BrowserWindow[] = [];
     await useRetry({ fn: openWindow, maxAttempts: 2 })(wins, source, options);

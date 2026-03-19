@@ -9,11 +9,7 @@ export interface RetryOptions<Args extends any[], Ret> {
   timeout?: number;
 }
 
-export function useRetry<Args extends any[], Ret>({
-  fn,
-  maxAttempts = 3,
-  timeout,
-}: RetryOptions<Args, Ret>) {
+export function useRetry<Args extends any[], Ret>({ fn, maxAttempts = 3, timeout }: RetryOptions<Args, Ret>) {
   const timeoutError = new Error(`timeout over ${timeout}ms`);
   return async function (...args: Args) {
     let attempt = 0;

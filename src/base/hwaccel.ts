@@ -7,14 +7,7 @@ import { logger } from "./logging";
 
 const TAG = "[HWAccel]";
 
-const softwareVendors = [
-  "microsoft",
-  "vmware",
-  "virtualbox",
-  "llvmpipe",
-  "softpipe",
-  "swiftshader",
-];
+const softwareVendors = ["microsoft", "vmware", "virtualbox", "llvmpipe", "softpipe", "swiftshader"];
 
 function isSoftwareRenderer(vendor: string) {
   const lower = vendor.toLowerCase();
@@ -32,9 +25,7 @@ async function detectGPUDriver() {
     }
   }
   logger.debug(TAG, "GPU controllers:", controllers);
-  return controllers.some(
-    (c) => c.vendor.length > 0 && !isSoftwareRenderer(c.vendor),
-  );
+  return controllers.some((c) => c.vendor.length > 0 && !isSoftwareRenderer(c.vendor));
 }
 
 export const canIUseGPU = detectGPUDriver().then((result) => {

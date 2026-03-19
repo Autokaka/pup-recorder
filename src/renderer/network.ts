@@ -33,11 +33,7 @@ export interface NetworkOptions {
   useInnerProxy?: boolean;
 }
 
-export function setInterceptor({
-  source,
-  window,
-  useInnerProxy,
-}: NetworkOptions) {
+export function setInterceptor({ source, window, useInnerProxy }: NetworkOptions) {
   const req = window.webContents.session.webRequest;
   const limiter = new ConcurrencyLimiter(64);
   const events = new Map<string, WaitableEvent>();
@@ -45,9 +41,7 @@ export function setInterceptor({
   async function wait(key: string, onTimeout?: () => void) {
     const event = new WaitableEvent();
     events.set(key, event);
-    await event
-      .wait({ timeout: 5_000, onTimeout })
-      .finally(() => events.delete(key));
+    await event.wait({ timeout: 5_000, onTimeout }).finally(() => events.delete(key));
   }
 
   function signal(key: string) {

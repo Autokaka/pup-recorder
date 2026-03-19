@@ -53,11 +53,7 @@ export async function electronOpts() {
   } else if (plat === "win32") {
     opts.push("use-angle=d3d11");
   } else {
-    opts.push(
-      "use-angle=vulkan",
-      "enable-features=Vulkan",
-      "disable-vulkan-surface",
-    );
+    opts.push("use-angle=vulkan", "enable-features=Vulkan", "disable-vulkan-surface");
   }
   return opts;
 }
@@ -75,11 +71,7 @@ export async function runElectronApp(size: Size, args: unknown[]) {
   const cmdParts: unknown[] = [];
   const plat = platform();
   if (plat === "linux") {
-    cmdParts.push(
-      `xvfb-run`,
-      `--auto-servernum`,
-      `--server-args="-screen 0 ${size.width}x${size.height}x24"`,
-    );
+    cmdParts.push(`xvfb-run`, `--auto-servernum`, `--server-args="-screen 0 ${size.width}x${size.height}x24"`);
   }
   const opts = await electronOpts();
   const electronArgs = opts.map((a) => `--${a}`);

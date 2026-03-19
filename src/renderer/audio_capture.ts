@@ -85,9 +85,7 @@ export interface AudioCapture {
   teardown(): Promise<void>;
 }
 
-export async function setupAudioCapture(
-  pipeline: EncoderPipeline,
-): Promise<AudioCapture> {
+export async function setupAudioCapture(pipeline: EncoderPipeline): Promise<AudioCapture> {
   const preloadPath = join(tmpdir(), `pup_audio_preload_${randomUUID()}.js`);
   await writeFile(preloadPath, AUDIO_CAPTURE_SCRIPT);
   session.defaultSession.registerPreloadScript({
@@ -117,4 +115,3 @@ export async function setupAudioCapture(
     },
   };
 }
-

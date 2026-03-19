@@ -2,10 +2,7 @@
 
 import type { Debugger } from "electron";
 
-export function advanceVirtualTime(
-  cdp: Debugger,
-  budget: number,
-): Promise<void> {
+export function advanceVirtualTime(cdp: Debugger, budget: number): Promise<void> {
   return new Promise((resolve) => {
     const handler = (_: Electron.Event, method: string) => {
       if (method === "Emulation.virtualTimeBudgetExpired") {
