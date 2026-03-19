@@ -4,13 +4,13 @@ import { ok } from "assert";
 import { nativeImage, type NativeImage } from "electron";
 import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
+import { EncoderPipeline } from "../base/encoder";
 import { isEmpty } from "../base/image";
 import { ConcurrencyLimiter } from "../base/limiter";
 import { logger } from "../base/logging";
 import { setupAudioCapture } from "./audio_capture";
 import { decodeTimestamp, startSync, stopSync } from "./frame_sync";
 import type { RenderOptions, RenderResult } from "./schema";
-import { EncoderPipeline } from "./webcodecs";
 import { loadWindow } from "./window";
 
 const TAG = "[Render]";
@@ -21,7 +21,7 @@ export async function render(source: string, options: RenderOptions): Promise<vo
 
   await mkdir(outDir, { recursive: true });
 
-  const pipeline = new EncoderPipeline({ width, height, fps, formats });
+  const pipeline = new EncoderPipeline({ width, height, fps, formats, outDir });
   const audioCapture = withAudio ? await setupAudioCapture(pipeline) : undefined;
 
   const win = await loadWindow(source, options);
@@ -119,7 +119,7 @@ export async function render(source: string, options: RenderOptions): Promise<vo
 
     await encodeQueue.end();
     await pipeline.flush();
-    const outputFiles = await pipeline.finalize(outDir);
+    const outputFiles = await pipeline.finalize();
     const coverPath = join(outDir, "cover.png");
     ok(coverBgra, "cover image is missing");
     const png = nativeImage.createFromBuffer(coverBgra, { width, height }).toPNG();

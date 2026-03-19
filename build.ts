@@ -24,7 +24,7 @@ const common: Options = {
   minify: true,
   treeshake: true,
   banner: { js: `import "source-map-support/register.js";` },
-  loader: { ".bin": "binary" },
+  loader: { ".zip": "binary" },
 };
 
 await Promise.all([

@@ -31,6 +31,7 @@
     "@napi-rs/webcodecs": "latest",
     "commander": "latest",
     "electron": "latest",
+    "fflate": "latest",
     "mediabunny": "latest",
     "source-map-support": "latest",
     "systeminformation": "latest",

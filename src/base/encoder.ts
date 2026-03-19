@@ -2,25 +2,20 @@
 
 import type { AudioEncoderConfig, VideoEncoderConfig } from "@napi-rs/webcodecs";
 import { AudioData, AudioEncoder, VideoEncoder, VideoFrame } from "@napi-rs/webcodecs";
-import { writeFile } from "fs/promises";
 import { join } from "path";
-import { HEVCMovMuxer, HEVCMp4Muxer } from "../base/muxer/hevc_isobmff_muxer";
-import type { MediaMuxer } from "../base/muxer/media_muxer";
-import { Vp9WebMMuxer } from "../base/muxer/vp9_webm_muxer";
+import type { VideoFormat } from "../renderer/schema";
 import { BgraConverter } from "../rust/lib";
-import type { VideoFormat } from "./schema";
+import { createMovMuxer, createMp4Muxer } from "./muxer/hevc_isobmff_muxer";
+import type { MediaMuxer, MuxerOptions } from "./muxer/media_muxer";
+import { Vp9WebMMuxer } from "./muxer/vp9_webm_muxer";
 
-interface VideoEncoderProfile extends Pick<
-  VideoEncoderConfig,
-  "codec" | "bitrate" | "alpha" | "hardwareAcceleration" | "latencyMode"
-> {}
-
-interface AudioEncoderProfile extends Pick<AudioEncoderConfig, "codec" | "bitrate"> {}
+type VideoProfile = Pick<VideoEncoderConfig, "codec" | "bitrate" | "alpha" | "hardwareAcceleration" | "latencyMode">;
+type AudioProfile = Pick<AudioEncoderConfig, "codec" | "bitrate">;
 
 interface FormatProfile {
-  video: VideoEncoderProfile;
-  audio: AudioEncoderProfile;
-  createMuxer: (width: number, height: number) => MediaMuxer;
+  video: VideoProfile;
+  audio: AudioProfile;
+  createMuxer: (opts: MuxerOptions) => MediaMuxer;
 }
 
 interface PipelineEntry {
@@ -35,35 +30,32 @@ export interface EncoderPipelineOptions {
   height: number;
   fps: number;
   formats: VideoFormat[];
+  outDir: string;
 }
+
+const HEVC_VIDEO: VideoProfile = {
+  codec: "hvc1.2.6.L120.B0",
+  bitrate: 8_000_000,
+  alpha: "keep",
+  hardwareAcceleration: "prefer-software",
+  latencyMode: "realtime",
+};
 
 const FORMAT_PROFILES: Record<VideoFormat, FormatProfile> = {
   mp4: {
-    video: {
-      codec: "hvc1.2.6.L120.B0",
-      bitrate: 8_000_000,
-      alpha: "keep",
-      hardwareAcceleration: "prefer-software",
-      latencyMode: "realtime",
-    },
+    video: HEVC_VIDEO,
     audio: { codec: "mp4a.40.2", bitrate: 128_000 },
-    createMuxer: (w, h) => new HEVCMp4Muxer(w, h),
+    createMuxer: createMp4Muxer,
   },
   mov: {
-    video: {
-      codec: "hvc1.2.6.L120.B0",
-      bitrate: 8_000_000,
-      alpha: "keep",
-      hardwareAcceleration: "prefer-software",
-      latencyMode: "realtime",
-    },
+    video: HEVC_VIDEO,
     audio: { codec: "mp4a.40.2", bitrate: 128_000 },
-    createMuxer: (w, h) => new HEVCMovMuxer(w, h),
+    createMuxer: createMovMuxer,
   },
   webm: {
-    video: { codec: "vp09.00.31.08", bitrate: 8_000_000, alpha: "keep", latencyMode: "quality" },
+    video: { codec: "vp09.00.31.08", bitrate: 8_000_000, alpha: "keep", latencyMode: "realtime" },
     audio: { codec: "opus", bitrate: 128_000 },
-    createMuxer: (w, h) => new Vp9WebMMuxer(w, h),
+    createMuxer: (opts) => new Vp9WebMMuxer(opts),
   },
 };
 
@@ -72,10 +64,10 @@ export class EncoderPipeline {
   private readonly _height: number;
   private readonly _fps: number;
   private readonly _entries = new Map<VideoFormat, PipelineEntry>();
-  private readonly _converter: InstanceType<typeof BgraConverter>;
+  private readonly _converter: BgraConverter;
   private _frameIndex = 0;
 
-  constructor({ width, height, fps, formats }: EncoderPipelineOptions) {
+  constructor({ width, height, fps, formats, outDir }: EncoderPipelineOptions) {
     this._width = width;
     this._height = height;
     this._fps = fps;
@@ -83,9 +75,8 @@ export class EncoderPipeline {
 
     for (const format of formats) {
       const profile = FORMAT_PROFILES[format];
-      const muxer = profile.createMuxer(width, height);
+      const muxer = profile.createMuxer({ width, height, fps, outPath: join(outDir, `output.${format}`) });
       const videoEncoder = new VideoEncoder({
-        // WebCodecs passes null for meta when there's no config; coerce to undefined to match MediaMuxer
         output: (chunk, meta) => muxer.addVideoChunk(chunk, meta ?? undefined),
         error: (e) => console.error(`[${format} video encoder]`, e),
       });
@@ -150,24 +141,25 @@ export class EncoderPipeline {
   }
 
   async flush(): Promise<void> {
-    const flushAll = [...this._entries.values()].flatMap(({ videoEncoder, audioEncoder }) =>
-      audioEncoder ? [videoEncoder.flush(), audioEncoder.flush()] : [videoEncoder.flush()],
+    const entries = [...this._entries.values()];
+    await Promise.all(
+      entries.flatMap(({ videoEncoder, audioEncoder }) => {
+        const promises: Promise<void>[] = [videoEncoder.flush()];
+        if (audioEncoder) promises.push(audioEncoder.flush());
+        return promises;
+      }),
     );
-    await Promise.all(flushAll);
-    for (const { videoEncoder, audioEncoder } of this._entries.values()) {
+    for (const { videoEncoder, audioEncoder } of entries) {
       videoEncoder.close();
       audioEncoder?.close();
     }
   }
 
-  async finalize(outDir: string): Promise<Partial<Record<VideoFormat, string>>> {
+  async finalize(): Promise<Partial<Record<VideoFormat, string>>> {
     const result: Partial<Record<VideoFormat, string>> = {};
     await Promise.all(
       [...this._entries.entries()].map(async ([format, entry]) => {
-        const data = await entry.muxer.finalize();
-        const filePath = join(outDir, `output.${format}`);
-        await writeFile(filePath, data);
-        result[format] = filePath;
+        result[format] = await entry.muxer.finalize();
       }),
     );
     return result;

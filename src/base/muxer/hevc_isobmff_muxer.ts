@@ -1,24 +1,15 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/06.
 
-import type {
-  EncodedAudioChunk,
-  EncodedAudioChunkMetadataJs,
-  EncodedAudioChunkType,
-  EncodedVideoChunk,
-  EncodedVideoChunkMetadataJs,
-  EncodedVideoChunkType,
-} from "@napi-rs/webcodecs";
 import {
-  BufferTarget,
   EncodedAudioPacketSource,
   EncodedPacket,
   EncodedVideoPacketSource,
-  IsobmffOutputFormat,
+  type IsobmffOutputFormat,
   MovOutputFormat,
   Mp4OutputFormat,
   Output,
 } from "mediabunny";
-import type { MediaMuxer } from "./media_muxer";
+import { MediaMuxer, openFileStreamTarget, toPacket, type BufferedAudio, type BufferedVideo, type MuxerOptions } from "./media_muxer";
 
 // Apple HEVC-with-Alpha requires a PREFIX_SEI NALU (type=39) carrying
 // alpha_channel_information (SEI type=165) on the first frame to activate
@@ -45,131 +36,57 @@ const prependAlphaSei = (data: Uint8Array): Uint8Array => {
   return out;
 };
 
-interface BufferedVideoChunk {
-  data: Uint8Array;
-  type: EncodedVideoChunkType;
-  timestampS: number;
-  durationS: number;
-}
-
-interface BufferedAudioChunk {
-  data: Uint8Array;
-  type: EncodedAudioChunkType;
-  timestampS: number;
-  durationS: number;
-}
-
-interface AudioDecoderInit {
-  sampleRate: number;
-  numberOfChannels: number;
-  description?: Uint8Array;
-}
-
 const BT709 = { primaries: "bt709", transfer: "bt709", matrix: "bt709", fullRange: false } as const;
 
-export class HEVCIsobmffMuxer implements MediaMuxer {
-  private readonly _width: number;
-  private readonly _height: number;
-  private readonly _format: IsobmffOutputFormat;
-  private _videoChunks: BufferedVideoChunk[] = [];
-  private _audioChunks: BufferedAudioChunk[] = [];
-  private _videoDesc?: Uint8Array;
-  private _audioInit?: AudioDecoderInit;
+class HEVCIsobmffMuxer extends MediaMuxer {
+  private readonly format: IsobmffOutputFormat;
 
-  constructor(width: number, height: number, format: IsobmffOutputFormat) {
-    this._width = width;
-    this._height = height;
-    this._format = format;
+  constructor(opts: MuxerOptions, format: IsobmffOutputFormat) {
+    super(opts);
+    this.format = format;
   }
 
-  addVideoChunk(chunk: EncodedVideoChunk, meta?: EncodedVideoChunkMetadataJs): void {
-    this._videoDesc ??= meta?.decoderConfig?.description;
-    const data = new Uint8Array(chunk.byteLength);
-    chunk.copyTo(data);
-    this._videoChunks.push({
-      data,
-      type: chunk.type,
-      timestampS: chunk.timestamp / 1e6,
-      durationS: (chunk.duration ?? 0) / 1e6,
-    });
-  }
+  async finalize(): Promise<string> {
+    if (this.videoChunks.length === 0) throw new Error("HEVCIsobmffMuxer: no video data");
 
-  addAudioChunk(chunk: EncodedAudioChunk, meta?: EncodedAudioChunkMetadataJs): void {
-    if (!this._audioInit && meta?.decoderConfig) {
-      const { sampleRate = 44100, numberOfChannels = 2, description } = meta.decoderConfig;
-      this._audioInit = { sampleRate, numberOfChannels, description };
-    }
-    const data = new Uint8Array(chunk.byteLength);
-    chunk.copyTo(data);
-    this._audioChunks.push({
-      data,
-      type: chunk.type,
-      timestampS: chunk.timestamp / 1e6,
-      durationS: (chunk.duration ?? 0) / 1e6,
-    });
-  }
-
-  async finalize(): Promise<Uint8Array> {
-    if (this._videoChunks.length === 0) throw new Error("HEVCIsobmffMuxer: no video data");
-
-    const target = new BufferTarget();
-    const output = new Output({ format: this._format, target });
+    const target = await openFileStreamTarget(this.opts.outPath);
+    const output = new Output({ format: this.format, target });
 
     const videoSrc = new EncodedVideoPacketSource("hevc");
-    output.addVideoTrack(videoSrc);
+    output.addVideoTrack(videoSrc, { frameRate: this.opts.fps });
 
-    let audioSrc: EncodedAudioPacketSource | undefined;
-    if (this._audioChunks.length > 0) {
-      audioSrc = new EncodedAudioPacketSource("aac");
-      output.addAudioTrack(audioSrc);
-    }
+    const audioSrc = this.audioInit ? new EncodedAudioPacketSource("aac") : undefined;
+    if (audioSrc) output.addAudioTrack(audioSrc);
 
     await output.start();
 
-    const [firstVideo, ...restVideo] = this._videoChunks as [BufferedVideoChunk, ...BufferedVideoChunk[]];
-    await videoSrc.add(
-      new EncodedPacket(prependAlphaSei(firstVideo.data), firstVideo.type, firstVideo.timestampS, firstVideo.durationS),
-      {
-        decoderConfig: {
-          codec: "hvc1.2.6.L120.B0",
-          codedWidth: this._width,
-          codedHeight: this._height,
-          colorSpace: BT709,
-          description: this._videoDesc,
-        },
+    const [first, ...rest] = this.videoChunks as [BufferedVideo, ...BufferedVideo[]];
+    await videoSrc.add(new EncodedPacket(prependAlphaSei(first.data), first.type, first.timestampS, first.durationS), {
+      decoderConfig: {
+        codec: "hvc1.2.6.L120.B0",
+        codedWidth: this.opts.width,
+        codedHeight: this.opts.height,
+        colorSpace: BT709,
+        description: this.videoDesc,
       },
-    );
-    for (const chunk of restVideo) {
-      await videoSrc.add(new EncodedPacket(chunk.data, chunk.type, chunk.timestampS, chunk.durationS));
-    }
+    });
+    for (const chunk of rest) await videoSrc.add(toPacket(chunk));
     videoSrc.close();
 
-    if (audioSrc && this._audioInit) {
-      const { sampleRate, numberOfChannels, description } = this._audioInit;
-      const [firstAudio, ...restAudio] = this._audioChunks as [BufferedAudioChunk, ...BufferedAudioChunk[]];
-      await audioSrc.add(
-        new EncodedPacket(firstAudio.data, firstAudio.type, firstAudio.timestampS, firstAudio.durationS),
-        { decoderConfig: { codec: "mp4a.40.2", sampleRate, numberOfChannels, description } },
-      );
-      for (const chunk of restAudio) {
-        await audioSrc.add(new EncodedPacket(chunk.data, chunk.type, chunk.timestampS, chunk.durationS));
-      }
+    if (audioSrc && this.audioInit) {
+      const { sampleRate, numberOfChannels, description } = this.audioInit;
+      const [first, ...rest] = this.audioChunks as [BufferedAudio, ...BufferedAudio[]];
+      await audioSrc.add(toPacket(first), {
+        decoderConfig: { codec: "mp4a.40.2", sampleRate, numberOfChannels, description },
+      });
+      for (const chunk of rest) await audioSrc.add(toPacket(chunk));
       audioSrc.close();
     }
 
     await output.finalize();
-    return new Uint8Array(target.buffer!);
+    return this.opts.outPath;
   }
 }
 
-export class HEVCMp4Muxer extends HEVCIsobmffMuxer {
-  constructor(width: number, height: number) {
-    super(width, height, new Mp4OutputFormat());
-  }
-}
-
-export class HEVCMovMuxer extends HEVCIsobmffMuxer {
-  constructor(width: number, height: number) {
-    super(width, height, new MovOutputFormat());
-  }
-}
+export const createMp4Muxer = (opts: MuxerOptions) => new HEVCIsobmffMuxer(opts, new Mp4OutputFormat());
+export const createMovMuxer = (opts: MuxerOptions) => new HEVCIsobmffMuxer(opts, new MovOutputFormat());

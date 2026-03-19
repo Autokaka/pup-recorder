@@ -5,11 +5,11 @@ import { nativeImage, type BrowserWindow, type NativeImage } from "electron";
 import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 import { advanceVirtualTime } from "../base/cdp";
+import { EncoderPipeline } from "../base/encoder";
 import { isEmpty } from "../base/image";
 import { logger } from "../base/logging";
 import { decodeTimestamp, startSync, stopSync } from "./frame_sync";
 import type { RenderOptions, RenderResult } from "./schema";
-import { EncoderPipeline } from "./webcodecs";
 import { loadWindow } from "./window";
 
 const TAG = "[Shoot]";
@@ -67,7 +67,7 @@ export async function shoot(source: string, options: RenderOptions): Promise<voi
 
     await startSync(cdp);
 
-    const pipeline = new EncoderPipeline({ width, height, fps, formats });
+    const pipeline = new EncoderPipeline({ width, height, fps, formats, outDir });
     const total = Math.ceil(fps * duration);
     const frameInterval = 1000 / fps;
     const frameIntervalUs = Math.round(1_000_000 / fps);
@@ -109,7 +109,7 @@ export async function shoot(source: string, options: RenderOptions): Promise<voi
     }
 
     await pipeline.flush();
-    const outputFiles = await pipeline.finalize(outDir);
+    const outputFiles = await pipeline.finalize();
     const coverPath = join(outDir, "cover.png");
     ok(coverBgra, "cover image is missing");
     const png = nativeImage.createFromBuffer(coverBgra, { width, height }).toPNG();

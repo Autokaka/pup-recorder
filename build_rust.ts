@@ -1,7 +1,8 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/10.
 
 import { $ } from "bun";
-import { copyFile, mkdir, writeFile } from "fs/promises";
+import { zipSync } from "fflate";
+import { mkdir, readFile, writeFile } from "fs/promises";
 import { join } from "path";
 
 function getTriple(platform: string, arch: string) {
@@ -27,38 +28,39 @@ function getArtifactName(platform: string) {
   return null;
 }
 
-async function copyArtifact(platform: string, arch: string, dir: string) {
-  const libName = getArtifactName(platform);
-  if (!libName) return;
-  const src = join(dir, libName);
-  const destDir = join("rust");
-  const dest = join(destDir, `${platform}-${arch}.bin`);
-  const dts = `declare const sth: unknown;\nexport = sth;\n`;
-  await mkdir(destDir, { recursive: true });
-  await copyFile(src, dest);
-  await writeFile(`${dest}.d.ts`, dts);
-}
-
-async function cargoBuild(platform: string, arch: string) {
-  const triple = getTriple(platform, arch);
-  if (triple) {
-    if (platform === "win32") {
-      await $`cargo xwin build --release --quiet --target ${triple}`;
-    } else {
-      await $`cargo zigbuild --release --quiet --target ${triple}`;
-    }
-    await copyArtifact(platform, arch, `target/${triple}/release`);
-  }
-}
-
 const PLATFORMS = ["darwin", "linux", "win32"];
 const ARCHS = ["x64", "arm64"];
+const RUST_DIR = "rust";
+
+async function cargoBuild(platform: string, arch: string): Promise<[string, Uint8Array] | undefined> {
+  const triple = getTriple(platform, arch);
+  const libName = getArtifactName(platform);
+  if (!triple || !libName) return;
+
+  if (platform === "win32") {
+    await $`cargo xwin build --release --quiet --target ${triple}`;
+  } else {
+    await $`cargo zigbuild --release --quiet --target ${triple}`;
+  }
+
+  const data = await readFile(join(`target/${triple}/release`, libName));
+  return [`${platform}-${arch}.node`, new Uint8Array(data)];
+}
 
 export async function buildRust() {
   await $`cargo install --quiet cargo-zigbuild cargo-xwin`;
+
+  const entries: [string, Uint8Array][] = [];
   for (const platform of PLATFORMS) {
     for (const arch of ARCHS) {
-      await cargoBuild(platform, arch);
+      const entry = await cargoBuild(platform, arch);
+      if (entry) entries.push(entry);
     }
   }
+
+  await mkdir(RUST_DIR, { recursive: true });
+
+  const zip = zipSync(Object.fromEntries(entries));
+  await writeFile(join(RUST_DIR, "native.zip"), zip);
+  await writeFile(join(RUST_DIR, "native.zip.d.ts"), `declare const data: Uint8Array;\nexport default data;\n`);
 }
