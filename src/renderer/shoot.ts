@@ -1,14 +1,15 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/03/13.
 
-import { type BrowserWindow, type NativeImage } from "electron";
+import { ok } from "assert";
+import { nativeImage, type BrowserWindow, type NativeImage } from "electron";
 import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 import { advanceVirtualTime } from "../base/cdp";
 import { isEmpty } from "../base/image";
 import { logger } from "../base/logging";
-import { FixedBufferWriter } from "../rust/lib";
 import { decodeTimestamp, startSync, stopSync } from "./frame_sync";
 import type { RenderOptions, RenderResult } from "./schema";
+import { EncoderPipeline } from "./webcodecs";
 import { loadWindow } from "./window";
 
 const TAG = "[Shoot]";
@@ -28,10 +29,7 @@ function awaitStegoFrame(
   frameIndex: number,
 ): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(
-      () => reject(new Error(`frame ${frameIndex} paint timeout`)),
-      1_000,
-    );
+    const timeout = setTimeout(() => reject(new Error(`frame ${frameIndex} paint timeout`)), 1_000);
     const handler = (_e: unknown, _d: unknown, image: NativeImage) => {
       if (isEmpty(image)) return;
       const bitmap = image.toBitmap();
@@ -45,11 +43,8 @@ function awaitStegoFrame(
   });
 }
 
-export async function shoot(
-  source: string,
-  options: RenderOptions,
-): Promise<void> {
-  const { outDir, fps, width, height, duration, withAudio } = options;
+export async function shoot(source: string, options: RenderOptions): Promise<void> {
+  const { outDir, fps, width, height, duration, withAudio, formats } = options;
   if (withAudio) {
     logger.warn(TAG, "Audio capture is not supported in deterministic mode");
   }
@@ -58,57 +53,73 @@ export async function shoot(
   await mkdir(outDir, { recursive: true });
 
   const win = await loadWindow(source, options);
-  const cdp = win.webContents.debugger;
-  cdp.attach("1.3");
-
-  win.webContents.setFrameRate(240);
-  const rootFrame = win.webContents.mainFrame.frames[0];
-  await rootFrame?.executeJavaScript(tickAnims(0));
-
-  if (!win.webContents.isPainting()) {
-    win.webContents.startPainting();
-  }
-
-  await startSync(cdp);
-
-  const bgra = join(outDir, "output.bgra");
-  const total = Math.ceil(fps * duration);
-  const frameInterval = 1000 / fps;
-  const writer = new FixedBufferWriter(bgra, width * height * 4, fps);
-
-  let written = 0;
-  let progress = 0;
-
   try {
-    for (let frame = 0; frame < total; frame++) {
-      const frameMs = (frame + 1) * frameInterval;
-      const pending = awaitStegoFrame(win, width, height, frameMs - 1, frame);
+    const cdp = win.webContents.debugger;
+    cdp.attach("1.3");
 
-      await advanceVirtualTime(cdp, frameInterval);
-      await rootFrame?.executeJavaScript(tickAnims(frameInterval));
+    win.webContents.setFrameRate(240);
+    const rootFrame = win.webContents.mainFrame.frames[0];
+    await rootFrame?.executeJavaScript(tickAnims(0));
 
-      writer.write(await pending);
-      written++;
-
-      const newProgress = Math.floor((written / total) * 100);
-      if (Math.abs(newProgress - progress) > 10) {
-        progress = newProgress;
-        logger.info(TAG, `progress: ${Math.round(progress)}%`);
-      }
+    if (!win.webContents.isPainting()) {
+      win.webContents.startPainting();
     }
-  } finally {
-    await stopSync(cdp);
-    cdp.detach();
-    await writer.close();
-  }
 
-  if (written === 0) {
-    throw new Error("no frames captured");
-  }
+    await startSync(cdp);
 
-  try {
-    const result: RenderResult = { options, written, bgra };
-    await writeFile(join(outDir, "render.json"), JSON.stringify(result));
+    const pipeline = new EncoderPipeline({ width, height, fps, formats });
+    const total = Math.ceil(fps * duration);
+    const frameInterval = 1000 / fps;
+    const frameIntervalUs = Math.round(1_000_000 / fps);
+
+    let written = 0;
+    let progress = 0;
+    let coverBgra: Buffer | undefined;
+
+    try {
+      for (let frame = 0; frame < total; frame++) {
+        const frameMs = (frame + 1) * frameInterval;
+        const pending = awaitStegoFrame(win, width, height, frameMs - 1, frame);
+
+        await advanceVirtualTime(cdp, frameInterval);
+        await rootFrame?.executeJavaScript(tickAnims(frameInterval));
+
+        const bitmap = await pending;
+
+        if (frame === 0) {
+          coverBgra = bitmap;
+        }
+
+        await pipeline.encodeFrame(bitmap, frame * frameIntervalUs);
+        written++;
+
+        const newProgress = Math.floor((written / total) * 100);
+        if (Math.abs(newProgress - progress) > 10) {
+          progress = newProgress;
+          logger.info(TAG, `progress: ${Math.round(progress)}%`);
+        }
+      }
+    } finally {
+      await stopSync(cdp);
+      cdp.detach();
+    }
+
+    if (written === 0) {
+      throw new Error("no frames captured");
+    }
+
+    await pipeline.flush();
+    const outputFiles = await pipeline.finalize(outDir);
+    const coverPath = join(outDir, "cover.png");
+    ok(coverBgra, "cover image is missing");
+    const png = nativeImage.createFromBuffer(coverBgra, { width, height }).toPNG();
+    await writeFile(coverPath, png);
+    const result: RenderResult = {
+      options,
+      written,
+      files: { ...outputFiles, cover: coverPath },
+    };
+    await writeFile(join(outDir, "summary.json"), JSON.stringify(result));
     logger.info(TAG, `progress: 100%, ${written} frames written`);
   } finally {
     win.close();

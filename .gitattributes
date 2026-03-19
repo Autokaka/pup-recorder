@@ -1,3 +1,0 @@
-dist/** filter=lfs diff=lfs merge=lfs -text
-rust/** filter=lfs diff=lfs merge=lfs -text
-x265/** filter=lfs diff=lfs merge=lfs -text

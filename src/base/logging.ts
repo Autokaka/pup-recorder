@@ -28,8 +28,17 @@ function stackHook(target: Function, _context: ClassMethodDecoratorContext) {
   };
 }
 
-class Logger implements LoggerLike {
+export class Logger implements LoggerLike {
   private _impl?: LoggerLike;
+
+  get level(): number {
+    return this._level;
+  }
+
+  set level(value: number) {
+    this._level = value;
+    this.impl = this._impl ?? console;
+  }
 
   get impl(): LoggerLike | undefined {
     return this._impl;
@@ -40,15 +49,16 @@ class Logger implements LoggerLike {
     const info = value.info ?? console.info;
     const warn = value.warn ?? console.warn;
     const error = value.error ?? console.error;
+    const lv = this._level;
     this._impl = {
-      debug: pupLogLevel >= 3 ? debug : undefined,
-      info: pupLogLevel >= 2 ? info : undefined,
-      warn: pupLogLevel >= 1 ? warn : undefined,
-      error: pupLogLevel >= 0 ? error : undefined,
+      debug: lv >= 3 ? debug : undefined,
+      info: lv >= 2 ? info : undefined,
+      warn: lv >= 1 ? warn : undefined,
+      error: lv >= 0 ? error : undefined,
     };
   }
 
-  constructor() {
+  constructor(private _level: number = pupLogLevel) {
     this.impl = console;
   }
 

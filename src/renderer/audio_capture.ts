@@ -5,7 +5,7 @@ import { ipcMain, session } from "electron";
 import { rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { FixedBufferWriter } from "../rust/lib";
+import type { EncoderPipeline } from "./webcodecs";
 
 const AUDIO_CAPTURE_SCRIPT = `
 (function() {
@@ -82,12 +82,11 @@ const AUDIO_CAPTURE_SCRIPT = `
 `;
 
 export interface AudioCapture {
-  sampleRate?: number;
   teardown(): Promise<void>;
 }
 
 export async function setupAudioCapture(
-  pcmPath: string,
+  pipeline: EncoderPipeline,
 ): Promise<AudioCapture> {
   const preloadPath = join(tmpdir(), `pup_audio_preload_${randomUUID()}.js`);
   await writeFile(preloadPath, AUDIO_CAPTURE_SCRIPT);
@@ -97,23 +96,25 @@ export async function setupAudioCapture(
     filePath: preloadPath,
   });
 
-  const writer = new FixedBufferWriter(pcmPath, 4096 * 2 * 4);
-  const capture: AudioCapture = {
-    sampleRate: undefined,
+  let capturedSampleRate: number | undefined;
+
+  ipcMain.once("audio-meta", (_e, data: { sampleRate: number }) => {
+    capturedSampleRate = data.sampleRate;
+    pipeline.setupAudio(data.sampleRate);
+  });
+  ipcMain.on("audio-chunk", (_e, buffer: Buffer) => {
+    if (capturedSampleRate !== undefined) {
+      pipeline.encodeAudio(buffer, capturedSampleRate);
+    }
+  });
+
+  return {
     async teardown() {
       ipcMain.removeAllListeners("audio-chunk");
       ipcMain.removeAllListeners("audio-meta");
-      await writer.close();
       session.defaultSession.unregisterPreloadScript("pup-audio");
       await rm(preloadPath, { force: true });
     },
   };
-
-  ipcMain.once("audio-meta", (_e, data: { sampleRate: number }) => {
-    capture.sampleRate = data.sampleRate;
-  });
-  ipcMain.on("audio-chunk", (_e, buffer: Buffer) => {
-    writer.write(buffer);
-  });
-  return capture;
 }
+

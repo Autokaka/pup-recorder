@@ -1,25 +1,13 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/09.
 
-import type { Size } from "electron";
-import { readFile, rm } from "fs/promises";
+import { readFile } from "fs/promises";
 import { join } from "path";
 import { AbortLink, type AbortQuery } from "./base/abort";
-import { pupNoCleanup } from "./base/constants";
-import { encodeBGRAFile, encodeBgraToMov } from "./base/encoder";
-import { createCoverCommand } from "./base/ffmpeg";
 import { ConcurrencyLimiter } from "./base/limiter";
 import { logger } from "./base/logging";
 import { parseNumber } from "./base/parser";
-import { exec, type ProcessHandle } from "./base/process";
 import { runElectronApp } from "./renderer/electron";
-import {
-  DEFAULT_HEIGHT,
-  DEFAULT_WIDTH,
-  type RenderOptions,
-  type RenderResult,
-  type VideoFilesWithCover,
-  type VideoSpec,
-} from "./renderer/schema";
+import { DEFAULT_HEIGHT, DEFAULT_WIDTH, type RenderOptions, type RenderResult } from "./renderer/schema";
 
 const TAG = "[pup]";
 const PROGRESS_TAG = " progress: ";
@@ -31,10 +19,7 @@ export interface PupOptions extends Partial<RenderOptions> {
   onProgress?: PupProgressCallback;
 }
 
-export interface PupResult {
-  options: RenderOptions;
-  files: VideoFilesWithCover;
-}
+export interface PupResult extends RenderResult {}
 
 async function runPupApp(source: string, options: PupOptions) {
   logger.debug(TAG, `runPupApp`, source, options);
@@ -45,8 +30,7 @@ async function runPupApp(source: string, options: PupOptions) {
   if (options.fps) args.push("--fps", `${options.fps}`);
   if (options.duration) args.push("--duration", `${options.duration}`);
   if (options.outDir) args.push("--out-dir", options.outDir);
-  if (options.formats?.length)
-    args.push("--formats", options.formats.join(","));
+  if (options.formats?.length) args.push("--formats", options.formats.join(","));
   if (options.withAudio) args.push("--with-audio");
   if (options.useInnerProxy) args.push("--use-inner-proxy");
   if (options.deterministic) args.push("--deterministic");
@@ -75,10 +59,7 @@ async function runPupApp(source: string, options: PupOptions) {
   return { handle, counter };
 }
 
-export async function pup(
-  source: string,
-  options: PupOptions,
-): Promise<PupResult> {
+export async function pup(source: string, options: PupOptions): Promise<PupResult> {
   logger.debug(TAG, `pup`, source, options);
 
   const link = AbortLink.start(options.cancelQuery);
@@ -89,65 +70,9 @@ export async function pup(
 
   await link.wait(handle);
   await counter.end();
-  logger.info(TAG, `capture cost ${Math.round(performance.now() - t0)}ms`);
+  link.stop();
+  logger.info(TAG, `done in ${Math.round(performance.now() - t0)}ms`);
 
-  const metaPath = join(outDir, "render.json");
-  const meta = JSON.parse(await readFile(metaPath, "utf-8")) as RenderResult;
-
-  const { bgra, written, options: rec, audio } = meta;
-  const { fps, width, height, formats = ["mp4"] } = rec;
-  const pcm = audio?.pcmPath;
-  const size: Size = { width, height };
-
-  const outputs: VideoFilesWithCover = {
-    mp4: formats.includes("mp4") ? join(outDir, "output.mp4") : undefined,
-    webm: formats.includes("webm") ? join(outDir, "output.webm") : undefined,
-    mov: formats.includes("mov") ? join(outDir, "output.mov") : undefined,
-    cover: join(outDir, "cover.png"),
-  };
-
-  try {
-    const t1 = performance.now();
-
-    const spec: VideoSpec = { fps, frames: written, size };
-    const handles: ProcessHandle[] = [];
-    if (outputs.mp4) {
-      handles.push(encodeBGRAFile({ bgra, outFile: outputs.mp4, spec, audio }));
-    }
-    if (outputs.webm) {
-      handles.push(
-        encodeBGRAFile({ bgra, outFile: outputs.webm, spec, audio }),
-      );
-    }
-    if (outputs.mov) {
-      handles.push(
-        encodeBgraToMov({ bgra, outFile: outputs.mov, spec, audio }),
-      );
-    }
-    await link.wait(...handles);
-
-    const coverSrc = outputs.mov ?? outputs.webm ?? outputs.mp4;
-    if (coverSrc) {
-      const coverCmd = createCoverCommand(coverSrc, outputs.cover);
-      const handle = exec(`${coverCmd.command} ${coverCmd.args.join(" ")}`);
-      await link.wait(handle);
-    }
-
-    link.stop();
-    logger.info(TAG, `encoding cost ${Math.round(performance.now() - t1)}ms`);
-
-    if (!pupNoCleanup) {
-      await Promise.all([
-        rm(bgra, { force: true }),
-        rm(metaPath, { force: true }),
-        pcm && rm(pcm, { force: true }),
-      ]);
-    }
-    return { options: meta.options, files: outputs };
-  } catch (error) {
-    if (!pupNoCleanup) {
-      await rm(outDir, { recursive: true, force: true });
-    }
-    throw error;
-  }
+  const sumPath = join(outDir, "summary.json");
+  return JSON.parse(await readFile(sumPath, "utf-8")) as RenderResult;
 }

@@ -1,5 +1,3 @@
-// Created by Autokaka (qq1909698494@gmail.com) on 2026/02/10.
-
 import { ok } from "assert";
 import { randomUUID } from "crypto";
 import { rmSync, writeFileSync } from "fs";
@@ -29,16 +27,10 @@ const require = createRequire(import.meta.url);
 const lib = require(path) as Record<string, unknown>;
 rmSync(path, { force: true });
 
-export interface FixedBufferWriter {
-  new (
-    path: string,
-    bufferSize: number,
-    queueDepth?: number,
-  ): FixedBufferWriter;
+export interface BgraConverter {
+  new (width: number, height: number): BgraConverter;
 
-  write(buffer: Buffer): void;
-
-  close(): Promise<void>;
+  convert(bgra: Buffer): Promise<Buffer>;
 }
 
-export const FixedBufferWriter = lib["FixedBufferWriter"] as FixedBufferWriter;
+export const BgraConverter = lib["BgraConverter"] as BgraConverter;
