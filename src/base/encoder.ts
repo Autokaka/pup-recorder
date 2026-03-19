@@ -71,7 +71,7 @@ export class EncoderPipeline {
     this._width = width;
     this._height = height;
     this._fps = fps;
-    this._converter = new BgraConverter(width, height);
+    this._converter = new BgraConverter(width, height, 4);
 
     for (const format of formats) {
       const profile = FORMAT_PROFILES[format];

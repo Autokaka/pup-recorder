@@ -20,7 +20,7 @@ const lib = require(tmpFile) as Record<string, unknown>;
 rmSync(tmpFile, { force: true });
 
 export interface BgraConverter {
-  new (width: number, height: number): BgraConverter;
+  new (width: number, height: number, numThreads?: number): BgraConverter;
 
   convert(bgra: Buffer): Promise<Buffer>;
 }

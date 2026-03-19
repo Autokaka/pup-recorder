@@ -58,7 +58,7 @@ export { AudioInit as AudioInit_alias_1 }
 export declare const basedir: string;
 
 export declare interface BgraConverter {
-    new (width: number, height: number): BgraConverter;
+    new (width: number, height: number, numThreads?: number): BgraConverter;
     convert(bgra: Buffer): Promise<Buffer>;
 }
 
@@ -314,10 +314,6 @@ export { PUP_ARGS_KEY as PUP_ARGS_KEY_alias_1 }
 declare const pupDisableGPU: boolean;
 export { pupDisableGPU }
 export { pupDisableGPU as pupDisableGPU_alias_1 }
-
-declare const pupFFmpegPath: string;
-export { pupFFmpegPath }
-export { pupFFmpegPath as pupFFmpegPath_alias_1 }
 
 declare const pupLogLevel: number;
 export { pupLogLevel }

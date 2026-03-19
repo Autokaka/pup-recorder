@@ -1,6 +1,6 @@
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use rayon::prelude::*;
+use rayon::{prelude::*, ThreadPool, ThreadPoolBuilder};
 use std::sync::{Arc, Mutex};
 
 /// Async multi-threaded BGRA → I420AP10 converter.
@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 ///
 /// Design mirrors FixedBufferWriter:
 ///   - Pre-allocated input copy buffer pool — avoids per-frame heap allocation
-///   - convert() offloads to rayon thread pool, returning a Promise so the
+///   - convert() offloads to a dedicated rayon thread pool, returning a Promise so the
 ///     Node.js event loop is never blocked
 ///   - Rayon splits the image into horizontal row-pair bands processed in parallel;
 ///     the inner Y/A loop is structured for LLVM auto-vectorisation (NEON / SSE2+)
@@ -24,41 +24,45 @@ pub struct BgraConverter {
     width: usize,
     height: usize,
     out_size: usize,
-    pool: Arc<Mutex<Vec<Vec<u8>>>>,
+    buf_pool: Arc<Mutex<Vec<Vec<u8>>>>,
+    thread_pool: Arc<ThreadPool>,
 }
 
 #[napi]
 impl BgraConverter {
+    /// `num_threads`: rayon worker count. `undefined` or `0` = use all available cores.
     #[napi(constructor)]
-    pub fn new(width: u32, height: u32) -> Self {
+    pub fn new(width: u32, height: u32, num_threads: Option<u32>) -> Self {
         let (w, h) = (width as usize, height as usize);
         let (uw, uh) = ((w + 1) / 2, (h + 1) / 2);
-        // Y + U + V + A, each sample = 2 bytes (u16 LE)
         let out_size = (w * h + uw * uh * 2 + w * h) * 2;
         let in_size = w * h * 4;
-        // Double-buffer: one in-flight, one available for the next frame
-        let pool = Arc::new(Mutex::new(vec![
+        let buf_pool = Arc::new(Mutex::new(vec![
             Vec::with_capacity(in_size),
             Vec::with_capacity(in_size),
         ]));
-        BgraConverter { width: w, height: h, out_size, pool }
+        let mut builder = ThreadPoolBuilder::new();
+        if let Some(n) = num_threads.filter(|&n| n > 0) {
+            builder = builder.num_threads(n as usize);
+        }
+        let thread_pool = Arc::new(builder.build().expect("failed to build rayon thread pool"));
+        BgraConverter { width: w, height: h, out_size, buf_pool, thread_pool }
     }
 
     #[napi]
     pub async fn convert(&self, bgra: Buffer) -> Buffer {
         let (w, h, out_size) = (self.width, self.height, self.out_size);
-        let pool = Arc::clone(&self.pool);
+        let buf_pool = Arc::clone(&self.buf_pool);
+        let thread_pool = Arc::clone(&self.thread_pool);
 
-        // Grab a recycled input buffer (or allocate if the pool is empty)
-        let mut src = pool.lock().unwrap().pop().unwrap_or_else(|| Vec::with_capacity(w * h * 4));
+        let mut src = buf_pool.lock().unwrap().pop().unwrap_or_else(|| Vec::with_capacity(w * h * 4));
         src.clear();
         src.extend_from_slice(bgra.as_ref());
 
         napi::tokio::task::spawn_blocking(move || {
-            let out = convert_parallel(&src, w, h, out_size);
-            // Return the input buffer to the pool for reuse
+            let out = thread_pool.install(|| convert_parallel(&src, w, h, out_size));
             src.clear();
-            pool.lock().unwrap().push(src);
+            buf_pool.lock().unwrap().push(src);
             out
         })
         .await

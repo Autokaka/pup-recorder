@@ -1,6 +1,6 @@
 {
   "name": "pup-recorder",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "description": "Record web pages as video",
   "repository": {
     "type": "git",
