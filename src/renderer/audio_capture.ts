@@ -5,7 +5,10 @@ import { ipcMain, session } from "electron";
 import { rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import type { EncoderPipeline } from "../base/encoder";
+import type { EncoderPipeline } from "../base/encoder/encoder";
+import { logger } from "../base/logging";
+
+const TAG = "[AudioCapture]";
 
 const AUDIO_CAPTURE_SCRIPT = `
 (function() {
@@ -94,20 +97,21 @@ export async function setupAudioCapture(pipeline: EncoderPipeline): Promise<Audi
     filePath: preloadPath,
   });
 
-  let audioReady = false;
-
   ipcMain.once("audio-meta", (_e, data: { sampleRate: number }) => {
     pipeline.setupAudio(data.sampleRate);
-    audioReady = true;
   });
-  ipcMain.on("audio-chunk", (_e, buffer: Buffer) => {
-    if (audioReady) pipeline.encodeAudio(buffer);
+  ipcMain.on("audio-chunk", async (_e, buffer: Buffer) => {
+    try {
+      await pipeline.encodeAudio(buffer);
+    } catch (e) {
+      logger.error(TAG, "failed to encode audio chunk:", e);
+    }
   });
 
   return {
     async teardown() {
-      ipcMain.removeAllListeners("audio-chunk");
       ipcMain.removeAllListeners("audio-meta");
+      ipcMain.removeAllListeners("audio-chunk");
       session.defaultSession.unregisterPreloadScript("pup-audio");
       await rm(preloadPath, { force: true });
     },

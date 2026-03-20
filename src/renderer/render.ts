@@ -4,7 +4,7 @@ import { ok } from "assert";
 import { nativeImage, type NativeImage } from "electron";
 import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
-import { EncoderPipeline } from "../base/encoder";
+import { EncoderPipeline } from "../base/encoder/encoder";
 import { isEmpty } from "../base/image";
 import { ConcurrencyLimiter } from "../base/limiter";
 import { logger } from "../base/logging";
@@ -21,7 +21,7 @@ export async function render(source: string, options: RenderOptions): Promise<vo
 
   await mkdir(outDir, { recursive: true });
 
-  const pipeline = new EncoderPipeline({ width, height, fps, formats, outDir, withAudio });
+  const pipeline = await EncoderPipeline.create({ width, height, fps, formats, outDir, withAudio });
   const audioCapture = withAudio ? await setupAudioCapture(pipeline) : undefined;
 
   const win = await loadWindow(source, options);
@@ -48,9 +48,14 @@ export async function render(source: string, options: RenderOptions): Promise<vo
 
     const scheduleFrame = (frame: Buffer, timestampUs: number) => {
       written++;
-      encodeQueue
+      const t0 = performance.now();
+      encodeQueue //
         .schedule(() => pipeline.encodeFrame(frame, timestampUs))
         .catch((e) => (frameError ??= e));
+      const diff = performance.now() - t0;
+      if (diff > frameInterval * 1.2) {
+        logger.warn(TAG, `frame stalled in ${diff}ms`);
+      }
     };
 
     const paint = (_e: unknown, _r: unknown, image: NativeImage) => {
@@ -118,8 +123,7 @@ export async function render(source: string, options: RenderOptions): Promise<vo
     }
 
     await encodeQueue.end();
-    await pipeline.flush();
-    const outputFiles = await pipeline.finalize();
+    const outputFiles = await pipeline.finish();
     const coverPath = join(outDir, "cover.png");
     ok(coverBgra, "cover image is missing");
     const png = nativeImage.createFromBuffer(coverBgra, { width, height }).toPNG();

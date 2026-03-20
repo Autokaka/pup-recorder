@@ -1,6 +1,6 @@
 {
   "name": "pup-recorder",
-  "version": "0.1.17",
+  "version": "0.2.0",
   "description": "Record web pages as video",
   "repository": {
     "type": "git",
@@ -28,11 +28,9 @@
   },
   "engineStrict": true,
   "dependencies": {
-    "@napi-rs/webcodecs": "latest",
     "commander": "latest",
     "electron": "latest",
-    "fflate": "latest",
-    "mediabunny": "latest",
+    "node-av": "latest",
     "source-map-support": "latest",
     "systeminformation": "latest",
     "zod": "latest"

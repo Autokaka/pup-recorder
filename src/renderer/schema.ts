@@ -5,7 +5,6 @@ import z from "zod";
 export interface VideoFiles {
   cover: string;
   mp4?: string;
-  mov?: string;
   webm?: string;
 }
 
@@ -14,7 +13,7 @@ export const DEFAULT_HEIGHT = 1080;
 export const DEFAULT_FPS = 30;
 export const DEFAULT_DURATION = 5;
 export const DEFAULT_OUT_DIR = "out";
-export const VIDEO_FORMATS = ["mp4", "mov", "webm"] as const;
+export const VIDEO_FORMATS = ["mp4", "webm"] as const;
 
 export type VideoFormat = (typeof VIDEO_FORMATS)[number];
 

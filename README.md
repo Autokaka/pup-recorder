@@ -13,8 +13,8 @@ pup source [-W width] [-H height] [-f fps] [-t duration] [-o dir] [-F formats] [
 ## DESCRIPTION
 
 Renders a web page offscreen via Electron and encodes the result to one or
-more video formats. Default output is mp4 (H.264/yuv420p). Formats with
-alpha (mov, webm) use HEVC/x265 and VP9/yuva420p respectively.
+more video formats.  Both mp4 and webm support alpha transparency and
+optional audio.
 
 ## OPTIONS
 
@@ -38,7 +38,7 @@ source
     Output directory.  Default: out.
 
 -F formats, --formats=formats
-    Comma-separated list of output formats.  Allowed values: mp4, mov, webm.
+    Comma-separated list of output formats.  Allowed values: mp4, webm.
     Default: mp4.
 
 -a, --with-audio
@@ -53,9 +53,7 @@ source
 ```
 PUP_LOG_LEVEL        Verbosity: 0=error 1=warn 2=info 3=debug.  Default: 2.
 PUP_USE_INNER_PROXY  Set to 1 to enable the inner proxy globally.
-PUP_FFMPEG_PATH      Path to the ffmpeg binary.  Default: ffmpeg.
 PUP_DISABLE_GPU      Set to 1 to disable GPU acceleration.
-PUP_NO_CLEANUP       Set to 1 to keep intermediate files after encoding.
 ```
 
 ## API
@@ -69,7 +67,7 @@ const { options, files } = await pup(source, {
   withAudio?, useInnerProxy?,
   cancelQuery?, onProgress?,
 });
-// files: { mp4?, mov?, webm?, cover }
+// files: { mp4?, webm?, cover }
 ```
 
 ## FILES
@@ -77,16 +75,14 @@ const { options, files } = await pup(source, {
 ```
 dist/cli.js     CLI entry point
 dist/index.js   library entry point
-rust/*.node     native bindings
-x265/           bundled x265 binaries
 ```
 
 ## EXAMPLES
 
 ```sh
 pup https://example.com -t 5
-pup file:///path/to/page.html -F mov,webm -t 10
-pup https://example.com -F mp4,mov,webm -a -W 1280 -H 720 -f 60 -t 10 -o /tmp/out
+pup file:///path/to/page.html -F webm -t 10
+pup https://example.com -F mp4,webm -a -W 1280 -H 720 -f 60 -t 10 -o /tmp/out
 ```
 
 ## SEE ALSO

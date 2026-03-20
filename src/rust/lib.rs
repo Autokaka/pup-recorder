@@ -145,3 +145,66 @@ fn convert_parallel(src: &[u8], w: usize, h: usize, out_size: usize) -> Vec<u8> 
     let mut out = std::mem::ManuallyDrop::new(out);
     unsafe { Vec::from_raw_parts(out.as_mut_ptr() as *mut u8, out.len() * 2, out.capacity() * 2) }
 }
+
+/// Async linear-interpolation resampler for interleaved f32 PCM.
+///
+/// Constructed once per audio stream; `resample()` offloads to a blocking thread so
+/// the Node.js event loop is never blocked.
+#[napi]
+pub struct AudioResampler {
+    channels: usize,
+    in_rate: u32,
+    out_rate: u32,
+}
+
+#[napi]
+impl AudioResampler {
+    #[napi(constructor)]
+    pub fn new(channels: u32, in_rate: u32, out_rate: u32) -> Self {
+        AudioResampler { channels: channels as usize, in_rate, out_rate }
+    }
+
+    #[napi(getter)]
+    pub fn num_channels(&self) -> u32 { self.channels as u32 }
+
+    #[napi(getter)]
+    pub fn in_rate(&self) -> u32 { self.in_rate }
+
+    #[napi(getter)]
+    pub fn out_rate(&self) -> u32 { self.out_rate }
+
+    #[napi]
+    pub async fn resample(&self, pcm: Buffer) -> Buffer {
+        let (channels, in_rate, out_rate) = (self.channels, self.in_rate, self.out_rate);
+        // Fast path: no rate conversion needed, return input as-is.
+        if in_rate == out_rate {
+            return pcm;
+        }
+        napi::tokio::task::spawn_blocking(move || {
+            assert!(pcm.len() % 4 == 0);
+            // SAFETY: PCM arrives as packed f32 LE bytes from JS Float32Array.buffer
+            let input = unsafe {
+                std::slice::from_raw_parts(pcm.as_ptr() as *const f32, pcm.len() / 4)
+            };
+            let in_frames = input.len() / channels;
+            let out_frames = ((in_frames as u64 * out_rate as u64) / in_rate as u64) as usize;
+            let mut output = vec![0f32; out_frames * channels];
+            let ratio = in_frames as f64 / out_frames as f64;
+            for i in 0..out_frames {
+                let pos = i as f64 * ratio;
+                let lo = pos as usize;
+                let frac = (pos - lo as f64) as f32;
+                for c in 0..channels {
+                    let a = input.get(lo * channels + c).copied().unwrap_or(0.0);
+                    let b = input.get((lo + 1) * channels + c).copied().unwrap_or(0.0);
+                    output[i * channels + c] = a + frac * (b - a);
+                }
+            }
+            let mut out = std::mem::ManuallyDrop::new(output);
+            unsafe { Vec::from_raw_parts(out.as_mut_ptr() as *mut u8, out.len() * 4, out.capacity() * 4) }
+        })
+        .await
+        .expect("AudioResampler: thread panicked")
+        .into()
+    }
+}
