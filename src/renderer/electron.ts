@@ -1,7 +1,10 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/25.
 
+import { ok } from "assert";
 import electron, { type Size } from "electron";
+import { stat } from "fs/promises";
 import { platform } from "os";
+import { fileURLToPath } from "url";
 import { pupApp, pupDisableGPU, pupLogLevel } from "../base/constants";
 import { canIUseGPU } from "../base/hwaccel";
 import { logger } from "../base/logging";
@@ -56,7 +59,13 @@ export async function electronOpts() {
 
 const TAG = "[Electron]";
 
+async function assertAppFresh() {
+  const [appStat, selfStat] = await Promise.all([stat(pupApp), stat(fileURLToPath(import.meta.url))]);
+  ok(appStat.mtimeMs >= selfStat.mtimeMs, `app.cjs is stale, run \`bun run build\``);
+}
+
 export async function runElectronApp(size: Size, args: unknown[]) {
+  await assertAppFresh();
   const cmdParts: unknown[] = [];
   const plat = platform();
   if (plat === "linux") {

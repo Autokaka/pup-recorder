@@ -18,8 +18,7 @@ const common: Options = {
   shims: true,
   external: Object.keys(dependencies),
   sourcemap: "inline",
-  // minify: true,
-  minify: false,
+  minify: true,
   treeshake: true,
   banner: { js: `import "source-map-support/register.js";` },
 };
