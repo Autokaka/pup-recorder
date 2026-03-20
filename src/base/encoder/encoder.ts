@@ -45,7 +45,7 @@ const FORMAT_SPECS: Record<VideoFormat, FormatSpec> = {
     pixFmt: AV_PIX_FMT_YUVA420P,
     codecTag: "hvc1",
     globalHeader: true,
-    videoOpts: { preset: "ultrafast", "x265-params": "log-level=2" },
+    videoOpts: { preset: "ultrafast", "x265-params": "log-level=1" },
     audioCodecName: FF_ENCODER_AAC,
     audioSampleFmt: AV_SAMPLE_FMT_FLTP,
     outSampleRate: 44_100,
