@@ -1,5 +1,5 @@
 import 'source-map-support/register.js';
-import { RenderSchema, DEFAULT_WIDTH, DEFAULT_HEIGHT, DEFAULT_FPS, DEFAULT_DURATION, DEFAULT_OUT_DIR, pupUseInnerProxy, parseString, isVideoFormat, noerr, parseNumber, logger, pargs, pup } from './chunk-A5IYURQQ.js';
+import { RenderSchema, DEFAULT_WIDTH, DEFAULT_HEIGHT, DEFAULT_FPS, DEFAULT_DURATION, DEFAULT_OUT_DIR, pupUseInnerProxy, parseString, isVideoFormat, noerr, parseNumber, logger, pargs, pup } from './chunk-CNRKD76V.js';
 import { program } from 'commander';
 
 async function makeCLI(name, callback) {

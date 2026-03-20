@@ -1,6 +1,6 @@
 import 'source-map-support/register.js';
-import { logger, ConcurrencyLimiter, __using, __callDispose } from './chunk-A5IYURQQ.js';
-export { AbortLink, ConcurrencyLimiter, DEFAULT_DURATION, DEFAULT_FPS, DEFAULT_HEIGHT, DEFAULT_OUT_DIR, DEFAULT_WIDTH, Logger, PUP_ARGS_KEY, RenderSchema, VIDEO_FORMATS, exec, isVideoFormat, logger, noerr, pargs, parseNumber, parseString, penv, pup, pupDisableGPU, pupLogLevel, pupUseInnerProxy } from './chunk-A5IYURQQ.js';
+import { logger, ConcurrencyLimiter, __using, __callDispose } from './chunk-CNRKD76V.js';
+export { AbortLink, ConcurrencyLimiter, DEFAULT_DURATION, DEFAULT_FPS, DEFAULT_HEIGHT, DEFAULT_OUT_DIR, DEFAULT_WIDTH, Logger, PUP_ARGS_KEY, RenderSchema, VIDEO_FORMATS, exec, isVideoFormat, logger, noerr, pargs, parseNumber, parseString, penv, pup, pupApp, pupDisableGPU, pupLogLevel, pupPkgRoot, pupUseInnerProxy } from './chunk-CNRKD76V.js';
 import { setTimeout as setTimeout$1 } from 'timers/promises';
 import { Log, FormatContext, FFmpegError, Codec, CodecContext, Rational, SoftwareScaleContext, Frame, Packet, FilterGraph, Filter, FilterInOut } from 'node-av';
 import { AV_LOG_ERROR, AV_LOG_WARNING, AV_SAMPLE_FMT_FLT, AV_PIX_FMT_YUVA420P, AV_SAMPLE_FMT_FLTP, FF_ENCODER_AAC, FF_ENCODER_LIBX265, AV_CODEC_FLAG_GLOBAL_HEADER, AV_PIX_FMT_BGRA, SWS_BILINEAR, AVERROR_EAGAIN, AVERROR_EOF, AV_CHANNEL_LAYOUT_STEREO } from 'node-av/constants';

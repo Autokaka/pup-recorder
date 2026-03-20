@@ -41,8 +41,6 @@ export { AbortQuery as AbortQuery_alias_1 }
 
 export declare function advanceVirtualTime(cdp: Debugger, budget: number): Promise<void>;
 
-export declare const app: string | undefined;
-
 declare type AsyncTask = () => Promise<void> | void;
 export { AsyncTask }
 export { AsyncTask as AsyncTask_alias_1 }
@@ -89,8 +87,6 @@ export declare interface AudioEncoderOptions {
     bitrate: number;
     muxer: FormatMuxer;
 }
-
-export declare const basedir: string;
 
 export declare function buildWrapperHTML(targetURL: string, size: Size): string;
 
@@ -296,6 +292,10 @@ declare const PUP_ARGS_KEY = "--pup-priv-args";
 export { PUP_ARGS_KEY }
 export { PUP_ARGS_KEY as PUP_ARGS_KEY_alias_1 }
 
+declare const pupApp: string;
+export { pupApp }
+export { pupApp as pupApp_alias_1 }
+
 declare const pupDisableGPU: boolean;
 export { pupDisableGPU }
 export { pupDisableGPU as pupDisableGPU_alias_1 }
@@ -310,6 +310,10 @@ declare interface PupOptions extends Partial<RenderOptions> {
 }
 export { PupOptions }
 export { PupOptions as PupOptions_alias_1 }
+
+declare const pupPkgRoot: string;
+export { pupPkgRoot }
+export { pupPkgRoot as pupPkgRoot_alias_1 }
 
 declare type PupProgressCallback = (progress: number) => Promise<void> | void;
 export { PupProgressCallback }

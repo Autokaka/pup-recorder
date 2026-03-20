@@ -4,6 +4,8 @@ export { AbortLink } from './_tsup-dts-rollup.js';
 export { pupLogLevel } from './_tsup-dts-rollup.js';
 export { pupUseInnerProxy } from './_tsup-dts-rollup.js';
 export { pupDisableGPU } from './_tsup-dts-rollup.js';
+export { pupPkgRoot } from './_tsup-dts-rollup.js';
+export { pupApp } from './_tsup-dts-rollup.js';
 export { penv } from './_tsup-dts-rollup.js';
 export { EnvParser } from './_tsup-dts-rollup.js';
 export { Lazy } from './_tsup-dts-rollup.js';

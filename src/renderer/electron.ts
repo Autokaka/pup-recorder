@@ -1,12 +1,8 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/25.
 
-import { ok } from "assert";
 import electron, { type Size } from "electron";
-import { existsSync } from "fs";
 import { platform } from "os";
-import { join } from "path";
-import { basedir } from "../base/basedir";
-import { pupDisableGPU, pupLogLevel } from "../base/constants";
+import { pupApp, pupDisableGPU, pupLogLevel } from "../base/constants";
 import { canIUseGPU } from "../base/hwaccel";
 import { logger } from "../base/logging";
 import { exec, PUP_ARGS_KEY } from "../base/process";
@@ -60,13 +56,6 @@ export async function electronOpts() {
 
 const TAG = "[Electron]";
 
-const appSearchPaths = [
-  join(basedir, "app.cjs"), // process from dist
-  join(basedir, "../../dist/app.cjs"), // process from src
-];
-export const app = appSearchPaths.find(existsSync);
-ok(app, "Cannot load electron app");
-
 export async function runElectronApp(size: Size, args: unknown[]) {
   const cmdParts: unknown[] = [];
   const plat = platform();
@@ -77,7 +66,7 @@ export async function runElectronApp(size: Size, args: unknown[]) {
   const electronArgs = opts.map((a) => `--${a}`);
   const base64Args = Buffer.from(JSON.stringify(args)).toString("base64");
   electronArgs.push(`${PUP_ARGS_KEY}=${base64Args}`);
-  cmdParts.push(electron, ...electronArgs, app);
+  cmdParts.push(electron, ...electronArgs, pupApp);
   const cmd = cmdParts.join(" ");
   logger.debug(TAG, cmd);
   return exec(cmd, {
