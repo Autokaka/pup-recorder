@@ -1,5 +1,3 @@
-import { AV_PIX_FMT_YUV420P } from 'node-av/constants';
-import { AV_PIX_FMT_YUVA420P } from 'node-av/constants';
 import { AV_SAMPLE_FMT_FLT } from 'node-av/constants';
 import { AV_SAMPLE_FMT_FLTP } from 'node-av/constants';
 import { BrowserWindow } from 'electron';
@@ -9,44 +7,17 @@ import type { Debugger } from 'electron';
 import { FFAudioEncoder } from 'node-av/constants';
 import { FFVideoEncoder } from 'node-av/constants';
 import { FormatContext } from 'node-av';
+import { Frame } from 'node-av';
 import type { NativeImage } from 'electron';
 import { Packet } from 'node-av';
-import { Rational } from 'node-av';
 import { Size } from 'electron';
 import { SpawnOptions } from 'child_process';
-import { Stream } from 'node-av';
 import z from 'zod';
-
-declare class AbortLink {
-    readonly query?: AbortQuery | undefined;
-    readonly interval: number;
-    private _callback?;
-    private _aborted?;
-    private _stopped;
-    private constructor();
-    static start(query?: AbortQuery, interval?: number): AbortLink;
-    get aborted(): boolean | undefined;
-    get stopped(): boolean;
-    onAbort(callback: AsyncTask): Promise<void>;
-    wait(...handles: ProcessHandle[]): Promise<unknown>;
-    stop(): void;
-    private tick;
-}
-export { AbortLink }
-export { AbortLink as AbortLink_alias_1 }
-
-declare type AbortQuery = () => Promise<boolean> | boolean;
-export { AbortQuery }
-export { AbortQuery as AbortQuery_alias_1 }
 
 export declare function advanceVirtualTime(cdp: Debugger, budget: number): Promise<void>;
 
-declare type AsyncTask = () => Promise<void> | void;
-export { AsyncTask }
-export { AsyncTask as AsyncTask_alias_1 }
-
 export declare interface AudioCapture {
-    teardown(): Promise<void>;
+    teardown(): Promise<AudioSpec | undefined>;
 }
 
 declare class AudioEncoder_2 implements Disposable {
@@ -61,21 +32,17 @@ declare class AudioEncoder_2 implements Disposable {
     private _bufSrc?;
     private _bufSink?;
     private _inRate?;
-    pts: bigint;
+    private _pts;
     private constructor();
     static create(opts: AudioEncoderOptions): Promise<AudioEncoder_2>;
-    /** Called once when audio-meta arrives with the page's actual sample rate. */
+    /** Must be called once when the page's actual sample rate is known. */
     setInputRate(inSampleRate: number): void;
-    get stream(): Stream;
-    get timeBase(): Rational;
     encode(pcm: Buffer, muxer: FormatMuxer): Promise<void>;
     flush(muxer: FormatMuxer): Promise<void>;
     [Symbol.dispose](): void;
-    /** Drain filter → send to codec → drain codec packets. */
-    private _drainFilter;
-    /** Drain codec packets to muxer. */
-    private _drainCodec;
-    private _disposeGraph;
+    private drainFilter;
+    private drainCodec;
+    private disposeGraph;
 }
 export { AudioEncoder_2 as AudioEncoder }
 
@@ -87,6 +54,16 @@ export declare interface AudioEncoderOptions {
     bitrate: number;
     muxer: FormatMuxer;
 }
+
+declare interface AudioSpec {
+    pcmFile: string;
+    pcmStartMs: number;
+    pcmSampleRate: number;
+}
+export { AudioSpec }
+export { AudioSpec as AudioSpec_alias_1 }
+
+export declare function buildRust(): Promise<void>;
 
 export declare function buildWrapperHTML(targetURL: string, size: Size): string;
 
@@ -126,9 +103,9 @@ declare const DEFAULT_HEIGHT = 1080;
 export { DEFAULT_HEIGHT }
 export { DEFAULT_HEIGHT as DEFAULT_HEIGHT_alias_1 }
 
-declare const DEFAULT_OUT_DIR = "out";
-export { DEFAULT_OUT_DIR }
-export { DEFAULT_OUT_DIR as DEFAULT_OUT_DIR_alias_1 }
+declare const DEFAULT_OUT_FILE = "output.mp4";
+export { DEFAULT_OUT_FILE }
+export { DEFAULT_OUT_FILE as DEFAULT_OUT_FILE_alias_1 }
 
 declare const DEFAULT_WIDTH = 1920;
 export { DEFAULT_WIDTH }
@@ -136,14 +113,29 @@ export { DEFAULT_WIDTH as DEFAULT_WIDTH_alias_1 }
 
 export declare function electronOpts(): Promise<string[]>;
 
+export declare function encodeBgra({ summary, outFile, signal, onProgress }: EncodeBgraOptions): Promise<RenderResult>;
+
+export declare interface EncodeBgraOptions {
+    summary: RenderResult;
+    outFile: string;
+    signal?: AbortSignal;
+    onProgress?: PupProgressCallback;
+}
+
 declare class EncoderPipeline {
-    private readonly _states;
+    private readonly _state;
+    private readonly _sws;
+    private readonly _srcFrame;
+    private readonly _yuvaFrame;
+    private _disposed;
     private constructor();
-    static create({ width, height, fps, formats, outDir, withAudio, videoBitrate, audioBitrate, }: EncoderPipelineOptions): Promise<EncoderPipeline>;
+    static create({ width, height, fps, outFile, withAudio, videoBitrate, audioBitrate, }: EncoderPipelineOptions): Promise<EncoderPipeline>;
     setupAudio(sampleRate: number): void;
-    encodeFrame(bgra: Buffer, _timestampUs: number): Promise<void>;
+    encodeFrame(input: Buffer | Frame): Promise<void>;
     encodeAudio(pcm: Buffer): Promise<void>;
-    finish(): Promise<EncoderResult>;
+    finish(): Promise<string>;
+    [Symbol.asyncDispose](): Promise<void>;
+    private freeShared;
 }
 export { EncoderPipeline }
 export { EncoderPipeline as EncoderPipeline_alias_1 }
@@ -152,18 +144,13 @@ declare interface EncoderPipelineOptions {
     width: number;
     height: number;
     fps: number;
-    formats: VideoFormat[];
-    outDir: string;
+    outFile: string;
     withAudio?: boolean;
     videoBitrate?: number;
     audioBitrate?: number;
 }
 export { EncoderPipelineOptions }
 export { EncoderPipelineOptions as EncoderPipelineOptions_alias_1 }
-
-declare type EncoderResult = Partial<Record<VideoFormat, string>>;
-export { EncoderResult }
-export { EncoderResult as EncoderResult_alias_1 }
 
 declare type EnvParser<T> = (value: unknown) => T;
 export { EnvParser }
@@ -173,6 +160,14 @@ declare function exec(cmd: string, options?: SpawnOptions): ProcessHandle;
 export { exec }
 export { exec as exec_alias_1 }
 
+export declare interface FixedBufferWriter {
+    new (path: string, bufferSize: number, queueDepth?: number): FixedBufferWriter;
+    write(buffer: Buffer): void;
+    close(): Promise<void>;
+}
+
+export declare const FixedBufferWriter: FixedBufferWriter;
+
 declare class FormatMuxer {
     private readonly _ctx;
     private _opened;
@@ -180,7 +175,6 @@ declare class FormatMuxer {
     addStream(codecCtx: CodecContext, codecTag?: string): ReturnType<FormatContext["newStream"]>;
     open(): Promise<void>;
     writePacket(pkt: Packet): Promise<void>;
-    finish(): Promise<void>;
     [Symbol.asyncDispose](): Promise<void>;
 }
 export { FormatMuxer }
@@ -190,11 +184,39 @@ export declare const FRAME_SYNC_MARKER_HEIGHT = 1;
 
 export declare const FRAME_SYNC_MARKER_WIDTH = 32;
 
-export declare function isEmpty(image: NativeImage): boolean;
+/**
+ * Frame drop quality score (0 = perfect, 1 = worst).
+ *
+ * Combines two dimensions:
+ * - Global: overall drop rate across the timeline
+ * - Local: perceptual severity of consecutive drops (bursts)
+ *
+ * Uses complementary multiplication: score = 1 - (1-g)(1-l)
+ */
+export declare interface FrameDropScore {
+    global: number;
+    local: number;
+    jank: number;
+    expected: number;
+    actual: number;
+    maxBurst: number;
+}
 
-declare function isVideoFormat(s: string): s is VideoFormat;
-export { isVideoFormat }
-export { isVideoFormat as isVideoFormat_alias_1 }
+export declare class FrameDropStats {
+    private readonly _fps;
+    private _actual;
+    private _currentBurst;
+    private _bursts;
+    constructor(fps: number);
+    /** Call when a frame is actually written to the encoder. */
+    wrote(count?: number): void;
+    /** Call when a frame is dropped. */
+    dropped(count?: number): void;
+    /** Finalize and return the score. */
+    finalize(): FrameDropScore;
+}
+
+export declare function isEmpty(image: NativeImage): boolean;
 
 declare class Lazy<T> {
     readonly makeValue: () => T;
@@ -296,6 +318,10 @@ declare const pupApp: string;
 export { pupApp }
 export { pupApp as pupApp_alias_1 }
 
+declare const pupDeterministic: boolean;
+export { pupDeterministic }
+export { pupDeterministic as pupDeterministic_alias_1 }
+
 declare const pupDisableGPU: boolean;
 export { pupDisableGPU }
 export { pupDisableGPU as pupDisableGPU_alias_1 }
@@ -305,7 +331,7 @@ export { pupLogLevel }
 export { pupLogLevel as pupLogLevel_alias_1 }
 
 declare interface PupOptions extends Partial<RenderOptions> {
-    cancelQuery?: AbortQuery;
+    signal?: AbortSignal;
     onProgress?: PupProgressCallback;
 }
 export { PupOptions }
@@ -337,7 +363,9 @@ export { RenderOptions as RenderOptions_alias_1 }
 declare interface RenderResult {
     options: RenderOptions;
     written: number;
-    files: VideoFiles;
+    jank: number;
+    outFile: string;
+    audio?: AudioSpec;
 }
 export { RenderResult }
 export { RenderResult as RenderResult_alias_1 }
@@ -347,12 +375,8 @@ declare const RenderSchema: z.ZodObject<{
     width: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
     height: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
     fps: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
-    formats: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodEnum<{
-        mp4: "mp4";
-        webm: "webm";
-    }>>>>;
     withAudio: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
-    outDir: z.ZodDefault<z.ZodOptional<z.ZodString>>;
+    outFile: z.ZodDefault<z.ZodOptional<z.ZodString>>;
     useInnerProxy: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
     deterministic: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
 }, z.core.$strip>;
@@ -371,7 +395,7 @@ export declare function runElectronApp(size: Size, args: unknown[]): Promise<Pro
 
 export declare function setInterceptor({ source, window, useInnerProxy }: NetworkOptions): void;
 
-export declare function setupAudioCapture(pipeline: EncoderPipeline): Promise<AudioCapture>;
+export declare function setupAudioCapture(outDir: string, getVideoTimeMs: () => number): Promise<AudioCapture>;
 
 export declare function shoot(source: string, options: RenderOptions): Promise<void>;
 
@@ -389,23 +413,14 @@ declare function useRetry<Args extends any[], Ret>({ fn, maxAttempts, timeout }:
 export { useRetry }
 export { useRetry as useRetry_alias_1 }
 
-declare const VIDEO_FORMATS: readonly ["mp4", "webm"];
-export { VIDEO_FORMATS }
-export { VIDEO_FORMATS as VIDEO_FORMATS_alias_1 }
-
 declare class VideoEncoder_2 implements Disposable {
     private readonly _ctx;
-    private readonly _sws;
-    private readonly _src;
-    private readonly _dst;
     private readonly _pkt;
     private readonly _stream;
-    pts: bigint;
+    private _pts;
     private constructor();
     static create(opts: VideoEncoderOptions): Promise<VideoEncoder_2>;
-    get stream(): Stream;
-    get timeBase(): Rational;
-    encode(bgra: Buffer, muxer: FormatMuxer): Promise<void>;
+    encode(frame: Frame, muxer: FormatMuxer): Promise<void>;
     flush(muxer: FormatMuxer): Promise<void>;
     [Symbol.dispose](): void;
     private drain;
@@ -417,25 +432,12 @@ export declare interface VideoEncoderOptions {
     height: number;
     fps: number;
     codecName: FFVideoEncoder;
-    pixFmt: typeof AV_PIX_FMT_YUVA420P | typeof AV_PIX_FMT_YUV420P;
     codecTag?: string;
     globalHeader: boolean;
     codecOpts: Record<string, string>;
     bitrate: number;
     muxer: FormatMuxer;
 }
-
-declare interface VideoFiles {
-    cover: string;
-    mp4?: string;
-    webm?: string;
-}
-export { VideoFiles }
-export { VideoFiles as VideoFiles_alias_1 }
-
-declare type VideoFormat = (typeof VIDEO_FORMATS)[number];
-export { VideoFormat }
-export { VideoFormat as VideoFormat_alias_1 }
 
 export declare class WaitableEvent {
     private _promise?;

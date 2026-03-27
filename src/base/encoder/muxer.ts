@@ -1,3 +1,5 @@
+// Created by Autokaka (qq1909698494@gmail.com) on 2026/03/21.
+
 import { CodecContext, FFmpegError, FormatContext, Packet } from "node-av";
 
 export class FormatMuxer {
@@ -28,15 +30,11 @@ export class FormatMuxer {
     FFmpegError.throwIfError(await this._ctx.interleavedWriteFrame(pkt), "interleavedWriteFrame");
   }
 
-  async finish(): Promise<void> {
+  async [Symbol.asyncDispose](): Promise<void> {
     if (!this._opened) return;
     await this._ctx.writeTrailer();
     await this._ctx.closeOutput();
-    this._opened = false;
-  }
-
-  async [Symbol.asyncDispose](): Promise<void> {
-    await this.finish();
     await this._ctx[Symbol.asyncDispose]();
+    this._opened = false;
   }
 }

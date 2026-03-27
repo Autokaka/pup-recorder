@@ -3,6 +3,7 @@
 import { BrowserWindow } from "electron";
 import { logger } from "../base/logging";
 import { useRetry } from "../base/retry";
+import { sleep } from "../base/timing";
 import { buildWrapperHTML } from "./frame_sync";
 import { checkHTML } from "./html_check";
 import { proxiedUrl, setInterceptor, unsetInterceptor } from "./network";
@@ -17,7 +18,13 @@ function waitForFinish(win: BrowserWindow, action: () => void) {
       clearTimeout(timeout);
       err ? reject(err) : resolve();
     };
-    win.webContents.once("did-finish-load", () => done());
+    win.webContents.once("did-stop-loading", () => done());
+    win.webContents.once("did-frame-finish-load", (_, isMainFrame, frameProcessId, frameRoutingId) => {
+      logger.debug(TAG, "did-frame-finish-load:", { isMainFrame, frameProcessId, frameRoutingId });
+    });
+    win.webContents.once("dom-ready", () => {
+      logger.debug(TAG, "dom-ready");
+    });
     win.webContents.once("did-fail-load", (_e, code, desc, url) =>
       done(new Error(`failed to load ${url}: [${code}] ${desc}`)),
     );
@@ -28,27 +35,27 @@ function waitForFinish(win: BrowserWindow, action: () => void) {
   });
 }
 
-async function openWindow(wins: BrowserWindow[], source: string, options: RenderOptions): Promise<BrowserWindow> {
+function waitForDestroy(win: BrowserWindow) {
+  return new Promise<void>((resolve) => {
+    unsetInterceptor(win);
+    win.once("closed", resolve);
+    win.destroy();
+  });
+}
+
+async function openWindow(source: string, options: RenderOptions): Promise<BrowserWindow> {
   checkHTML(source);
 
   const { width, height, useInnerProxy } = options;
+  const src = useInnerProxy ? proxiedUrl(source) : source;
 
-  let src = source;
-  if (useInnerProxy) {
-    src = proxiedUrl(source);
-  }
-
-  wins.forEach((w) => {
-    w.webContents.removeAllListeners();
-    unsetInterceptor(w);
-    logger.debug(TAG, `destroy window:`, w.id);
-  });
   const win = new BrowserWindow({
     width,
     height: height + 1,
     show: false,
     transparent: true,
     backgroundColor: undefined,
+    frame: false,
     webPreferences: {
       offscreen: true,
       backgroundThrottling: false,
@@ -62,35 +69,45 @@ async function openWindow(wins: BrowserWindow[], source: string, options: Render
     },
   });
   setInterceptor({ source, window: win, useInnerProxy });
-  wins.splice(0).forEach((w) => w.destroy());
-  wins.push(win);
 
   win.webContents.on("console-message", ({ level, message, lineNumber, sourceId }) => {
     if (level === "error") {
-      logger.error(TAG, "console:", {
-        message,
-        lineNumber,
-        sourceId,
-        source,
-      });
+      logger.error(TAG, "console:", { message, lineNumber, sourceId, source });
     }
   });
 
   const wrapperHTML = buildWrapperHTML(src, { width, height });
   const dataURL = `data:text/html;charset=utf-8,${encodeURIComponent(wrapperHTML)}`;
-  await waitForFinish(win, () => win.loadURL(dataURL));
+  try {
+    await waitForFinish(win, () => win.loadURL(dataURL));
+  } catch (e) {
+    await waitForDestroy(win);
+    throw e;
+  }
 
   return win;
 }
 
 export async function loadWindow(source: string, options: RenderOptions): Promise<BrowserWindow> {
+  let warmup: BrowserWindow | undefined;
   try {
-    const wins: BrowserWindow[] = [];
-    await useRetry({ fn: openWindow, maxAttempts: 2 })(wins, source, options);
-    return await openWindow(wins, source, options);
+    warmup = await useRetry({ fn: openWindow, maxAttempts: 2 })(source, options);
   } catch (e) {
     const { message, stack } = e as Error;
-    const desc = { source, message, stack };
-    throw new Error(`failed to load window: ${JSON.stringify(desc)}`);
+    throw new Error(`failed to load window: ${JSON.stringify({ source, message, stack })}`);
+  }
+
+  warmup.webContents.removeAllListeners();
+  unsetInterceptor(warmup);
+
+  // warmup for shaders
+  await sleep(2000);
+  await waitForDestroy(warmup);
+
+  try {
+    return await openWindow(source, options);
+  } catch (e) {
+    const { message, stack } = e as Error;
+    throw new Error(`failed to load window: ${JSON.stringify({ source, message, stack })}`);
   }
 }

@@ -1,210 +1,103 @@
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use rayon::{prelude::*, ThreadPool, ThreadPoolBuilder};
-use std::sync::{Arc, Mutex};
+use std::fs::File;
+use std::io::Write;
+use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
+use std::sync::Mutex;
+use std::thread;
 
-/// Async multi-threaded BGRA → I420AP10 converter.
-///
-/// Output layout — each sample is a u16 stored little-endian:
-///   Y : [0,             w*h)           luma
-///   U : [w*h,           w*h + uw*uh)   Cb (4:2:0 sub-sampled)
-///   V : [w*h + uw*uh,   w*h + 2*uw*uh) Cr (4:2:0 sub-sampled)
-///   A : [w*h + 2*uw*uh, 2*w*h + 2*uw*uh) alpha
-///
-/// Color: BT.601 limited range, 10-bit (values in [64, 940] for luma, [64, 960] for chroma).
-///
-/// Design mirrors FixedBufferWriter:
-///   - Pre-allocated input copy buffer pool — avoids per-frame heap allocation
-///   - convert() offloads to a dedicated rayon thread pool, returning a Promise so the
-///     Node.js event loop is never blocked
-///   - Rayon splits the image into horizontal row-pair bands processed in parallel;
-///     the inner Y/A loop is structured for LLVM auto-vectorisation (NEON / SSE2+)
 #[napi]
-pub struct BgraConverter {
-    width: usize,
-    height: usize,
-    out_size: usize,
-    buf_pool: Arc<Mutex<Vec<Vec<u8>>>>,
-    thread_pool: Arc<ThreadPool>,
+pub struct FixedBufferWriter {
+    state: Mutex<Option<WriterState>>,
+    recycle_rx: Mutex<Receiver<Vec<u8>>>,
+    buffer_capacity: usize,
+}
+
+struct WriterState {
+    sender: SyncSender<Vec<u8>>,
+    thread_handle: thread::JoinHandle<std::io::Result<()>>,
 }
 
 #[napi]
-impl BgraConverter {
-    /// `num_threads`: rayon worker count. `undefined` or `0` = use all available cores.
+impl FixedBufferWriter {
     #[napi(constructor)]
-    pub fn new(width: u32, height: u32, num_threads: Option<u32>) -> Self {
-        let (w, h) = (width as usize, height as usize);
-        let (uw, uh) = ((w + 1) / 2, (h + 1) / 2);
-        let out_size = (w * h + uw * uh * 2 + w * h) * 2;
-        let in_size = w * h * 4;
-        let buf_pool = Arc::new(Mutex::new(vec![
-            Vec::with_capacity(in_size),
-            Vec::with_capacity(in_size),
-        ]));
-        let mut builder = ThreadPoolBuilder::new();
-        if let Some(n) = num_threads.filter(|&n| n > 0) {
-            builder = builder.num_threads(n as usize);
-        }
-        let thread_pool = Arc::new(builder.build().expect("failed to build rayon thread pool"));
-        BgraConverter { width: w, height: h, out_size, buf_pool, thread_pool }
+    pub fn new(path: String, buffer_capacity: u32, queue_depth: Option<u32>) -> Result<Self> {
+        let depth = queue_depth.unwrap_or(2) as usize;
+        let capacity = buffer_capacity as usize;
+
+        let (data_tx, data_rx) = sync_channel::<Vec<u8>>(depth);
+        let (recycle_tx, recycle_rx) = sync_channel::<Vec<u8>>(depth + 1);
+
+        let handle = thread::spawn(move || {
+            let mut file = File::create(path)?;
+
+            while let Ok(mut buffer) = data_rx.recv() {
+                file.write_all(&buffer)?;
+                buffer.clear();
+                let _ = recycle_tx.try_send(buffer);
+            }
+
+            file.sync_data()?;
+            Ok(())
+        });
+
+        Ok(FixedBufferWriter {
+            state: Mutex::new(Some(WriterState {
+                sender: data_tx,
+                thread_handle: handle,
+            })),
+            recycle_rx: Mutex::new(recycle_rx),
+            buffer_capacity: capacity,
+        })
     }
 
     #[napi]
-    pub async fn convert(&self, bgra: Buffer) -> Buffer {
-        let (w, h, out_size) = (self.width, self.height, self.out_size);
-        let buf_pool = Arc::clone(&self.buf_pool);
-        let thread_pool = Arc::clone(&self.thread_pool);
-
-        let mut src = buf_pool.lock().unwrap().pop().unwrap_or_else(|| Vec::with_capacity(w * h * 4));
-        src.clear();
-        src.extend_from_slice(bgra.as_ref());
-
-        napi::tokio::task::spawn_blocking(move || {
-            let out = thread_pool.install(|| convert_parallel(&src, w, h, out_size));
-            src.clear();
-            buf_pool.lock().unwrap().push(src);
-            out
-        })
-        .await
-        .expect("BgraConverter: conversion thread panicked")
-        .into()
-    }
-}
-
-fn convert_parallel(src: &[u8], w: usize, h: usize, out_size: usize) -> Vec<u8> {
-    let uw = (w + 1) / 2;
-
-    // SAFETY: every element is written before read (each row-pair covers all of Y, A, U, V for
-    // its rows), so skipping zero-initialisation is safe and saves one ~6 MB memset per frame.
-    let mut out: Vec<u16> = Vec::with_capacity(out_size / 2);
-    unsafe { out.set_len(out_size / 2) };
-
-    // Plane offsets in u16 units
-    let y_off = 0;
-    let u_off = w * h;
-    let v_off = u_off + uw * ((h + 1) / 2);
-    let a_off = v_off + uw * ((h + 1) / 2);
-
-    // SAFETY: each row-pair writes to strictly non-overlapping regions of `out`:
-    //   row-pair rp owns Y[rp*2*w .. (rp*2+2)*w], A[same], U[rp*uw .. (rp+1)*uw], V[same].
-    // Rayon guarantees no two iterations share a row-pair, so all writes are disjoint.
-    // Cast to usize so the value is Send+Sync; the raw pointer is reconstructed inside each closure.
-    let out_addr = out.as_mut_ptr() as usize;
-
-    (0..(h + 1) / 2).into_par_iter().for_each(|rp| {
-        let row0 = rp * 2;
-        let row1 = row0 + 1;
-
-        unsafe {
-            let ptr = out_addr as *mut u16;
-            // --- Y and A planes (one pass per row to maximise cache reuse) ---
-            let rows = if row1 < h { &[row0, row1][..] } else { &[row0][..] };
-            for &row in rows {
-                let src_row = src.as_ptr().add(row * w * 4);
-                let y_row = ptr.add(y_off + row * w);
-                let a_row = ptr.add(a_off + row * w);
-
-                // Inner loop: simple stride-4 gather + linear combination.
-                // With opt-level=3, LLVM vectorises this to NEON (AArch64) or SSE2+ (x86-64).
-                for col in 0..w {
-                    let p = src_row.add(col * 4);
-                    let (b, g, r, a) = (*p as i32, *p.add(1) as i32, *p.add(2) as i32, *p.add(3) as i32);
-                    *y_row.add(col) = ((((66 * r + 129 * g + 25 * b + 128) >> 8) + 16) << 2).clamp(64, 940) as u16;
-                    *a_row.add(col) = (a << 2).min(1023) as u16;
-                }
+    pub fn write(&self, buffer: Buffer) -> Result<()> {
+        let sender = {
+            let guard = self.state.lock().unwrap();
+            if let Some(state) = guard.as_ref() {
+                state.sender.clone()
+            } else {
+                return Ok(());
             }
+        };
 
-            // --- UV planes (one Cb/Cr sample per 2×2 luma block) ---
-            let u_row = ptr.add(u_off + rp * uw);
-            let v_row = ptr.add(v_off + rp * uw);
+        let mut vec = {
+            let recycle = self.recycle_rx.lock().unwrap();
+            recycle
+                .try_recv()
+                .unwrap_or_else(|_| Vec::with_capacity(self.buffer_capacity))
+        };
 
-            for cp in 0..uw {
-                let col0 = cp * 2;
-                let col1 = (col0 + 1).min(w - 1);
-                let mut sum_b = 0i32;
-                let mut sum_g = 0i32;
-                let mut sum_r = 0i32;
-                let mut count = 0i32;
-                for &row in rows {
-                    for &col in &[col0, col1] {
-                        let i = (row * w + col) * 4;
-                        sum_b += src[i] as i32;
-                        sum_g += src[i + 1] as i32;
-                        sum_r += src[i + 2] as i32;
-                        count += 1;
-                    }
-                }
-                let (ab, ag, ar) = (sum_b / count, sum_g / count, sum_r / count);
-                *u_row.add(cp) = ((((-38 * ar - 74 * ag + 112 * ab + 128) >> 8) + 128) << 2).clamp(64, 960) as u16;
-                *v_row.add(cp) = ((((112 * ar - 94 * ag - 18 * ab + 128) >> 8) + 128) << 2).clamp(64, 960) as u16;
-            }
-        }
-    });
+        vec.extend_from_slice(buffer.as_ref());
 
-    // Reinterpret Vec<u16> as Vec<u8> without copying (u16 is already LE on all targets)
-    let mut out = std::mem::ManuallyDrop::new(out);
-    unsafe { Vec::from_raw_parts(out.as_mut_ptr() as *mut u8, out.len() * 2, out.capacity() * 2) }
-}
+        sender
+            .send(vec)
+            .map_err(|e| Error::from_reason(e.to_string()))?;
 
-/// Async linear-interpolation resampler for interleaved f32 PCM.
-///
-/// Constructed once per audio stream; `resample()` offloads to a blocking thread so
-/// the Node.js event loop is never blocked.
-#[napi]
-pub struct AudioResampler {
-    channels: usize,
-    in_rate: u32,
-    out_rate: u32,
-}
-
-#[napi]
-impl AudioResampler {
-    #[napi(constructor)]
-    pub fn new(channels: u32, in_rate: u32, out_rate: u32) -> Self {
-        AudioResampler { channels: channels as usize, in_rate, out_rate }
+        Ok(())
     }
-
-    #[napi(getter)]
-    pub fn num_channels(&self) -> u32 { self.channels as u32 }
-
-    #[napi(getter)]
-    pub fn in_rate(&self) -> u32 { self.in_rate }
-
-    #[napi(getter)]
-    pub fn out_rate(&self) -> u32 { self.out_rate }
 
     #[napi]
-    pub async fn resample(&self, pcm: Buffer) -> Buffer {
-        let (channels, in_rate, out_rate) = (self.channels, self.in_rate, self.out_rate);
-        // Fast path: no rate conversion needed, return input as-is.
-        if in_rate == out_rate {
-            return pcm;
+    pub async fn close(&self) -> Result<()> {
+        let state_opt = {
+            let mut guard = self.state.lock().unwrap();
+            guard.take()
+        };
+
+        if let Some(state) = state_opt {
+            drop(state.sender);
+
+            let handle = state.thread_handle;
+            napi::tokio::task::spawn_blocking(move || -> std::io::Result<()> {
+                handle.join().map_err(|_| {
+                    std::io::Error::new(std::io::ErrorKind::Other, "Thread panicked")
+                })??;
+                Ok(())
+            })
+            .await
+            .map_err(|e: napi::tokio::task::JoinError| Error::from_reason(e.to_string()))??;
         }
-        napi::tokio::task::spawn_blocking(move || {
-            assert!(pcm.len() % 4 == 0);
-            // SAFETY: PCM arrives as packed f32 LE bytes from JS Float32Array.buffer
-            let input = unsafe {
-                std::slice::from_raw_parts(pcm.as_ptr() as *const f32, pcm.len() / 4)
-            };
-            let in_frames = input.len() / channels;
-            let out_frames = ((in_frames as u64 * out_rate as u64) / in_rate as u64) as usize;
-            let mut output = vec![0f32; out_frames * channels];
-            let ratio = in_frames as f64 / out_frames as f64;
-            for i in 0..out_frames {
-                let pos = i as f64 * ratio;
-                let lo = pos as usize;
-                let frac = (pos - lo as f64) as f32;
-                for c in 0..channels {
-                    let a = input.get(lo * channels + c).copied().unwrap_or(0.0);
-                    let b = input.get((lo + 1) * channels + c).copied().unwrap_or(0.0);
-                    output[i * channels + c] = a + frac * (b - a);
-                }
-            }
-            let mut out = std::mem::ManuallyDrop::new(output);
-            unsafe { Vec::from_raw_parts(out.as_mut_ptr() as *mut u8, out.len() * 4, out.capacity() * 4) }
-        })
-        .await
-        .expect("AudioResampler: thread panicked")
-        .into()
+        Ok(())
     }
 }

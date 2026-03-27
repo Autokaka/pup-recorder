@@ -1,36 +1,25 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/03/21.
 
-import { Log } from "node-av";
+import { FFmpegError, Frame, SoftwareScaleContext } from "node-av";
 import {
-  AV_LOG_ERROR,
-  AV_LOG_WARNING,
+  AV_PIX_FMT_BGRA,
   AV_PIX_FMT_YUVA420P,
   AV_SAMPLE_FMT_FLT,
   AV_SAMPLE_FMT_FLTP,
   FF_ENCODER_AAC,
   FF_ENCODER_LIBX265,
+  SWS_BILINEAR,
   type FFAudioEncoder,
   type FFVideoEncoder,
 } from "node-av/constants";
-import { join } from "path";
 
-import type { VideoFormat } from "../../renderer/schema";
 import { ConcurrencyLimiter } from "../limiter";
-import { logger } from "../logging";
 import { AudioEncoder } from "./audio";
 import { FormatMuxer } from "./muxer";
 import { VideoEncoder } from "./video";
 
-Log.setCallback((level, message) => {
-  const msg = message.trimEnd();
-  if (!msg) return;
-  if (level <= AV_LOG_ERROR) logger.error(msg);
-  else if (level <= AV_LOG_WARNING) logger.warn(msg);
-});
-
 interface FormatSpec {
   videoCodecName: FFVideoEncoder;
-  pixFmt: typeof AV_PIX_FMT_YUVA420P;
   codecTag?: string;
   globalHeader: boolean;
   videoOpts: Record<string, string>;
@@ -39,30 +28,17 @@ interface FormatSpec {
   outSampleRate: number;
 }
 
-const FORMAT_SPECS: Record<VideoFormat, FormatSpec> = {
-  mp4: {
-    videoCodecName: FF_ENCODER_LIBX265,
-    pixFmt: AV_PIX_FMT_YUVA420P,
-    codecTag: "hvc1",
-    globalHeader: true,
-    videoOpts: { preset: "ultrafast", "x265-params": "log-level=1" },
-    audioCodecName: FF_ENCODER_AAC,
-    audioSampleFmt: AV_SAMPLE_FMT_FLTP,
-    outSampleRate: 44_100,
-  },
-  webm: {
-    videoCodecName: "libvpx-vp9" as FFVideoEncoder,
-    pixFmt: AV_PIX_FMT_YUVA420P,
-    globalHeader: false,
-    videoOpts: { quality: "realtime", "cpu-used": "8" },
-    audioCodecName: "libopus" as FFAudioEncoder,
-    audioSampleFmt: AV_SAMPLE_FMT_FLT,
-    outSampleRate: 48_000,
-  },
+const MP4_SPEC: FormatSpec = {
+  videoCodecName: FF_ENCODER_LIBX265,
+  codecTag: "hvc1",
+  globalHeader: true,
+  videoOpts: { preset: "ultrafast", "x265-params": "log-level=1" },
+  audioCodecName: FF_ENCODER_AAC,
+  audioSampleFmt: AV_SAMPLE_FMT_FLTP,
+  outSampleRate: 44_100,
 };
 
 interface FormatState {
-  format: VideoFormat;
   outPath: string;
   muxer: FormatMuxer;
   video: VideoEncoder;
@@ -74,103 +50,143 @@ export interface EncoderPipelineOptions {
   width: number;
   height: number;
   fps: number;
-  formats: VideoFormat[];
-  outDir: string;
+  outFile: string;
   withAudio?: boolean;
   videoBitrate?: number;
   audioBitrate?: number;
 }
 
-export type EncoderResult = Partial<Record<VideoFormat, string>>;
-
 export class EncoderPipeline {
-  private readonly _states: FormatState[];
+  private readonly _state: FormatState;
+  private readonly _sws: SoftwareScaleContext;
+  private readonly _srcFrame: Frame;
+  private readonly _yuvaFrame: Frame;
+  private _disposed = false;
 
-  private constructor(states: FormatState[]) {
-    this._states = states;
+  private constructor(state: FormatState, sws: SoftwareScaleContext, srcFrame: Frame, yuvaFrame: Frame) {
+    this._state = state;
+    this._sws = sws;
+    this._srcFrame = srcFrame;
+    this._yuvaFrame = yuvaFrame;
   }
 
   static async create({
     width,
     height,
     fps,
-    formats,
-    outDir,
+    outFile,
     withAudio = false,
     videoBitrate = 8_000_000,
     audioBitrate = 128_000,
   }: EncoderPipelineOptions): Promise<EncoderPipeline> {
-    const states = await Promise.all(
-      formats.map(async (format) => {
-        const spec = FORMAT_SPECS[format];
-        const outPath = join(outDir, `output.${format}`);
-        const muxer = new FormatMuxer(outPath);
+    const outPath = outFile;
+    const muxer = new FormatMuxer(outPath);
 
-        const video = await VideoEncoder.create({
-          width,
-          height,
-          fps,
-          codecName: spec.videoCodecName,
-          pixFmt: spec.pixFmt,
-          codecTag: spec.codecTag,
-          globalHeader: spec.globalHeader,
-          codecOpts: spec.videoOpts,
-          bitrate: videoBitrate,
-          muxer,
-        });
+    const video = await VideoEncoder.create({
+      width,
+      height,
+      fps,
+      codecName: MP4_SPEC.videoCodecName,
+      codecTag: MP4_SPEC.codecTag,
+      globalHeader: MP4_SPEC.globalHeader,
+      codecOpts: MP4_SPEC.videoOpts,
+      bitrate: videoBitrate,
+      muxer,
+    });
 
-        let audio: AudioEncoder | undefined;
-        if (withAudio) {
-          audio = await AudioEncoder.create({
-            outSampleRate: spec.outSampleRate,
-            outSampleFmt: spec.audioSampleFmt,
-            codecName: spec.audioCodecName,
-            globalHeader: spec.globalHeader,
-            bitrate: audioBitrate,
-            muxer,
-          });
-        }
+    let audio: AudioEncoder | undefined;
+    if (withAudio) {
+      audio = await AudioEncoder.create({
+        outSampleRate: MP4_SPEC.outSampleRate,
+        outSampleFmt: MP4_SPEC.audioSampleFmt,
+        codecName: MP4_SPEC.audioCodecName,
+        globalHeader: MP4_SPEC.globalHeader,
+        bitrate: audioBitrate,
+        muxer,
+      });
+    }
 
-        await muxer.open();
-        const limiter = new ConcurrencyLimiter(1);
-        return { format, outPath, muxer, video, audio, limiter } satisfies FormatState;
-      }),
-    );
-    return new EncoderPipeline(states);
+    await muxer.open();
+    const state: FormatState = { outPath, muxer, video, audio, limiter: new ConcurrencyLimiter(1) };
+
+    const sws = new SoftwareScaleContext();
+    sws.getContext(width, height, AV_PIX_FMT_BGRA, width, height, AV_PIX_FMT_YUVA420P, SWS_BILINEAR);
+
+    const srcFrame = new Frame();
+    srcFrame.alloc();
+    srcFrame.format = AV_PIX_FMT_BGRA;
+    srcFrame.width = width;
+    srcFrame.height = height;
+    FFmpegError.throwIfError(srcFrame.getBuffer(0), "srcFrame.getBuffer");
+
+    const yuvaFrame = new Frame();
+    yuvaFrame.alloc();
+    yuvaFrame.format = AV_PIX_FMT_YUVA420P;
+    yuvaFrame.width = width;
+    yuvaFrame.height = height;
+    FFmpegError.throwIfError(yuvaFrame.getBuffer(0), "yuvaFrame.getBuffer");
+
+    return new EncoderPipeline(state, sws, srcFrame, yuvaFrame);
   }
 
   setupAudio(sampleRate: number): void {
-    for (const s of this._states) {
-      s.audio?.setInputRate(sampleRate);
-    }
+    this._state.audio?.setInputRate(sampleRate);
   }
 
-  async encodeFrame(bgra: Buffer, _timestampUs: number): Promise<void> {
-    await Promise.all(this._states.map((s) => s.limiter.schedule(() => s.video.encode(bgra, s.muxer))));
+  async encodeFrame(input: Buffer | Frame): Promise<void> {
+    let yuva: Frame;
+
+    if (input instanceof Frame) {
+      yuva = input;
+    } else {
+      FFmpegError.throwIfError(this._srcFrame.makeWritable(), "srcFrame.makeWritable");
+      FFmpegError.throwIfError(this._srcFrame.fromBuffer(input), "srcFrame.fromBuffer");
+      FFmpegError.throwIfError(await this._sws.scaleFrame(this._yuvaFrame, this._srcFrame), "sws.scaleFrame");
+      yuva = this._yuvaFrame;
+    }
+
+    const s = this._state;
+    await s.limiter.schedule(() => {
+      FFmpegError.throwIfError(yuva.makeWritable(), "yuvaFrame.makeWritable");
+      return s.video.encode(yuva, s.muxer);
+    });
   }
 
   async encodeAudio(pcm: Buffer): Promise<void> {
-    await Promise.all(
-      this._states.map((s) => {
-        if (!s.audio) return Promise.resolve();
-        return s.limiter.schedule(() => s.audio!.encode(pcm, s.muxer));
-      }),
-    );
+    const s = this._state;
+    if (s.audio) await s.limiter.schedule(() => s.audio!.encode(pcm, s.muxer));
   }
 
-  async finish(): Promise<EncoderResult> {
-    const result: EncoderResult = {};
-    await Promise.all(
-      this._states.map(async (s) => {
-        await s.limiter.end();
-        await s.audio?.flush(s.muxer);
-        await s.video.flush(s.muxer);
-        result[s.format] = s.outPath;
-        using _a = s.audio;
-        using _v = s.video;
-        await using _m = s.muxer;
-      }),
-    );
-    return result;
+  async finish(): Promise<string> {
+    const s = this._state;
+    try {
+      await using _m = s.muxer;
+      using _v = s.video;
+      using _a = s.audio;
+      await s.limiter.end();
+      await s.audio?.flush(s.muxer);
+      await s.video.flush(s.muxer);
+    } finally {
+      this.freeShared();
+    }
+    return s.outPath;
+  }
+
+  async [Symbol.asyncDispose](): Promise<void> {
+    if (this._disposed) return;
+    const s = this._state;
+    s.limiter.end().catch(() => {});
+    s.video[Symbol.dispose]();
+    s.audio?.[Symbol.dispose]();
+    await s.muxer[Symbol.asyncDispose]().catch(() => {});
+    this.freeShared();
+  }
+
+  private freeShared(): void {
+    if (this._disposed) return;
+    this._disposed = true;
+    this._srcFrame.free();
+    this._yuvaFrame.free();
+    this._sws[Symbol.dispose]();
   }
 }

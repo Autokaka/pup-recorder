@@ -23,7 +23,7 @@ import {
 } from "node-av/constants";
 import type { FormatMuxer } from "./muxer";
 
-const SAMPLE_FMT_NAME: Record<number, string> = {
+const SAMPLE_FMT_NAME: Partial<Record<number, string>> = {
   [AV_SAMPLE_FMT_FLT]: "flt",
   [AV_SAMPLE_FMT_FLTP]: "fltp",
 };
@@ -52,7 +52,7 @@ export class AudioEncoder implements Disposable {
   private _bufSrc?: FilterContext;
   private _bufSink?: FilterContext;
   private _inRate?: number;
-  pts = 0n;
+  private _pts = 0n;
 
   private constructor(ctx: CodecContext, stream: Stream, outFmt: typeof AV_SAMPLE_FMT_FLT | typeof AV_SAMPLE_FMT_FLTP) {
     this._ctx = ctx;
@@ -60,10 +60,8 @@ export class AudioEncoder implements Disposable {
     this._outRate = ctx.sampleRate;
     this._outFmt = outFmt;
     this._frameSize = ctx.frameSize;
-
     this._pkt = new Packet();
     this._pkt.alloc();
-
     this._filterFrame = new Frame();
     this._filterFrame.alloc();
   }
@@ -89,29 +87,25 @@ export class AudioEncoder implements Disposable {
     return new AudioEncoder(ctx, stream, outSampleFmt);
   }
 
-  /** Called once when audio-meta arrives with the page's actual sample rate. */
+  /** Must be called once when the page's actual sample rate is known. */
   setInputRate(inSampleRate: number): void {
-    this._disposeGraph();
+    this.disposeGraph();
     this._inRate = inSampleRate;
 
     const graph = new FilterGraph();
     graph.alloc();
 
-    // abuffer source: interleaved stereo float from browser
     const abuffer = Filter.getByName("abuffer")!;
     const srcArgs = `sample_rate=${inSampleRate}:sample_fmt=flt:channel_layout=stereo:time_base=1/${inSampleRate}`;
     const bufSrc = graph.createFilter(abuffer, "src", srcArgs);
     if (!bufSrc) throw new Error("Failed to create abuffer");
 
-    // abuffersink
     const abuffersink = Filter.getByName("abuffersink")!;
     const bufSink = graph.createFilter(abuffersink, "sink");
     if (!bufSink) throw new Error("Failed to create abuffersink");
 
-    // Parse filter chain: aformat + asetnsamples
     const fmtName = SAMPLE_FMT_NAME[this._outFmt] ?? "flt";
     const filterDesc = `aformat=sample_fmts=${fmtName}:sample_rates=${this._outRate}:channel_layouts=stereo,asetnsamples=n=${this._frameSize}:p=1`;
-
     const outputs = FilterInOut.createList([{ name: "in", filterCtx: bufSrc, padIdx: 0 }]);
     const inputs = FilterInOut.createList([{ name: "out", filterCtx: bufSink, padIdx: 0 }]);
     FFmpegError.throwIfError(graph.parsePtr(filterDesc, inputs, outputs), "graph.parsePtr");
@@ -122,17 +116,9 @@ export class AudioEncoder implements Disposable {
     this._bufSink = bufSink;
   }
 
-  get stream() {
-    return this._stream;
-  }
-  get timeBase() {
-    return this._ctx.timeBase;
-  }
-
   async encode(pcm: Buffer, muxer: FormatMuxer): Promise<void> {
-    if (!this._bufSrc || !this._bufSink || !this._inRate) return;
+    if (!this._bufSrc || !this._inRate) return;
 
-    // In-place sanitize — mutate source directly, no copy
     const src = new Float32Array(pcm.buffer, pcm.byteOffset, pcm.byteLength / 4);
     for (let i = 0; i < src.length; i++) {
       if (!isFinite(src[i]!)) src[i] = 0;
@@ -144,35 +130,32 @@ export class AudioEncoder implements Disposable {
       format: AV_SAMPLE_FMT_FLT,
       sampleRate: this._inRate,
       channelLayout: AV_CHANNEL_LAYOUT_STEREO,
-      pts: this.pts,
+      pts: this._pts,
       timeBase: { num: 1, den: this._inRate },
     });
-    this.pts += BigInt(nSamples);
+    this._pts += BigInt(nSamples);
 
     FFmpegError.throwIfError(await this._bufSrc.buffersrcAddFrame(frame), "buffersrcAddFrame");
-    await this._drainFilter(muxer);
+    await this.drainFilter(muxer);
   }
 
   async flush(muxer: FormatMuxer): Promise<void> {
-    if (this._bufSrc && this._bufSink) {
-      // Signal EOF to filter graph
+    if (this._bufSrc) {
       await this._bufSrc.buffersrcAddFrame(null);
-      await this._drainFilter(muxer);
+      await this.drainFilter(muxer);
     }
-    // Flush codec
     await this._ctx.sendFrame(null);
-    await this._drainCodec(muxer);
+    await this.drainCodec(muxer);
   }
 
   [Symbol.dispose](): void {
     this._pkt.free();
     this._filterFrame.free();
-    this._disposeGraph();
+    this.disposeGraph();
     this._ctx.freeContext();
   }
 
-  /** Drain filter → send to codec → drain codec packets. */
-  private async _drainFilter(muxer: FormatMuxer): Promise<void> {
+  private async drainFilter(muxer: FormatMuxer): Promise<void> {
     const outFrame = this._filterFrame;
     while (true) {
       const r = await this._bufSink!.buffersinkGetFrame(outFrame);
@@ -180,12 +163,11 @@ export class AudioEncoder implements Disposable {
       FFmpegError.throwIfError(r, "buffersinkGetFrame");
       FFmpegError.throwIfError(await this._ctx.sendFrame(outFrame), "audioCtx.sendFrame");
       outFrame.unref();
-      await this._drainCodec(muxer);
+      await this.drainCodec(muxer);
     }
   }
 
-  /** Drain codec packets to muxer. */
-  private async _drainCodec(muxer: FormatMuxer): Promise<void> {
+  private async drainCodec(muxer: FormatMuxer): Promise<void> {
     const pkt = this._pkt;
     while (true) {
       const r = await this._ctx.receivePacket(pkt);
@@ -198,8 +180,7 @@ export class AudioEncoder implements Disposable {
     }
   }
 
-  private _disposeGraph(): void {
-    // FilterGraph.free() releases all contained filter contexts
+  private disposeGraph(): void {
     this._graph?.[Symbol.dispose]();
     this._graph = undefined;
     this._bufSrc = undefined;

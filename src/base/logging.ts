@@ -1,6 +1,8 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/06.
 
 import { ChildProcess, type Serializable } from "child_process";
+import { Log } from "node-av";
+import { AV_LOG_ERROR, AV_LOG_WARNING } from "node-av/constants";
 import { pupLogLevel } from "./constants";
 
 export interface LoggerLike {
@@ -143,5 +145,13 @@ export class Logger implements LoggerLike {
 }
 
 const logger = new Logger();
+
+// Route ffmpeg native logs through pup's logger.
+Log.setCallback((level, message) => {
+  const msg = message.trimEnd();
+  if (!msg) return;
+  if (level <= AV_LOG_ERROR) logger.error(msg);
+  else if (level <= AV_LOG_WARNING) logger.warn(msg);
+});
 
 export { logger };

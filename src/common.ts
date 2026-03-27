@@ -1,18 +1,17 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/09.
 
 import { program } from "commander";
-import { pupUseInnerProxy } from "./base/constants";
+import { pupDeterministic, pupUseInnerProxy } from "./base/constants";
 import { logger } from "./base/logging";
 import { noerr } from "./base/noerr";
-import { parseNumber, parseString } from "./base/parser";
+import { parseNumber } from "./base/parser";
 import { pargs } from "./base/process";
 import {
   DEFAULT_DURATION,
   DEFAULT_FPS,
   DEFAULT_HEIGHT,
-  DEFAULT_OUT_DIR,
+  DEFAULT_OUT_FILE,
   DEFAULT_WIDTH,
-  isVideoFormat,
   RenderSchema,
   type RenderOptions,
 } from "./renderer/schema";
@@ -28,11 +27,10 @@ export async function makeCLI(name: string, callback: CLICallback) {
     .option("-H, --height <number>", shape.height.description, `${DEFAULT_HEIGHT}`)
     .option("-f, --fps <number>", shape.fps.description, `${DEFAULT_FPS}`)
     .option("-t, --duration <number>", shape.duration.description, `${DEFAULT_DURATION}`)
-    .option("-o, --out-dir <path>", shape.outDir.description, `${DEFAULT_OUT_DIR}`)
-    .option("-F, --formats <formats>", shape.formats.description, "mp4")
+    .option("-o, --out-file <path>", shape.outFile.description, DEFAULT_OUT_FILE)
     .option("-a, --with-audio", shape.withAudio.description, false)
     .option("--use-inner-proxy", shape.useInnerProxy.description, pupUseInnerProxy)
-    .option("-d, --deterministic", shape.deterministic.description, false)
+    .option("-d, --deterministic", shape.deterministic.description, pupDeterministic)
     .action(async (source: string, opts) => {
       try {
         await callback(source, {
@@ -40,14 +38,10 @@ export async function makeCLI(name: string, callback: CLICallback) {
           height: noerr(parseNumber, DEFAULT_HEIGHT)(opts.height),
           fps: noerr(parseNumber, DEFAULT_FPS)(opts.fps),
           duration: noerr(parseNumber, DEFAULT_DURATION)(opts.duration),
-          outDir: opts.outDir ?? DEFAULT_OUT_DIR,
-          formats: parseString(opts.formats)
-            .split(",")
-            .map((s) => s.trim())
-            .filter(isVideoFormat),
+          outFile: opts.outFile ?? DEFAULT_OUT_FILE,
           withAudio: opts.withAudio ?? false,
           useInnerProxy: opts.useInnerProxy ?? pupUseInnerProxy,
-          deterministic: opts.deterministic ?? false,
+          deterministic: opts.deterministic ?? pupDeterministic,
         });
       } catch (e) {
         logger.fatal(e);

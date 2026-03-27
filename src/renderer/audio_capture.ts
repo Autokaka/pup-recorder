@@ -1,14 +1,12 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/03/02.
 
+import type { AudioSpec } from "./schema";
 import { randomUUID } from "crypto";
 import { ipcMain, session } from "electron";
 import { rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import type { EncoderPipeline } from "../base/encoder/encoder";
-import { logger } from "../base/logging";
-
-const TAG = "[AudioCapture]";
+import { FixedBufferWriter } from "../rust/lib";
 
 const AUDIO_CAPTURE_SCRIPT = `
 (function() {
@@ -85,10 +83,10 @@ const AUDIO_CAPTURE_SCRIPT = `
 `;
 
 export interface AudioCapture {
-  teardown(): Promise<void>;
+  teardown(): Promise<AudioSpec | undefined>;
 }
 
-export async function setupAudioCapture(pipeline: EncoderPipeline): Promise<AudioCapture> {
+export async function setupAudioCapture(outDir: string, getVideoTimeMs: () => number): Promise<AudioCapture> {
   const preloadPath = join(tmpdir(), `pup_audio_preload_${randomUUID()}.js`);
   await writeFile(preloadPath, AUDIO_CAPTURE_SCRIPT);
   session.defaultSession.registerPreloadScript({
@@ -97,16 +95,18 @@ export async function setupAudioCapture(pipeline: EncoderPipeline): Promise<Audi
     filePath: preloadPath,
   });
 
+  const pcmFile = join(outDir, "output.pcm");
+  const PCM_CHUNK_SIZE = 4096 * 2 * 4; // 4096 samples × 2ch × f32
+  const writer = new FixedBufferWriter(pcmFile, PCM_CHUNK_SIZE);
+  let pcmStartMs: number | undefined;
+  let pcmSampleRate: number | undefined;
+
   ipcMain.once("audio-meta", (_e, data: { sampleRate: number }) => {
-    pipeline.setupAudio(data.sampleRate);
+    pcmStartMs = getVideoTimeMs();
+    pcmSampleRate = data.sampleRate;
   });
-  ipcMain.on("audio-chunk", async (_e, buffer: Buffer) => {
-    try {
-      await pipeline.encodeAudio(buffer);
-    } catch (e) {
-      logger.error(TAG, "failed to encode audio chunk:", e);
-    }
-  });
+
+  ipcMain.on("audio-chunk", (_e, buffer: Buffer) => writer.write(buffer));
 
   return {
     async teardown() {
@@ -114,6 +114,9 @@ export async function setupAudioCapture(pipeline: EncoderPipeline): Promise<Audi
       ipcMain.removeAllListeners("audio-chunk");
       session.defaultSession.unregisterPreloadScript("pup-audio");
       await rm(preloadPath, { force: true });
+      await writer.close();
+      if (pcmStartMs === undefined || pcmSampleRate === undefined) return undefined;
+      return { pcmFile, pcmStartMs, pcmSampleRate };
     },
   };
 }

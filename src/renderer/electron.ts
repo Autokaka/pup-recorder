@@ -30,10 +30,17 @@ export async function electronOpts() {
     "force-color-profile=srgb",
     "ignore-gpu-blocklist",
     "use-gl=angle",
+    "deterministic-mode",
+    "enable-begin-frame-control",
+    "disable-new-content-rendering-timeout",
+    "run-all-compositor-stages-before-draw",
+    "disable-threaded-animation",
+    "disable-threaded-scrolling",
+    "disable-checker-imaging",
+    "disable-image-animation-resync",
+    "enable-surface-synchronization",
     // 资源控制
-    "num-raster-threads=2",
     "disable-background-networking",
-    "js-flags=--max-old-space-size=4096",
   ];
   if (pupLogLevel < 3) {
     opts.push("log-level=3");
