@@ -1,9 +1,11 @@
 import { AV_SAMPLE_FMT_FLT } from 'node-av/constants';
 import { AV_SAMPLE_FMT_FLTP } from 'node-av/constants';
+import { AVPixelFormat } from 'node-av/constants';
 import { BrowserWindow } from 'electron';
 import { ChildProcess } from 'child_process';
 import { CodecContext } from 'node-av';
 import type { Debugger } from 'electron';
+import { EventEmitter } from 'events';
 import { FFAudioEncoder } from 'node-av/constants';
 import { FFVideoEncoder } from 'node-av/constants';
 import { FormatContext } from 'node-av';
@@ -11,23 +13,30 @@ import { Frame } from 'node-av';
 import type { NativeImage } from 'electron';
 import { Packet } from 'node-av';
 import { Size } from 'electron';
+import { Socket } from 'net';
 import { SpawnOptions } from 'child_process';
 import z from 'zod';
 
 export declare function advanceVirtualTime(cdp: Debugger, budget: number): Promise<void>;
 
 export declare interface AudioCapture {
-    teardown(): Promise<AudioSpec | undefined>;
+    teardown(): Promise<void>;
+}
+
+export declare interface AudioCaptureOptions {
+    encoder: EncoderPipeline;
+    getVideoTimeMs: () => number;
+    onError: (error: Error) => void;
 }
 
 declare class AudioEncoder_2 implements Disposable {
-    private readonly _ctx;
-    private readonly _stream;
-    private readonly _outRate;
-    private readonly _outFmt;
-    private readonly _frameSize;
-    private readonly _pkt;
-    private readonly _filterFrame;
+    private _ctx;
+    private _stream;
+    private _pkt;
+    private _outRate;
+    private _outFmt;
+    private _frameSize;
+    private _filterFrame;
     private _graph?;
     private _bufSrc?;
     private _bufSink?;
@@ -35,14 +44,12 @@ declare class AudioEncoder_2 implements Disposable {
     private _pts;
     private constructor();
     static create(opts: AudioEncoderOptions): Promise<AudioEncoder_2>;
-    /** Must be called once when the page's actual sample rate is known. */
     setInputRate(inSampleRate: number): void;
     encode(pcm: Buffer, muxer: FormatMuxer): Promise<void>;
     flush(muxer: FormatMuxer): Promise<void>;
     [Symbol.dispose](): void;
-    private drainFilter;
+    private drain;
     private drainCodec;
-    private disposeGraph;
 }
 export { AudioEncoder_2 as AudioEncoder }
 
@@ -55,23 +62,27 @@ export declare interface AudioEncoderOptions {
     muxer: FormatMuxer;
 }
 
-declare interface AudioSpec {
-    pcmFile: string;
-    pcmStartMs: number;
-    pcmSampleRate: number;
-}
-export { AudioSpec }
-export { AudioSpec as AudioSpec_alias_1 }
-
 export declare function buildRust(): Promise<void>;
 
-export declare function buildWrapperHTML(targetURL: string, size: Size): string;
+export declare function buildStegoHTML(targetURL: string, size: Size): string;
+
+/**
+ * Builds the JS injector that hooks all time-related globals in the target iframe.
+ * Guards against running in the wrapper (top-level) frame so the stego canvas is unaffected.
+ * Must be injected via Page.addScriptToEvaluateOnNewDocument AND directly into
+ * already-loaded sub-frames.
+ */
+export declare function buildTickInjector(): string;
 
 export declare const canIUseGPU: Promise<boolean>;
 
 export declare function checkHTML(source: string): void;
 
-export declare type CLICallback = (source: string, options: RenderOptions) => Promise<unknown>;
+export declare interface CLIOptions {
+    name: string;
+    defaults: RenderOptions;
+    run: (source: string, options: RenderOptions) => Promise<unknown>;
+}
 
 declare class ConcurrencyLimiter {
     readonly maxConcurrency: number;
@@ -89,7 +100,13 @@ declare class ConcurrencyLimiter {
 export { ConcurrencyLimiter }
 export { ConcurrencyLimiter as ConcurrencyLimiter_alias_1 }
 
-export declare function decodeTimestamp(bitmap: Buffer, size: Size): number | undefined;
+export declare function connectIpc(socketPath: string): Promise<IpcWriter>;
+
+export declare function createIpcServer(socketPath: string): Promise<IpcServer>;
+
+export declare function createStegoURL(src: string, size: Size): string;
+
+export declare function decodeStego(bitmap: Buffer, size: Size): number | undefined;
 
 declare const DEFAULT_DURATION = 5;
 export { DEFAULT_DURATION }
@@ -103,7 +120,7 @@ declare const DEFAULT_HEIGHT = 1080;
 export { DEFAULT_HEIGHT }
 export { DEFAULT_HEIGHT as DEFAULT_HEIGHT_alias_1 }
 
-declare const DEFAULT_OUT_FILE = "output.mp4";
+declare const DEFAULT_OUT_FILE = "output.mov";
 export { DEFAULT_OUT_FILE }
 export { DEFAULT_OUT_FILE as DEFAULT_OUT_FILE_alias_1 }
 
@@ -111,31 +128,34 @@ declare const DEFAULT_WIDTH = 1920;
 export { DEFAULT_WIDTH }
 export { DEFAULT_WIDTH as DEFAULT_WIDTH_alias_1 }
 
+declare const defaultRenderOptions: RenderOptions;
+export { defaultRenderOptions }
+export { defaultRenderOptions as defaultRenderOptions_alias_1 }
+
+export declare function doEject(): string;
+
+export declare function doProcess(timestampMs: number): string;
+
 export declare function electronOpts(): Promise<string[]>;
 
-export declare function encodeBgra({ summary, outFile, signal, onProgress }: EncodeBgraOptions): Promise<RenderResult>;
-
-export declare interface EncodeBgraOptions {
-    summary: RenderResult;
-    outFile: string;
-    signal?: AbortSignal;
-    onProgress?: PupProgressCallback;
-}
-
 declare class EncoderPipeline {
-    private readonly _state;
-    private readonly _sws;
-    private readonly _srcFrame;
-    private readonly _yuvaFrame;
+    private _video;
+    private _audio;
+    private _muxer;
+    private _limiter;
+    private _outFile;
+    private _sws;
+    private _srcFrame;
+    private _dstFrame;
     private _disposed;
     private constructor();
-    static create({ width, height, fps, outFile, withAudio, videoBitrate, audioBitrate, }: EncoderPipelineOptions): Promise<EncoderPipeline>;
+    static create(opts: EncoderPipelineOptions): Promise<EncoderPipeline>;
     setupAudio(sampleRate: number): void;
-    encodeFrame(input: Buffer | Frame): Promise<void>;
+    encodeFrame(input: Buffer): Promise<void>;
     encodeAudio(pcm: Buffer): Promise<void>;
     finish(): Promise<string>;
     [Symbol.asyncDispose](): Promise<void>;
-    private freeShared;
+    private free;
 }
 export { EncoderPipeline }
 export { EncoderPipeline as EncoderPipeline_alias_1 }
@@ -146,8 +166,6 @@ declare interface EncoderPipelineOptions {
     fps: number;
     outFile: string;
     withAudio?: boolean;
-    videoBitrate?: number;
-    audioBitrate?: number;
 }
 export { EncoderPipelineOptions }
 export { EncoderPipelineOptions as EncoderPipelineOptions_alias_1 }
@@ -171,7 +189,7 @@ export declare const FixedBufferWriter: FixedBufferWriter;
 declare class FormatMuxer {
     private readonly _ctx;
     private _opened;
-    constructor(outPath: string);
+    constructor(outPath: string, formatName?: string);
     addStream(codecCtx: CodecContext, codecTag?: string): ReturnType<FormatContext["newStream"]>;
     open(): Promise<void>;
     writePacket(pkt: Packet): Promise<void>;
@@ -216,6 +234,49 @@ export declare class FrameDropStats {
     finalize(): FrameDropScore;
 }
 
+export declare interface IpcDonePayload {
+    written: number;
+    jank: number;
+    outFile: string;
+}
+
+export declare const enum IpcMsgType {
+    PROGRESS = 1,
+    DONE = 2,
+    ERROR = 3
+}
+
+export declare class IpcReader extends EventEmitter<{
+    progress: [value: number];
+    message: [type: IpcMsgType, buffer: Buffer];
+    done: [payload: IpcDonePayload];
+    error: [error: Error];
+    close: [];
+}> {
+    private readonly _socket;
+    private _chunks;
+    private _buffered;
+    constructor(_socket: Socket);
+    private onData;
+    private flush;
+    private peek;
+    private consume;
+}
+
+export declare interface IpcServer {
+    waitForConnection(): Promise<IpcReader>;
+    close(): void;
+}
+
+export declare class IpcWriter {
+    private readonly _socket;
+    constructor(_socket: Socket);
+    writeProgress(value: number): void;
+    writeError(error: string): void;
+    writeDone(payload: IpcDonePayload): void;
+    private write;
+}
+
 export declare function isEmpty(image: NativeImage): boolean;
 
 declare class Lazy<T> {
@@ -229,7 +290,7 @@ declare class Lazy<T> {
 export { Lazy }
 export { Lazy as Lazy_alias_1 }
 
-export declare function loadWindow(source: string, options: RenderOptions): Promise<BrowserWindow>;
+export declare function loadWindow({ source, onCreated, renderer }: WindowOptions): Promise<BrowserWindow>;
 
 declare class Logger implements LoggerLike {
     private _level;
@@ -263,7 +324,7 @@ declare interface LoggerLike {
 export { LoggerLike }
 export { LoggerLike as LoggerLike_alias_1 }
 
-export declare function makeCLI(name: string, callback: CLICallback): Promise<void>;
+export declare function makeCLI(options: CLIOptions): Promise<void>;
 
 export declare interface NetworkOptions {
     source: string;
@@ -287,6 +348,8 @@ declare function parseString(x: unknown): string;
 export { parseString }
 export { parseString as parseString_alias_1 }
 
+export declare function pauseVirtualTime(cdp: Debugger): Promise<void>;
+
 declare function penv<T>(name: string, parser: EnvParser<T>, defaultValue: T): T;
 
 declare function penv<T>(name: string, parser: EnvParser<T>, defaultValue?: T): T | undefined;
@@ -306,7 +369,7 @@ export { ProcessHandle as ProcessHandle_alias_1 }
 
 export declare function proxiedUrl(url: string): string;
 
-declare function pup(source: string, options: PupOptions): Promise<PupResult>;
+declare function pup(source: string, options: Partial<PupOptions>): Promise<PupResult>;
 export { pup }
 export { pup as pup_alias_1 }
 
@@ -325,6 +388,10 @@ export { pupDeterministic as pupDeterministic_alias_1 }
 declare const pupDisableGPU: boolean;
 export { pupDisableGPU }
 export { pupDisableGPU as pupDisableGPU_alias_1 }
+
+declare const pupIpcSocket: string | undefined;
+export { pupIpcSocket }
+export { pupIpcSocket as pupIpcSocket_alias_1 }
 
 declare const pupLogLevel: number;
 export { pupLogLevel }
@@ -354,7 +421,7 @@ declare const pupUseInnerProxy: boolean;
 export { pupUseInnerProxy }
 export { pupUseInnerProxy as pupUseInnerProxy_alias_1 }
 
-export declare function render(source: string, options: RenderOptions): Promise<void>;
+export declare function render(writer: IpcWriter, source: string, options: RenderOptions): Promise<IpcDonePayload>;
 
 declare type RenderOptions = z.infer<typeof RenderSchema>;
 export { RenderOptions }
@@ -365,20 +432,19 @@ declare interface RenderResult {
     written: number;
     jank: number;
     outFile: string;
-    audio?: AudioSpec;
 }
 export { RenderResult }
 export { RenderResult as RenderResult_alias_1 }
 
 declare const RenderSchema: z.ZodObject<{
-    duration: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
-    width: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
-    height: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
-    fps: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
-    withAudio: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
-    outFile: z.ZodDefault<z.ZodOptional<z.ZodString>>;
-    useInnerProxy: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
-    deterministic: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    duration: z.ZodNumber;
+    width: z.ZodNumber;
+    height: z.ZodNumber;
+    fps: z.ZodNumber;
+    withAudio: z.ZodBoolean;
+    outFile: z.ZodString;
+    useInnerProxy: z.ZodBoolean;
+    deterministic: z.ZodBoolean;
 }, z.core.$strip>;
 export { RenderSchema }
 export { RenderSchema as RenderSchema_alias_1 }
@@ -391,21 +457,25 @@ declare interface RetryOptions<Args extends any[], Ret> {
 export { RetryOptions }
 export { RetryOptions as RetryOptions_alias_1 }
 
-export declare function runElectronApp(size: Size, args: unknown[]): Promise<ProcessHandle>;
+export declare function runElectronApp(size: Size, args: unknown[], ipcSocketPath: string): Promise<ProcessHandle>;
 
 export declare function setInterceptor({ source, window, useInnerProxy }: NetworkOptions): void;
 
-export declare function setupAudioCapture(outDir: string, getVideoTimeMs: () => number): Promise<AudioCapture>;
+export declare function setupAudioCapture({ encoder, getVideoTimeMs, onError, }: AudioCaptureOptions): Promise<AudioCapture>;
 
-export declare function shoot(source: string, options: RenderOptions): Promise<void>;
+export declare function setupPupProtocol(): void;
+
+export declare function shoot(writer: IpcWriter, source: string, options: RenderOptions): Promise<IpcDonePayload>;
 
 declare function sleep(ms: number): Promise<void>;
 export { sleep }
 export { sleep as sleep_alias_1 }
 
-export declare function startSync(cdp: Debugger): Promise<any>;
+export declare function startStego(cdp: Debugger): Promise<any>;
 
-export declare function stopSync(cdp: Debugger): Promise<any>;
+export declare function stopStego(cdp: Debugger): Promise<any>;
+
+export declare const TICK_SYMBOL = "__pup_tick__";
 
 export declare function unsetInterceptor(window: BrowserWindow): void;
 
@@ -436,6 +506,8 @@ export declare interface VideoEncoderOptions {
     globalHeader: boolean;
     codecOpts: Record<string, string>;
     bitrate: number;
+    pixelFormat: AVPixelFormat;
+    threadCount?: number;
     muxer: FormatMuxer;
 }
 
@@ -450,6 +522,13 @@ export declare class WaitableEvent {
 export declare interface WaitOptions {
     timeout: number;
     onTimeout?: () => void;
+}
+
+export declare interface WindowOptions {
+    source: string;
+    onCreated?: (window: BrowserWindow) => Promise<void>;
+    renderer: RenderOptions;
+    warmup?: boolean;
 }
 
 export { }

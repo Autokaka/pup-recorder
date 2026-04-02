@@ -17,3 +17,7 @@ export function advanceVirtualTime(cdp: Debugger, budget: number): Promise<void>
     });
   });
 }
+
+export function pauseVirtualTime(cdp: Debugger): Promise<void> {
+  return cdp.sendCommand("Emulation.setVirtualTimePolicy", { policy: "pause" });
+}

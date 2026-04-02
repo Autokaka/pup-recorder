@@ -5,7 +5,7 @@ import type { Debugger, Size } from "electron";
 export const FRAME_SYNC_MARKER_WIDTH = 32;
 export const FRAME_SYNC_MARKER_HEIGHT = 1;
 
-export function buildWrapperHTML(targetURL: string, size: Size): string {
+export function buildStegoHTML(targetURL: string, size: Size): string {
   const { width, height } = size;
   return `<!DOCTYPE html>
 <html>
@@ -80,13 +80,13 @@ export function buildWrapperHTML(targetURL: string, size: Size): string {
         rafId = requestAnimationFrame(updateLoop);
       }
 
-      window.__pup_start_recording__ = () => {
+      window.__pup_start_stego__ = () => {
         startTime = performance.now();
         encodeTimestamp(0);
         requestAnimationFrame(updateLoop);
       };
 
-      window.__pup_stop_recording__ = () => {
+      window.__pup_stop_stego__ = () => {
         if (rafId !== null) {
           cancelAnimationFrame(rafId);
           rafId = null;
@@ -98,7 +98,7 @@ export function buildWrapperHTML(targetURL: string, size: Size): string {
 </html>`;
 }
 
-export function decodeTimestamp(bitmap: Buffer, size: Size): number | undefined {
+export function decodeStego(bitmap: Buffer, size: Size): number | undefined {
   const { width, height } = size;
   if (width < FRAME_SYNC_MARKER_WIDTH || height < 2) {
     return undefined;
@@ -123,14 +123,14 @@ export function decodeTimestamp(bitmap: Buffer, size: Size): number | undefined 
   return timestamp;
 }
 
-export function startSync(cdp: Debugger) {
+export function startStego(cdp: Debugger) {
   return cdp.sendCommand("Runtime.evaluate", {
-    expression: `window.__pup_start_recording__()`,
+    expression: `window.__pup_start_stego__()`,
   });
 }
 
-export function stopSync(cdp: Debugger) {
+export function stopStego(cdp: Debugger) {
   return cdp.sendCommand("Runtime.evaluate", {
-    expression: `window.__pup_stop_recording__()`,
+    expression: `window.__pup_stop_stego__()`,
   });
 }

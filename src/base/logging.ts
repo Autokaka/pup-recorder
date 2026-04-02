@@ -91,16 +91,17 @@ export class Logger implements LoggerLike {
   }
 
   private dispatch(message: string) {
-    if (message.startsWith(DEBUG)) {
-      this.debug(message.slice(DEBUG.length + 1));
-    } else if (message.startsWith(INFO)) {
-      this.info(message.slice(INFO.length + 1));
-    } else if (message.startsWith(WARN)) {
-      this.warn(message.slice(WARN.length + 1));
-    } else if (message.startsWith(ERROR)) {
-      this.error(message.slice(ERROR.length + 1));
+    const msg = message.trimEnd();
+    if (msg.startsWith(DEBUG)) {
+      this.debug(msg.slice(DEBUG.length + 1));
+    } else if (msg.startsWith(INFO)) {
+      this.info(msg.slice(INFO.length + 1));
+    } else if (msg.startsWith(WARN)) {
+      this.warn(msg.slice(WARN.length + 1));
+    } else if (msg.startsWith(ERROR)) {
+      this.error(msg.slice(ERROR.length + 1));
     } else {
-      this.info(message);
+      this.info(msg);
     }
   }
 

@@ -1,47 +1,43 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/09.
 
 import { program } from "commander";
-import { pupDeterministic, pupUseInnerProxy } from "./base/constants";
 import { logger } from "./base/logging";
 import { noerr } from "./base/noerr";
 import { parseNumber } from "./base/parser";
 import { pargs } from "./base/process";
-import {
-  DEFAULT_DURATION,
-  DEFAULT_FPS,
-  DEFAULT_HEIGHT,
-  DEFAULT_OUT_FILE,
-  DEFAULT_WIDTH,
-  RenderSchema,
-  type RenderOptions,
-} from "./renderer/schema";
+import { RenderSchema, type RenderOptions } from "./renderer/schema";
 
-export type CLICallback = (source: string, options: RenderOptions) => Promise<unknown>;
+export interface CLIOptions {
+  name: string;
+  defaults: RenderOptions;
+  run: (source: string, options: RenderOptions) => Promise<unknown>;
+}
 
-export async function makeCLI(name: string, callback: CLICallback) {
+export async function makeCLI(options: CLIOptions) {
   const shape = RenderSchema.shape;
+  const d = options.defaults;
   program
-    .name(name)
+    .name(options.name)
     .argument("<source>", "file://, http(s)://, 或 data: URI")
-    .option("-W, --width <number>", shape.width.description, `${DEFAULT_WIDTH}`)
-    .option("-H, --height <number>", shape.height.description, `${DEFAULT_HEIGHT}`)
-    .option("-f, --fps <number>", shape.fps.description, `${DEFAULT_FPS}`)
-    .option("-t, --duration <number>", shape.duration.description, `${DEFAULT_DURATION}`)
-    .option("-o, --out-file <path>", shape.outFile.description, DEFAULT_OUT_FILE)
-    .option("-a, --with-audio", shape.withAudio.description, false)
-    .option("--use-inner-proxy", shape.useInnerProxy.description, pupUseInnerProxy)
-    .option("-d, --deterministic", shape.deterministic.description, pupDeterministic)
+    .option("-W, --width <number>", shape.width.description, `${d.width}`)
+    .option("-H, --height <number>", shape.height.description, `${d.height}`)
+    .option("-f, --fps <number>", shape.fps.description, `${d.fps}`)
+    .option("-t, --duration <number>", shape.duration.description, `${d.duration}`)
+    .option("-o, --out-file <path>", shape.outFile.description, d.outFile)
+    .option("-a, --with-audio", shape.withAudio.description, d.withAudio)
+    .option("--use-inner-proxy", shape.useInnerProxy.description, d.useInnerProxy)
+    .option("-d, --deterministic", shape.deterministic.description, d.deterministic)
     .action(async (source: string, opts) => {
       try {
-        await callback(source, {
-          width: noerr(parseNumber, DEFAULT_WIDTH)(opts.width),
-          height: noerr(parseNumber, DEFAULT_HEIGHT)(opts.height),
-          fps: noerr(parseNumber, DEFAULT_FPS)(opts.fps),
-          duration: noerr(parseNumber, DEFAULT_DURATION)(opts.duration),
-          outFile: opts.outFile ?? DEFAULT_OUT_FILE,
-          withAudio: opts.withAudio ?? false,
-          useInnerProxy: opts.useInnerProxy ?? pupUseInnerProxy,
-          deterministic: opts.deterministic ?? pupDeterministic,
+        await options.run(source, {
+          width: noerr(parseNumber, d.width)(opts.width),
+          height: noerr(parseNumber, d.height)(opts.height),
+          fps: noerr(parseNumber, d.fps)(opts.fps),
+          duration: noerr(parseNumber, d.duration)(opts.duration),
+          outFile: opts.outFile ?? d.outFile,
+          withAudio: opts.withAudio ?? d.withAudio,
+          useInnerProxy: opts.useInnerProxy ?? d.useInnerProxy,
+          deterministic: opts.deterministic ?? d.deterministic,
         });
       } catch (e) {
         logger.fatal(e);

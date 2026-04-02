@@ -4,9 +4,9 @@ import { BrowserWindow } from "electron";
 import { logger } from "../base/logging";
 import { useRetry } from "../base/retry";
 import { sleep } from "../base/timing";
-import { buildWrapperHTML } from "./frame_sync";
 import { checkHTML } from "./html_check";
 import { proxiedUrl, setInterceptor, unsetInterceptor } from "./network";
+import { createStegoURL } from "./protocol";
 import type { RenderOptions } from "./schema";
 
 const TAG = "[Window]";
@@ -43,10 +43,17 @@ function waitForDestroy(win: BrowserWindow) {
   });
 }
 
-async function openWindow(source: string, options: RenderOptions): Promise<BrowserWindow> {
+export interface WindowOptions {
+  source: string;
+  onCreated?: (window: BrowserWindow) => Promise<void>;
+  renderer: RenderOptions;
+  warmup?: boolean;
+}
+
+async function openWindow({ source, onCreated, renderer, warmup }: WindowOptions): Promise<BrowserWindow> {
   checkHTML(source);
 
-  const { width, height, useInnerProxy } = options;
+  const { width, height, useInnerProxy } = renderer;
   const src = useInnerProxy ? proxiedUrl(source) : source;
 
   const win = new BrowserWindow({
@@ -69,17 +76,18 @@ async function openWindow(source: string, options: RenderOptions): Promise<Brows
     },
   });
   setInterceptor({ source, window: win, useInnerProxy });
+  if (!warmup) {
+    await onCreated?.(win);
+  }
 
   win.webContents.on("console-message", ({ level, message, lineNumber, sourceId }) => {
-    if (level === "error") {
-      logger.error(TAG, "console:", { message, lineNumber, sourceId, source });
-    }
+    const msgs = [TAG, "console:", { message, lineNumber, sourceId, source }];
+    level === "error" ? logger.error(...msgs) : logger.debug(...msgs);
   });
 
-  const wrapperHTML = buildWrapperHTML(src, { width, height });
-  const dataURL = `data:text/html;charset=utf-8,${encodeURIComponent(wrapperHTML)}`;
   try {
-    await waitForFinish(win, () => win.loadURL(dataURL));
+    const url = createStegoURL(src, { width, height });
+    await waitForFinish(win, () => win.loadURL(url));
   } catch (e) {
     await waitForDestroy(win);
     throw e;
@@ -88,10 +96,10 @@ async function openWindow(source: string, options: RenderOptions): Promise<Brows
   return win;
 }
 
-export async function loadWindow(source: string, options: RenderOptions): Promise<BrowserWindow> {
+export async function loadWindow({ source, onCreated, renderer }: WindowOptions): Promise<BrowserWindow> {
   let warmup: BrowserWindow | undefined;
   try {
-    warmup = await useRetry({ fn: openWindow, maxAttempts: 2 })(source, options);
+    warmup = await useRetry({ fn: openWindow, maxAttempts: 2 })({ source, renderer, warmup: true });
   } catch (e) {
     const { message, stack } = e as Error;
     throw new Error(`failed to load window: ${JSON.stringify({ source, message, stack })}`);
@@ -105,7 +113,7 @@ export async function loadWindow(source: string, options: RenderOptions): Promis
   await waitForDestroy(warmup);
 
   try {
-    return await openWindow(source, options);
+    return await openWindow({ source, renderer, onCreated });
   } catch (e) {
     const { message, stack } = e as Error;
     throw new Error(`failed to load window: ${JSON.stringify({ source, message, stack })}`);

@@ -6,9 +6,9 @@ export class FormatMuxer {
   private readonly _ctx: FormatContext;
   private _opened = false;
 
-  constructor(outPath: string) {
+  constructor(outPath: string, formatName?: string) {
     this._ctx = new FormatContext();
-    FFmpegError.throwIfError(this._ctx.allocOutputContext2(null, null, outPath), "allocOutputContext2");
+    FFmpegError.throwIfError(this._ctx.allocOutputContext2(null, formatName ?? null, outPath), "allocOutputContext2");
   }
 
   addStream(codecCtx: CodecContext, codecTag?: string): ReturnType<FormatContext["newStream"]> {

@@ -71,7 +71,7 @@ async function assertAppFresh() {
   ok(appStat.mtimeMs >= selfStat.mtimeMs, `app.cjs is stale, run \`bun run build\``);
 }
 
-export async function runElectronApp(size: Size, args: unknown[]) {
+export async function runElectronApp(size: Size, args: unknown[], ipcSocketPath: string) {
   await assertAppFresh();
   const cmdParts: unknown[] = [];
   const plat = platform();
@@ -88,6 +88,6 @@ export async function runElectronApp(size: Size, args: unknown[]) {
   return exec(cmd, {
     stdio: ["ignore", "pipe", "pipe"],
     shell: plat === "linux",
-    env: { ...process.env, RUST_BACKTRACE: "full" },
+    env: { ...process.env, RUST_BACKTRACE: "full", PUP_IPC_SOCKET: ipcSocketPath },
   });
 }

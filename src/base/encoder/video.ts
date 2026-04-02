@@ -3,9 +3,10 @@
 import { Codec, CodecContext, FFmpegError, Frame, Packet, Rational } from "node-av";
 import {
   AV_CODEC_FLAG_GLOBAL_HEADER,
-  AV_PIX_FMT_YUVA420P,
   AVERROR_EAGAIN,
   AVERROR_EOF,
+  FF_THREAD_SLICE,
+  type AVPixelFormat,
   type FFVideoEncoder,
 } from "node-av/constants";
 import type { FormatMuxer } from "./muxer";
@@ -19,6 +20,8 @@ export interface VideoEncoderOptions {
   globalHeader: boolean;
   codecOpts: Record<string, string>;
   bitrate: number;
+  pixelFormat: AVPixelFormat;
+  threadCount?: number;
   muxer: FormatMuxer;
 }
 
@@ -37,7 +40,7 @@ export class VideoEncoder implements Disposable {
   }
 
   static async create(opts: VideoEncoderOptions): Promise<VideoEncoder> {
-    const { width, height, fps, codecName, codecTag, globalHeader, codecOpts, bitrate, muxer } = opts;
+    const { width, height, fps, codecName, codecTag, globalHeader, codecOpts, bitrate, threadCount, muxer } = opts;
 
     const codec = Codec.findEncoderByName(codecName);
     if (!codec) throw new Error(`Video encoder not found: ${codecName}`);
@@ -47,11 +50,15 @@ export class VideoEncoder implements Disposable {
     ctx.codecId = codec.id;
     ctx.width = width;
     ctx.height = height;
-    ctx.pixelFormat = AV_PIX_FMT_YUVA420P;
+    ctx.pixelFormat = opts.pixelFormat;
     ctx.timeBase = new Rational(1, fps);
     ctx.framerate = new Rational(fps, 1);
     ctx.gopSize = fps * 2;
     ctx.bitRate = BigInt(bitrate);
+    if (threadCount) {
+      ctx.threadCount = threadCount;
+      ctx.threadType = FF_THREAD_SLICE;
+    }
     if (globalHeader) ctx.setFlags(AV_CODEC_FLAG_GLOBAL_HEADER);
     for (const [k, v] of Object.entries(codecOpts)) ctx.setOption(k, v);
     if (codecTag) ctx.codecTag = codecTag;

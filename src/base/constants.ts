@@ -15,3 +15,4 @@ export const pupDeterministic = env["PUP_DETERMINISTIC"] === "1";
 
 export const pupPkgRoot = dirname(require.resolve("pup-recorder/package.json"));
 export const pupApp = join(pupPkgRoot, "dist", "app.cjs");
+export const pupIpcSocket = env["PUP_IPC_SOCKET"];
