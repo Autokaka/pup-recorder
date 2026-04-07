@@ -413,6 +413,10 @@ declare const pupDisableGPU: boolean;
 export { pupDisableGPU }
 export { pupDisableGPU as pupDisableGPU_alias_1 }
 
+declare const pupExperimentalPuppeteer: boolean;
+export { pupExperimentalPuppeteer }
+export { pupExperimentalPuppeteer as pupExperimentalPuppeteer_alias_1 }
+
 declare const pupIpcSocket: string | undefined;
 export { pupIpcSocket }
 export { pupIpcSocket as pupIpcSocket_alias_1 }

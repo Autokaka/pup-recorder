@@ -7,6 +7,7 @@ import { mkdir } from "fs/promises";
 import { platform, tmpdir } from "os";
 import { join } from "path";
 import treeKill from "tree-kill";
+import { pupExperimentalPuppeteer } from "./base/constants";
 import { logger } from "./base/logging";
 import { runElectronApp } from "./renderer/electron";
 import { createIpcServer, type IpcDonePayload } from "./renderer/ipc";
@@ -79,7 +80,7 @@ export async function pup(source: string, options: Partial<PupOptions>): Promise
   const tick = (p: number) => (logger.info(TAG, `${source} progress: ${p}%`), options.onProgress?.(p));
 
   // On Linux + deterministic mode, use Puppeteer inline (no Electron subprocess needed).
-  if (platform() === "linux" && renderOpts.deterministic) {
+  if (platform() === "linux" && renderOpts.deterministic && pupExperimentalPuppeteer) {
     tick(0);
     const summary = await doPuppeteer(source, renderOpts, tick);
     tick(100);
