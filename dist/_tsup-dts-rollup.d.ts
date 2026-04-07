@@ -14,6 +14,7 @@ import type { NativeImage } from 'electron';
 import { Packet } from 'node-av';
 import { Size } from 'electron';
 import { Socket } from 'net';
+import { SoftwareScaleContext } from 'node-av';
 import { SpawnOptions } from 'child_process';
 import z from 'zod';
 
@@ -67,22 +68,44 @@ export declare function buildRust(): Promise<void>;
 export declare function buildStegoHTML(targetURL: string, size: Size): string;
 
 /**
- * Builds the JS injector that hooks all time-related globals in the target iframe.
- * Guards against running in the wrapper (top-level) frame so the stego canvas is unaffected.
+ * Builds the JS injector that hooks all time-related globals in the target frame.
+ * In Electron/stego mode (default), guards against running in the top-level frame.
+ * In Puppeteer mode (skipFrameGuard: true), injects directly into the main document.
  * Must be injected via Page.addScriptToEvaluateOnNewDocument AND directly into
- * already-loaded sub-frames.
+ * already-loaded frames.
  */
-export declare function buildTickInjector(): string;
+export declare function buildTickInjector(opts?: TickInjectorOptions): string;
 
 export declare const canIUseGPU: Promise<boolean>;
 
 export declare function checkHTML(source: string): void;
+
+export declare function chromiumOptions(): Promise<string[]>;
 
 export declare interface CLIOptions {
     name: string;
     defaults: RenderOptions;
     run: (source: string, options: RenderOptions) => Promise<unknown>;
 }
+
+declare class CodecState_2 implements Disposable {
+    readonly src: Frame;
+    readonly dst: Frame;
+    readonly pkt: Packet;
+    private _sws?;
+    private _png?;
+    static create(width: number, height: number): Promise<CodecState_2>;
+    private constructor();
+    /**
+     * Create a fresh PNG decoder context.
+     * The FFmpeg PNG decoder accumulates APNG blending state
+     * across frames, so a shared instance corrupts output when decoding standalone PNGs.
+     */
+    png(): Promise<CodecContext>;
+    get sws(): SoftwareScaleContext;
+    [Symbol.dispose](): void;
+}
+export { CodecState_2 as CodecState }
 
 declare class ConcurrencyLimiter {
     readonly maxConcurrency: number;
@@ -120,7 +143,7 @@ declare const DEFAULT_HEIGHT = 1080;
 export { DEFAULT_HEIGHT }
 export { DEFAULT_HEIGHT as DEFAULT_HEIGHT_alias_1 }
 
-declare const DEFAULT_OUT_FILE = "output.mov";
+declare const DEFAULT_OUT_FILE = "output.mp4";
 export { DEFAULT_OUT_FILE }
 export { DEFAULT_OUT_FILE as DEFAULT_OUT_FILE_alias_1 }
 
@@ -136,6 +159,8 @@ export declare function doEject(): string;
 
 export declare function doProcess(timestampMs: number): string;
 
+export declare function doPuppeteer(source: string, options: RenderOptions, onProgress?: (p: number) => void): Promise<IpcDonePayload>;
+
 export declare function electronOpts(): Promise<string[]>;
 
 declare class EncoderPipeline {
@@ -144,14 +169,13 @@ declare class EncoderPipeline {
     private _muxer;
     private _limiter;
     private _outFile;
-    private _sws;
-    private _srcFrame;
-    private _dstFrame;
+    private _codec;
     private _disposed;
     private constructor();
     static create(opts: EncoderPipelineOptions): Promise<EncoderPipeline>;
     setupAudio(sampleRate: number): void;
-    encodeFrame(input: Buffer): Promise<void>;
+    encodeBGRA(input: Buffer): Promise<void>;
+    encodePNG(pngData: Buffer): Promise<void>;
     encodeAudio(pcm: Buffer): Promise<void>;
     finish(): Promise<string>;
     [Symbol.asyncDispose](): Promise<void>;
@@ -477,6 +501,15 @@ export declare function stopStego(cdp: Debugger): Promise<any>;
 
 export declare const TICK_SYMBOL = "__pup_tick__";
 
+export declare interface TickInjectorOptions {
+    /**
+     * When true, skips the top-frame guard so the injector runs in the main document.
+     * Required for Puppeteer mode where the page is loaded directly (no stego iframe wrapper).
+     * Default: false (Electron/stego mode — only inject in iframes).
+     */
+    skipFrameGuard?: boolean;
+}
+
 export declare function unsetInterceptor(window: BrowserWindow): void;
 
 declare function useRetry<Args extends any[], Ret>({ fn, maxAttempts, timeout }: RetryOptions<Args, Ret>): (...args: Args) => Promise<Ret>;
@@ -507,7 +540,6 @@ export declare interface VideoEncoderOptions {
     codecOpts: Record<string, string>;
     bitrate: number;
     pixelFormat: AVPixelFormat;
-    threadCount?: number;
     muxer: FormatMuxer;
 }
 

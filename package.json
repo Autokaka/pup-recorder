@@ -36,7 +36,8 @@
     "tree-kill": "latest",
     "source-map-support": "latest",
     "systeminformation": "latest",
-    "zod": "latest"
+    "zod": "latest",
+    "puppeteer": "latest"
   },
   "devDependencies": {
     "@microsoft/api-extractor": "latest",

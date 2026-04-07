@@ -36,13 +36,12 @@ export async function shoot(writer: IpcWriter, source: string, options: RenderOp
   const { fps, width, height, duration, withAudio, outFile } = options;
   if (withAudio) logger.warn(TAG, "audio will be ignored on this mode");
 
-  await using pipeline = await EncoderPipeline.create({ width, height, fps, outFile, withAudio: false });
+  await using pipeline = await EncoderPipeline.create({ width, height, fps, outFile, withAudio });
 
   const total = Math.ceil(fps * duration);
   const frameInterval = 1000 / fps;
   let written = 0;
   let progress = 0;
-  let frameError: Error | undefined;
 
   const win = await loadWindow({ source, renderer: options });
   const cdp = win.webContents.debugger;
@@ -60,8 +59,6 @@ export async function shoot(writer: IpcWriter, source: string, options: RenderOp
     await startStego(cdp);
 
     for (let frame = 0; frame < total; frame++) {
-      if (frameError) throw frameError;
-
       const frameMs = (frame + 1) * frameInterval;
       const bitmap = awaitStegoFrame(win, width, height, frameMs - frameInterval / 2);
 
@@ -69,7 +66,7 @@ export async function shoot(writer: IpcWriter, source: string, options: RenderOp
       await iframe?.executeJavaScript(doProcess(frameMs));
 
       win.webContents.startPainting();
-      pipeline.encodeFrame(await bitmap).catch((e) => (frameError ??= e));
+      await pipeline.encodeBGRA(await bitmap);
       written++;
 
       const newProgress = Math.floor((written / total) * 100);
@@ -86,8 +83,8 @@ export async function shoot(writer: IpcWriter, source: string, options: RenderOp
     await pipeline.finish();
   }
 
-  if (frameError || written === 0) {
-    throw frameError ?? new Error("no frames captured");
+  if (written === 0) {
+    throw new Error("no frames captured");
   } else {
     return { written, jank: 0, outFile };
   }

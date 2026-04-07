@@ -1,18 +1,12 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/04/01.
 
-import { cpus } from "os";
-import { FFmpegError, Frame, SoftwareScaleContext } from "node-av";
-import {
-  AV_PIX_FMT_BGRA,
-  AV_PIX_FMT_YUVA420P,
-  AV_SAMPLE_FMT_FLTP,
-  FF_ENCODER_AAC,
-  FF_ENCODER_LIBX265,
-  SWS_BILINEAR,
-} from "node-av/constants";
+import { FFmpegError } from "node-av";
+import { AV_PIX_FMT_YUVA420P, AV_SAMPLE_FMT_FLTP, FF_ENCODER_AAC, FF_ENCODER_LIBX265 } from "node-av/constants";
 
-import { ConcurrencyLimiter } from "../limiter";
+import { ok } from "assert";
+import { ConcurrencyLimiter } from "../limiter.js";
 import { AudioEncoder } from "./audio";
+import { CodecState } from "./codec.js";
 import { FormatMuxer } from "./muxer";
 import { VideoEncoder } from "./video";
 
@@ -33,9 +27,7 @@ export class EncoderPipeline {
     private _muxer: FormatMuxer,
     private _limiter: ConcurrencyLimiter,
     private _outFile: string,
-    private _sws: SoftwareScaleContext,
-    private _srcFrame: Frame,
-    private _dstFrame: Frame,
+    private _codec: CodecState,
   ) {}
 
   static async create(opts: EncoderPipelineOptions): Promise<EncoderPipeline> {
@@ -52,7 +44,6 @@ export class EncoderPipeline {
       codecOpts: { preset: "ultrafast", "x265-params": "log-level=1:bframes=0" },
       bitrate: 8_000_000,
       pixelFormat: AV_PIX_FMT_YUVA420P,
-      threadCount: cpus().length,
       muxer,
     });
 
@@ -69,38 +60,45 @@ export class EncoderPipeline {
     }
 
     await muxer.open();
-    const limiter = new ConcurrencyLimiter(1);
 
-    const srcFrame = new Frame();
-    srcFrame.alloc();
-    srcFrame.format = AV_PIX_FMT_BGRA;
-    srcFrame.width = width;
-    srcFrame.height = height;
-    FFmpegError.throwIfError(srcFrame.getBuffer(0), "srcFrame.getBuffer");
-
-    const sws = new SoftwareScaleContext();
-    sws.getContext(width, height, AV_PIX_FMT_BGRA, width, height, AV_PIX_FMT_YUVA420P, SWS_BILINEAR);
-    const dstFrame = new Frame();
-    dstFrame.alloc();
-    dstFrame.format = AV_PIX_FMT_YUVA420P;
-    dstFrame.width = width;
-    dstFrame.height = height;
-    FFmpegError.throwIfError(dstFrame.getBuffer(0), "dstFrame.getBuffer");
-
-    return new EncoderPipeline(video, audio, muxer, limiter, outFile, sws, srcFrame, dstFrame);
+    return new EncoderPipeline(
+      video,
+      audio,
+      muxer,
+      new ConcurrencyLimiter(1),
+      outFile,
+      await CodecState.create(width, height),
+    );
   }
 
   setupAudio(sampleRate: number): void {
     this._audio?.setInputRate(sampleRate);
   }
 
-  async encodeFrame(input: Buffer): Promise<void> {
+  async encodeBGRA(input: Buffer): Promise<void> {
     await this._limiter.schedule(async () => {
-      FFmpegError.throwIfError(this._srcFrame.makeWritable(), "srcFrame.makeWritable");
-      FFmpegError.throwIfError(this._srcFrame.fromBuffer(input), "srcFrame.fromBuffer");
-      FFmpegError.throwIfError(await this._sws.scaleFrame(this._dstFrame, this._srcFrame), "sws.scaleFrame");
-      FFmpegError.throwIfError(this._dstFrame.makeWritable(), "dstFrame.makeWritable");
-      return this._video.encode(this._dstFrame, this._muxer);
+      const { src, dst, sws } = this._codec;
+      ok(sws, "sws not initialized");
+      FFmpegError.throwIfError(src.makeWritable(), "bgraSrc.makeWritable");
+      FFmpegError.throwIfError(src.fromBuffer(input), "bgraSrc.fromBuffer");
+      FFmpegError.throwIfError(dst.makeWritable(), "bgraDst.makeWritable");
+      FFmpegError.throwIfError(await sws.scaleFrame(dst, src), "bgraSws.scaleFrame");
+      return this._video.encode(dst, this._muxer);
+    });
+  }
+
+  async encodePNG(pngData: Buffer): Promise<void> {
+    await this._limiter.schedule(async () => {
+      const { pkt, src, dst } = this._codec;
+      using png = await this._codec.png();
+      pkt.data = pngData;
+      FFmpegError.throwIfError(await png.sendPacket(pkt), "pngDecoder.sendPacket");
+      pkt.unref();
+      FFmpegError.throwIfError(await png.receiveFrame(src), "pngDecoder.receiveFrame");
+      FFmpegError.throwIfError(dst.makeWritable(), "pngDst.makeWritable");
+      // NOTE(Autokaka): Must access sws here since it depends on src format
+      FFmpegError.throwIfError(await this._codec.sws.scaleFrame(dst, src), "pngSws.scaleFrame");
+      return this._video.encode(dst, this._muxer);
     });
   }
 
@@ -134,8 +132,6 @@ export class EncoderPipeline {
   private free(): void {
     if (this._disposed) return;
     this._disposed = true;
-    this._srcFrame.free();
-    this._dstFrame.free();
-    this._sws[Symbol.dispose]();
+    using _codec = this._codec;
   }
 }

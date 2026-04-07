@@ -3,14 +3,11 @@ import { rm } from "fs/promises";
 import { createRequire } from "module";
 import { join } from "path";
 import { build, type Options } from "tsup";
-import { buildRust } from "./build_rust";
 import { dependencies } from "./package.json";
 
 const require = createRequire(import.meta.url);
 const tsPath = require.resolve("@typescript/native-preview/package.json");
 const tsgo = join(tsPath, "..", "bin", "tsgo.js");
-
-await buildRust();
 
 await $`${tsgo}`;
 await rm("dist", { recursive: true, force: true });

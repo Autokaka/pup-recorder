@@ -2,20 +2,32 @@
 
 export const TICK_SYMBOL = "__pup_tick__";
 
+export interface TickInjectorOptions {
+  /**
+   * When true, skips the top-frame guard so the injector runs in the main document.
+   * Required for Puppeteer mode where the page is loaded directly (no stego iframe wrapper).
+   * Default: false (Electron/stego mode — only inject in iframes).
+   */
+  skipFrameGuard?: boolean;
+}
+
 /**
- * Builds the JS injector that hooks all time-related globals in the target iframe.
- * Guards against running in the wrapper (top-level) frame so the stego canvas is unaffected.
+ * Builds the JS injector that hooks all time-related globals in the target frame.
+ * In Electron/stego mode (default), guards against running in the top-level frame.
+ * In Puppeteer mode (skipFrameGuard: true), injects directly into the main document.
  * Must be injected via Page.addScriptToEvaluateOnNewDocument AND directly into
- * already-loaded sub-frames.
+ * already-loaded frames.
  */
-export function buildTickInjector(): string {
+export function buildTickInjector(opts?: TickInjectorOptions): string {
+  const frameGuard = opts?.skipFrameGuard ? "" : "if (window.self === window.top) return;";
   return `(function() {
-  if (window.self === window.top) return;
+  ${frameGuard}
   if (typeof ${TICK_SYMBOL} !== 'undefined') return;
 
   const orig = {
-    performanceNow: performance.now.bind(performance),
+    Date: Date,
     dateNow: Date.now.bind(Date),
+    performanceNow: performance.now.bind(performance),
     raf: requestAnimationFrame.bind(window),
     caf: cancelAnimationFrame.bind(window),
     setTimeout: setTimeout.bind(window),
@@ -28,9 +40,20 @@ export function buildTickInjector(): string {
   let rafQueue = [];
   const timers = {};
   let nextId = 1;
+  const dateOrigin = new orig.Date();
+  const perfOrigin = orig.performanceNow();
 
-  performance.now = function() { return currMs; };
-  Date.now = function() { return currMs; };
+  performance.now = function() { return perfOrigin + currMs; };
+  Date.now = function() { return dateOrigin.getTime() + currMs; };
+  Date = function() {
+    var O = orig.Date;
+    if (arguments.length === 0) return new O(dateOrigin.getTime() + currMs);
+    return new (Function.prototype.bind.apply(O, [null].concat(Array.prototype.slice.call(arguments))))();
+  };
+  Date.now = function() { return dateOrigin.getTime() + currMs; };
+  Date.parse = orig.Date.parse;
+  Date.UTC = orig.Date.UTC;
+  Date.prototype = orig.Date.prototype;
 
   window.requestAnimationFrame = function(cb) {
     const id = nextId++;
@@ -75,8 +98,8 @@ export function buildTickInjector(): string {
   }
 
   function eject() {
+    Date = orig.Date;
     performance.now = orig.performanceNow;
-    Date.now = orig.dateNow;
     window.requestAnimationFrame = orig.raf;
     window.cancelAnimationFrame = orig.caf;
     window.setTimeout = orig.setTimeout;

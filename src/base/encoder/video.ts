@@ -5,7 +5,6 @@ import {
   AV_CODEC_FLAG_GLOBAL_HEADER,
   AVERROR_EAGAIN,
   AVERROR_EOF,
-  FF_THREAD_SLICE,
   type AVPixelFormat,
   type FFVideoEncoder,
 } from "node-av/constants";
@@ -21,7 +20,6 @@ export interface VideoEncoderOptions {
   codecOpts: Record<string, string>;
   bitrate: number;
   pixelFormat: AVPixelFormat;
-  threadCount?: number;
   muxer: FormatMuxer;
 }
 
@@ -40,7 +38,7 @@ export class VideoEncoder implements Disposable {
   }
 
   static async create(opts: VideoEncoderOptions): Promise<VideoEncoder> {
-    const { width, height, fps, codecName, codecTag, globalHeader, codecOpts, bitrate, threadCount, muxer } = opts;
+    const { width, height, fps, codecName, codecTag, globalHeader, codecOpts, bitrate, muxer } = opts;
 
     const codec = Codec.findEncoderByName(codecName);
     if (!codec) throw new Error(`Video encoder not found: ${codecName}`);
@@ -55,10 +53,6 @@ export class VideoEncoder implements Disposable {
     ctx.framerate = new Rational(fps, 1);
     ctx.gopSize = fps * 2;
     ctx.bitRate = BigInt(bitrate);
-    if (threadCount) {
-      ctx.threadCount = threadCount;
-      ctx.threadType = FF_THREAD_SLICE;
-    }
     if (globalHeader) ctx.setFlags(AV_CODEC_FLAG_GLOBAL_HEADER);
     for (const [k, v] of Object.entries(codecOpts)) ctx.setOption(k, v);
     if (codecTag) ctx.codecTag = codecTag;

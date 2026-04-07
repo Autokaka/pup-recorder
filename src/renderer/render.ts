@@ -29,7 +29,7 @@ export async function render(writer: IpcWriter, source: string, options: RenderO
   let audio: AudioCapture | undefined;
   const scheduleFrame = (frame: Buffer) => {
     written++;
-    encoder.encodeFrame(frame).catch((e) => (encodeError ??= e));
+    encoder.encodeBGRA(frame).catch((e) => (encodeError ??= e));
   };
 
   const paint = (_e: unknown, _r: unknown, image: NativeImage) => {

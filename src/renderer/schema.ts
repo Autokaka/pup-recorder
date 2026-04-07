@@ -7,7 +7,7 @@ export const DEFAULT_WIDTH = 1920;
 export const DEFAULT_HEIGHT = 1080;
 export const DEFAULT_FPS = 30;
 export const DEFAULT_DURATION = 5;
-export const DEFAULT_OUT_FILE = "output.mov";
+export const DEFAULT_OUT_FILE = "output.mp4";
 
 export const RenderSchema = z.object({
   duration: z.number().describe("Duration in seconds"),
