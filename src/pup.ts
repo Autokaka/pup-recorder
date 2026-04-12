@@ -48,6 +48,7 @@ async function runPupApp(source: string, options: AppOptions, socketPath: string
   if (options.withAudio) args.push(`--with-audio`);
   if (options.useInnerProxy) args.push(`--use-inner-proxy`);
   if (options.deterministic) args.push(`--deterministic`);
+  if (options.disableGpu) args.push(`--disable-gpu`);
 
   return runElectronApp(options, args, socketPath);
 }
@@ -69,6 +70,7 @@ export async function pup(source: string, options: Partial<PupOptions>): Promise
     withAudio: options.withAudio ?? d.withAudio,
     useInnerProxy: options.useInnerProxy ?? d.useInnerProxy,
     deterministic: options.deterministic ?? d.deterministic,
+    disableGpu: options.disableGpu ?? d.disableGpu,
     outFile,
   };
 

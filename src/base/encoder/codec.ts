@@ -8,28 +8,13 @@ import {
   CodecContext,
   FF_DECODER_PNG,
   FFmpegError,
-  Frame,
+  type Frame,
   Packet,
   SoftwareScaleContext,
   SWS_BILINEAR,
   type AVPixelFormat,
 } from "node-av";
-
-function makeFrame(width: number, height: number, pixFmt: AVPixelFormat): Frame {
-  const frame = new Frame();
-  frame.alloc();
-  frame.format = pixFmt;
-  frame.width = width;
-  frame.height = height;
-  FFmpegError.throwIfError(frame.getBuffer(0), "frame.getBuffer");
-  return frame;
-}
-
-function makeSWSContext(width: number, height: number, pixFmt: AVPixelFormat) {
-  const sws = new SoftwareScaleContext();
-  sws.getContext(width, height, pixFmt, width, height, AV_PIX_FMT_YUVA420P, SWS_BILINEAR);
-  return sws;
-}
+import { makeFrame, makePacket } from "./shared";
 
 export class CodecState implements Disposable {
   readonly src: Frame;
@@ -48,8 +33,7 @@ export class CodecState implements Disposable {
     this._png = png;
     this.src = makeFrame(width, height, AV_PIX_FMT_BGRA);
     this.dst = makeFrame(width, height, AV_PIX_FMT_YUVA420P);
-    this.pkt = new Packet();
-    this.pkt.alloc();
+    this.pkt = makePacket();
   }
 
   /**
@@ -64,9 +48,29 @@ export class CodecState implements Disposable {
     return png;
   }
 
+  async decodePNG(pngData: Buffer): Promise<Frame> {
+    using png = await this.png();
+    this.pkt.data = pngData;
+    FFmpegError.throwIfError(await png.sendPacket(this.pkt), "pngDecoder.sendPacket");
+    this.pkt.unref();
+    FFmpegError.throwIfError(await png.receiveFrame(this.src), "pngDecoder.receiveFrame");
+    return this.src;
+  }
+
   get sws() {
     if (!this._sws) {
-      this._sws = makeSWSContext(this.src.width, this.src.height, this.src.format as AVPixelFormat);
+      const sws = new SoftwareScaleContext();
+      const fmt = this.src.format as AVPixelFormat;
+      sws.getContext(
+        this.src.width,
+        this.src.height,
+        fmt,
+        this.src.width,
+        this.src.height,
+        AV_PIX_FMT_YUVA420P,
+        SWS_BILINEAR,
+      );
+      this._sws = sws;
     }
     return this._sws;
   }

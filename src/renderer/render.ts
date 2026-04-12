@@ -1,7 +1,7 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/09.
 
 import { type NativeImage } from "electron";
-import { EncoderPipeline } from "../base/encoder/encoder";
+import { EncoderPipeline } from "../base/encoder/pipeline";
 import { FrameDropStats } from "../base/frame_drop";
 import { isEmpty } from "../base/image";
 import { setupAudioCapture, type AudioCapture } from "./audio";
@@ -11,9 +11,9 @@ import { decodeStego, startStego, stopStego } from "./stego";
 import { loadWindow } from "./window";
 
 export async function render(writer: IpcWriter, source: string, options: RenderOptions): Promise<IpcDonePayload> {
-  const { fps, width, height, duration, withAudio, outFile } = options;
+  const { fps, width, height, duration, withAudio, outFile, disableGpu } = options;
 
-  await using encoder = await EncoderPipeline.create({ width, height, fps, outFile, withAudio });
+  await using encoder = await EncoderPipeline.create({ width, height, fps, outFile, withAudio, disableGpu });
 
   const total = Math.ceil(fps * duration);
   const frameInterval = 1000 / fps;

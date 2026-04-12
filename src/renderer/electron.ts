@@ -7,8 +7,8 @@ import { pupApp } from "../base/constants";
 import { logger } from "../base/logging";
 import { exec, PUP_ARGS_KEY } from "../base/process";
 
-export async function electronOpts() {
-  return [...(await chromiumOptions()), "headless=new"];
+export async function electronOpts(disableGpu: boolean) {
+  return [...(await chromiumOptions(disableGpu)), "headless=new"];
 }
 
 const TAG = "[Electron]";
@@ -19,7 +19,7 @@ export async function runElectronApp(size: Size, args: unknown[], ipcSocketPath:
   if (plat === "linux") {
     cmdParts.push(`xvfb-run`, `--auto-servernum`, `--server-args="-screen 0 ${size.width}x${size.height}x24"`);
   }
-  const opts = await electronOpts();
+  const opts = await electronOpts(args.includes("--disable-gpu"));
   const electronArgs = opts.map((a) => `--${a}`);
   const base64Args = Buffer.from(JSON.stringify(args)).toString("base64");
   electronArgs.push(`${PUP_ARGS_KEY}=${base64Args}`);

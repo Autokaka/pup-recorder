@@ -5,7 +5,7 @@ import { ipcMain, session } from "electron";
 import { rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import type { EncoderPipeline } from "../base/encoder/encoder";
+import type { EncoderPipeline } from "../base/encoder/pipeline";
 
 const AUDIO_CAPTURE_SCRIPT = `
 (function() {

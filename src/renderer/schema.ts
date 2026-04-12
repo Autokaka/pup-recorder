@@ -1,7 +1,7 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/06.
 
 import z from "zod";
-import { pupDeterministic, pupUseInnerProxy } from "../base/constants";
+import { pupDeterministic, pupDisableGPU, pupUseInnerProxy } from "../base/constants";
 
 export const DEFAULT_WIDTH = 1920;
 export const DEFAULT_HEIGHT = 1080;
@@ -18,6 +18,7 @@ export const RenderSchema = z.object({
   outFile: z.string().describe("Output mp4 file path"),
   useInnerProxy: z.boolean().describe("Use bilibili inner proxy for resource access"),
   deterministic: z.boolean().describe("Render by frame rather than recording"),
+  disableGpu: z.boolean().describe("Disable GPU rendering, may reduce performance but increase stability"),
 });
 
 export type RenderOptions = z.infer<typeof RenderSchema>;
@@ -38,4 +39,5 @@ export const defaultRenderOptions: RenderOptions = {
   withAudio: false,
   useInnerProxy: pupUseInnerProxy,
   deterministic: pupDeterministic,
+  disableGpu: pupDisableGPU,
 };

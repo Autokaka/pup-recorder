@@ -11,8 +11,8 @@ export * from "./base/process";
 export * from "./base/retry";
 export * from "./base/timing";
 
-export * from "./base/encoder/encoder";
 export * from "./base/encoder/muxer";
+export * from "./base/encoder/pipeline";
 
 export * from "./renderer/schema";
 

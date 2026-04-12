@@ -1,6 +1,18 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/04/01.
 
-import { Codec, CodecContext, FFmpegError, Filter, FilterGraph, FilterInOut, Frame, Packet, Rational } from "node-av";
+import {
+  Codec,
+  CodecContext,
+  FFmpegError,
+  Filter,
+  FilterContext,
+  FilterGraph,
+  FilterInOut,
+  Frame,
+  type Packet,
+  Rational,
+  type Stream,
+} from "node-av";
 import {
   AV_CHANNEL_LAYOUT_STEREO,
   AV_CODEC_FLAG_GLOBAL_HEADER,
@@ -11,9 +23,9 @@ import {
   type FFAudioEncoder,
 } from "node-av/constants";
 import type { FormatMuxer } from "./muxer";
+import { drainPackets, makePacket } from "./shared";
 
 const SAMPLE_FMT_NAME: Partial<Record<number, string>> = { [AV_SAMPLE_FMT_FLT]: "flt", [AV_SAMPLE_FMT_FLTP]: "fltp" };
-type Stream = ReturnType<import("node-av").FormatContext["newStream"]>;
 
 export interface AudioEncoderOptions {
   outSampleRate: number;
@@ -33,8 +45,8 @@ export class AudioEncoder implements Disposable {
   private _frameSize: number;
   private _filterFrame: Frame;
   private _graph?: FilterGraph;
-  private _bufSrc?: any;
-  private _bufSink?: any;
+  private _bufSrc?: FilterContext;
+  private _bufSink?: FilterContext;
   private _inRate?: number;
   private _pts = 0n;
 
@@ -44,8 +56,7 @@ export class AudioEncoder implements Disposable {
     this._outRate = ctx.sampleRate;
     this._outFmt = outFmt;
     this._frameSize = ctx.frameSize;
-    this._pkt = new Packet();
-    this._pkt.alloc();
+    this._pkt = makePacket();
     this._filterFrame = new Frame();
     this._filterFrame.alloc();
   }
@@ -138,15 +149,7 @@ export class AudioEncoder implements Disposable {
     }
   }
 
-  private async drainCodec(muxer: FormatMuxer): Promise<void> {
-    while (true) {
-      const r = await this._ctx.receivePacket(this._pkt);
-      if (r === AVERROR_EAGAIN || r === AVERROR_EOF) break;
-      FFmpegError.throwIfError(r, "audio.receivePacket");
-      this._pkt.streamIndex = this._stream.index;
-      this._pkt.rescaleTs(this._ctx.timeBase, this._stream.timeBase);
-      await muxer.writePacket(this._pkt);
-      this._pkt.unref();
-    }
+  private drainCodec(muxer: FormatMuxer): Promise<void> {
+    return drainPackets(this._ctx, this._pkt, this._stream, muxer);
   }
 }

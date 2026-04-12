@@ -81,6 +81,10 @@ export function buildTickInjector(opts?: TickInjectorOptions): string {
 
   function process(timestampMs) {
     currMs = timestampMs;
+    document.getAnimations().forEach(a => {
+      a.pause();
+      a.currentTime = currMs;
+    });
     const ids = Object.keys(timers);
     for (let i = 0; i < ids.length; i++) {
       const t = timers[ids[i]];

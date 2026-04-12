@@ -1,13 +1,8 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/03/21.
 
-import { Codec, CodecContext, FFmpegError, Frame, Packet, Rational } from "node-av";
-import {
-  AV_CODEC_FLAG_GLOBAL_HEADER,
-  AVERROR_EAGAIN,
-  AVERROR_EOF,
-  type AVPixelFormat,
-  type FFVideoEncoder,
-} from "node-av/constants";
+import { Codec, CodecContext, FFmpegError, Frame, type Packet, Rational, type Stream } from "node-av";
+import { AV_CODEC_FLAG_GLOBAL_HEADER, type AVPixelFormat, type FFVideoEncoder } from "node-av/constants";
+import { drainPackets, makePacket } from "./shared";
 import type { FormatMuxer } from "./muxer";
 
 export interface VideoEncoderOptions {
@@ -22,8 +17,6 @@ export interface VideoEncoderOptions {
   pixelFormat: AVPixelFormat;
   muxer: FormatMuxer;
 }
-
-type Stream = ReturnType<import("node-av").FormatContext["newStream"]>;
 
 export class VideoEncoder implements Disposable {
   private readonly _ctx: CodecContext;
@@ -58,11 +51,8 @@ export class VideoEncoder implements Disposable {
     if (codecTag) ctx.codecTag = codecTag;
     FFmpegError.throwIfError(await ctx.open2(codec, null), "videoCtx.open2");
 
-    const pkt = new Packet();
-    pkt.alloc();
-
     const stream = muxer.addStream(ctx, codecTag);
-    return new VideoEncoder(ctx, pkt, stream);
+    return new VideoEncoder(ctx, makePacket(), stream);
   }
 
   async encode(frame: Frame, muxer: FormatMuxer): Promise<void> {
@@ -82,17 +72,7 @@ export class VideoEncoder implements Disposable {
     this._ctx.freeContext();
   }
 
-  private async drain(muxer: FormatMuxer): Promise<void> {
-    const pkt = this._pkt;
-    while (true) {
-      const r = await this._ctx.receivePacket(pkt);
-      if (r === AVERROR_EAGAIN || r === AVERROR_EOF) break;
-      FFmpegError.throwIfError(r, "video.receivePacket");
-      pkt.streamIndex = this._stream.index;
-      if (pkt.duration === 0n) pkt.duration = 1n;
-      pkt.rescaleTs(this._ctx.timeBase, this._stream.timeBase);
-      await muxer.writePacket(pkt);
-      pkt.unref();
-    }
+  private drain(muxer: FormatMuxer): Promise<void> {
+    return drainPackets(this._ctx, this._pkt, this._stream, muxer);
   }
 }

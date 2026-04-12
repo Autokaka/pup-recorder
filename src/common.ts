@@ -18,15 +18,16 @@ export async function makeCLI(options: CLIOptions) {
   const d = options.defaults;
   program
     .name(options.name)
-    .argument("<source>", "file://, http(s)://, 或 data: URI")
+    .argument("<source>", "file://, http(s)://, or data: URI")
     .option("-W, --width <number>", shape.width.description, `${d.width}`)
     .option("-H, --height <number>", shape.height.description, `${d.height}`)
     .option("-f, --fps <number>", shape.fps.description, `${d.fps}`)
     .option("-t, --duration <number>", shape.duration.description, `${d.duration}`)
     .option("-o, --out-file <path>", shape.outFile.description, d.outFile)
     .option("-a, --with-audio", shape.withAudio.description, d.withAudio)
-    .option("--use-inner-proxy", shape.useInnerProxy.description, d.useInnerProxy)
     .option("-d, --deterministic", shape.deterministic.description, d.deterministic)
+    .option("--use-inner-proxy", shape.useInnerProxy.description, d.useInnerProxy)
+    .option("--disable-gpu", shape.disableGpu.description, d.disableGpu)
     .action(async (source: string, opts) => {
       try {
         await options.run(source, {
@@ -38,6 +39,7 @@ export async function makeCLI(options: CLIOptions) {
           withAudio: opts.withAudio ?? d.withAudio,
           useInnerProxy: opts.useInnerProxy ?? d.useInnerProxy,
           deterministic: opts.deterministic ?? d.deterministic,
+          disableGpu: opts.disableGpu ?? d.disableGpu,
         });
       } catch (e) {
         logger.fatal(e);

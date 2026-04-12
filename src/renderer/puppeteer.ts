@@ -2,9 +2,9 @@
 
 import { mkdir } from "fs/promises";
 import { dirname } from "path";
-import puppeteer, { CDPSession } from "puppeteer";
+import puppeteer from "puppeteer";
 import { chromiumOptions } from "../base/chromium";
-import { EncoderPipeline } from "../base/encoder/encoder";
+import { EncoderPipeline } from "../base/encoder/pipeline";
 import { logger } from "../base/logging";
 import type { IpcDonePayload } from "./ipc";
 import { type RenderOptions } from "./schema";
@@ -17,41 +17,32 @@ export async function doPuppeteer(
   options: RenderOptions,
   onProgress?: (p: number) => void,
 ): Promise<IpcDonePayload> {
-  const { fps, width, height, duration, outFile } = options;
+  const { fps, width, height, duration, outFile, disableGpu } = options;
   if (options.withAudio) logger.warn(TAG, "audio capture is not supported in Puppeteer mode");
 
   const total = Math.ceil(fps * duration);
   const frameInterval = 1000 / fps;
 
   await mkdir(dirname(outFile), { recursive: true });
-  await using pipeline = await EncoderPipeline.create({ width, height, fps, outFile });
+  await using pipeline = await EncoderPipeline.create({ width, height, fps, outFile, disableGpu });
 
   const browser = await puppeteer.launch({
     headless: "shell",
     defaultViewport: { width, height },
-    args: (await chromiumOptions()).map((a) => `--${a}`),
+    args: (await chromiumOptions(disableGpu)).map((a) => `--${a}`),
   });
 
   try {
     const page = (await browser.pages())[0]!;
 
+    const session = await page.createCDPSession();
     // Page.addScriptToEvaluateOnNewDocument must use the page's own CDP client.
     // HeadlessExperimental uses a separate session (see puppeteer-capture).
     // @ts-expect-error — _client() is a private Puppeteer API not exposed in type declarations
-    const pageClient = page._client() as CDPSession;
-    const session = await page.createCDPSession();
+    const pageClient = page._client() as typeof session;
 
     const tickScript = buildTickInjector({ skipFrameGuard: true });
     const { identifier } = await pageClient.send("Page.addScriptToEvaluateOnNewDocument", { source: tickScript });
-
-    // Collect CSS/Web animation IDs so we can seek them per-frame.
-    // On Chrome 146+, beginFrame's frameTimeTicks no longer drives the compositor
-    // animation clock, so Animation.seekAnimations is needed for smooth output.
-    const animationIds: string[] = [];
-    session.on("Animation.animationStarted", (event: { animation: { id: string } }) => {
-      animationIds.push(event.animation.id);
-    });
-    await session.send("Animation.enable");
 
     try {
       await page.goto(source, { waitUntil: "networkidle0", timeout: 30_000 });
@@ -78,16 +69,7 @@ export async function doPuppeteer(
       for (let i = 0; i < total; i++) {
         captureTimestamp += frameInterval;
 
-        await Promise.all(
-          page.frames().map((frame) => frame.evaluate(doProcess(captureTimestamp))),
-        );
-
-        if (animationIds.length > 0) {
-          await session.send("Animation.seekAnimations", {
-            animations: animationIds,
-            currentTime: captureTimestamp,
-          });
-        }
+        await Promise.all(page.frames().map((frame) => frame.evaluate(doProcess(captureTimestamp))));
 
         const result = await session.send("HeadlessExperimental.beginFrame", {
           frameTimeTicks,
@@ -120,7 +102,6 @@ export async function doPuppeteer(
       return { written, jank: 0, outFile };
     } finally {
       await session.send("HeadlessExperimental.disable");
-      await session.send("Animation.disable");
       await pageClient.send("Page.removeScriptToEvaluateOnNewDocument", { identifier });
       await session.detach();
     }

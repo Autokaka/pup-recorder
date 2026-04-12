@@ -1,0 +1,68 @@
+// Created by Autokaka (qq1909698494@gmail.com) on 2026/04/13.
+
+import { HardwareContext } from "node-av/api";
+import {
+  AV_PIX_FMT_YUVA420P,
+  FF_ENCODER_LIBX265,
+  FF_HWDEVICE_TYPE_CUDA,
+  FF_HWDEVICE_TYPE_VIDEOTOOLBOX,
+} from "node-av/constants";
+
+import { logger } from "../logging";
+import { CodecState } from "./codec";
+import type { FormatMuxer } from "./muxer";
+import { NvencDualLayerEncoder } from "./nvenc";
+import { VideoEncoder } from "./video";
+import { VideoToolboxEncoder } from "./videotoolbox";
+
+const TAG = "[Encoder]";
+
+export type HwEncoder = VideoToolboxEncoder | NvencDualLayerEncoder;
+
+export interface VideoSetup {
+  video?: VideoEncoder;
+  hwVideo?: HwEncoder;
+  codec?: CodecState;
+  hw?: HardwareContext;
+}
+
+export interface VideoFactoryOptions {
+  width: number;
+  height: number;
+  fps: number;
+  bitrate?: number;
+  disableGpu?: boolean;
+}
+
+export async function createVideoEncoder(opts: VideoFactoryOptions, muxer: FormatMuxer): Promise<VideoSetup> {
+  const { width, height, fps, bitrate = 8_000_000, disableGpu = false } = opts;
+  const hw = disableGpu ? undefined : (HardwareContext.auto() ?? undefined);
+
+  if (hw?.deviceTypeName === FF_HWDEVICE_TYPE_VIDEOTOOLBOX && hw.getEncoderCodec("hevc")) {
+    logger.debug(TAG, "using VideoToolbox HEVC alpha encoder");
+    const hwVideo = await VideoToolboxEncoder.create({ width, height, fps, hw, bitrate, muxer });
+    return { hwVideo, hw };
+  }
+
+  if (hw?.deviceTypeName === FF_HWDEVICE_TYPE_CUDA && hw.getEncoderCodec("hevc")) {
+    logger.debug(TAG, "using NVENC dual-layer HEVC alpha encoder");
+    const hwVideo = await NvencDualLayerEncoder.create({ width, height, fps, hw, bitrate, muxer });
+    return { hwVideo, hw };
+  }
+
+  logger.debug(TAG, "using software libx265 HEVC alpha encoder");
+  hw?.dispose();
+  const video = await VideoEncoder.create({
+    width,
+    height,
+    fps,
+    codecName: FF_ENCODER_LIBX265,
+    codecTag: "hvc1",
+    globalHeader: true,
+    codecOpts: { preset: "medium", "x265-params": "log-level=1:bframes=3:pools=+:frame-threads=0" },
+    bitrate,
+    pixelFormat: AV_PIX_FMT_YUVA420P,
+    muxer,
+  });
+  return { video, codec: await CodecState.create(width, height) };
+}

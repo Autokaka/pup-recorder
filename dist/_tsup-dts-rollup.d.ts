@@ -10,15 +10,19 @@ import { FFAudioEncoder } from 'node-av/constants';
 import { FFVideoEncoder } from 'node-av/constants';
 import { FormatContext } from 'node-av';
 import { Frame } from 'node-av';
+import { HardwareContext } from 'node-av/api';
 import type { NativeImage } from 'electron';
 import { Packet } from 'node-av';
 import { Size } from 'electron';
 import { Socket } from 'net';
 import { SoftwareScaleContext } from 'node-av';
 import { SpawnOptions } from 'child_process';
+import { Stream } from 'node-av';
 import z from 'zod';
 
 export declare function advanceVirtualTime(cdp: Debugger, budget: number): Promise<void>;
+
+export declare const ANNEX_B_START_CODE: Buffer<ArrayBuffer>;
 
 export declare interface AudioCapture {
     teardown(): Promise<void>;
@@ -63,6 +67,12 @@ export declare interface AudioEncoderOptions {
     muxer: FormatMuxer;
 }
 
+/**
+ * Build alpha_channel_info SEI message (payloadType=165).
+ * Layout from x265 SEIAlphaChannelInfo::writeSEI.
+ */
+export declare function buildAlphaChannelInfoSEI(): Buffer;
+
 export declare function buildRust(): Promise<void>;
 
 export declare function buildStegoHTML(targetURL: string, size: Size): string;
@@ -76,11 +86,18 @@ export declare function buildStegoHTML(targetURL: string, size: Size): string;
  */
 export declare function buildTickInjector(opts?: TickInjectorOptions): string;
 
+/**
+ * Build unified extradata: base VPS (patched for alpha) + interleaved SPS/PPS.
+ * Alpha SPS/PPS follow their base counterparts so the HVCC serializer
+ * groups them into the same NAL array (required for multi-layer).
+ */
+export declare function buildUnifiedExtradata(baseExtradata: Buffer, alphaExtradata: Buffer): Buffer;
+
 export declare const canIUseGPU: Promise<boolean>;
 
 export declare function checkHTML(source: string): void;
 
-export declare function chromiumOptions(): Promise<string[]>;
+export declare function chromiumOptions(disableGpu: boolean): Promise<string[]>;
 
 export declare interface CLIOptions {
     name: string;
@@ -102,6 +119,7 @@ declare class CodecState_2 implements Disposable {
      * across frames, so a shared instance corrupts output when decoding standalone PNGs.
      */
     png(): Promise<CodecContext>;
+    decodePNG(pngData: Buffer): Promise<Frame>;
     get sws(): SoftwareScaleContext;
     [Symbol.dispose](): void;
 }
@@ -111,13 +129,15 @@ declare class ConcurrencyLimiter {
     readonly maxConcurrency: number;
     private _active;
     private _queue;
-    private _ended;
+    private _signals;
+    private _resolve?;
     constructor(maxConcurrency: number);
     get active(): number;
     get pending(): number;
     get stats(): string;
-    schedule<T>(fn: () => Promise<T>): Promise<T>;
-    end(): Promise<void>;
+    schedule<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T>;
+    drain(): Promise<void>;
+    private flush;
     private next;
 }
 export { ConcurrencyLimiter }
@@ -128,6 +148,10 @@ export declare function connectIpc(socketPath: string): Promise<IpcWriter>;
 export declare function createIpcServer(socketPath: string): Promise<IpcServer>;
 
 export declare function createStegoURL(src: string, size: Size): string;
+
+export declare function createVideoEncoder(opts: VideoFactoryOptions, muxer: FormatMuxer): Promise<VideoSetup>;
+
+export declare function debounce<T extends (...args: unknown[]) => void>(fn: T, delay?: number): T;
 
 export declare function decodeStego(bitmap: Buffer, size: Size): number | undefined;
 
@@ -161,15 +185,14 @@ export declare function doProcess(timestampMs: number): string;
 
 export declare function doPuppeteer(source: string, options: RenderOptions, onProgress?: (p: number) => void): Promise<IpcDonePayload>;
 
-export declare function electronOpts(): Promise<string[]>;
+export declare function drainPackets(ctx: CodecContext, pkt: Packet, stream: Stream, muxer: FormatMuxer): Promise<void>;
+
+export declare function electronOpts(disableGpu: boolean): Promise<string[]>;
+
+export declare function encodeNalHeader(type: number, layerId: number, temporalId: number): [number, number];
 
 declare class EncoderPipeline {
-    private _video;
-    private _audio;
-    private _muxer;
-    private _limiter;
-    private _outFile;
-    private _codec;
+    private _s;
     private _disposed;
     private constructor();
     static create(opts: EncoderPipelineOptions): Promise<EncoderPipeline>;
@@ -180,6 +203,7 @@ declare class EncoderPipeline {
     finish(): Promise<string>;
     [Symbol.asyncDispose](): Promise<void>;
     private free;
+    private bgraFrame;
 }
 export { EncoderPipeline }
 export { EncoderPipeline as EncoderPipeline_alias_1 }
@@ -190,6 +214,7 @@ declare interface EncoderPipelineOptions {
     fps: number;
     outFile: string;
     withAudio?: boolean;
+    disableGpu?: boolean;
 }
 export { EncoderPipelineOptions }
 export { EncoderPipelineOptions as EncoderPipelineOptions_alias_1 }
@@ -257,6 +282,20 @@ export declare class FrameDropStats {
     /** Finalize and return the score. */
     finalize(): FrameDropScore;
 }
+
+export declare type HwEncoder = VideoToolboxEncoder | NvencDualLayerEncoder;
+
+export declare interface HwVideoEncoderOptions {
+    width: number;
+    height: number;
+    fps: number;
+    hw: HardwareContext;
+    bitrate: number;
+    muxer: FormatMuxer;
+}
+
+/** Interleave base and alpha NALs for a single frame. */
+export declare function interleaveAccessUnits(baseNals: NalUnit[], alphaNals: NalUnit[]): Buffer;
 
 export declare interface IpcDonePayload {
     written: number;
@@ -350,6 +389,18 @@ export { LoggerLike as LoggerLike_alias_1 }
 
 export declare function makeCLI(options: CLIOptions): Promise<void>;
 
+export declare function makeFrame(width: number, height: number, pixFmt: AVPixelFormat): Frame;
+
+export declare function makePacket(): Packet;
+
+export declare const NAL_HEADER_SIZE = 2;
+
+export declare interface NalUnit {
+    type: number;
+    layerId: number;
+    data: Buffer;
+}
+
 export declare interface NetworkOptions {
     source: string;
     window: BrowserWindow;
@@ -359,6 +410,23 @@ export declare interface NetworkOptions {
 declare function noerr<Fn extends (...args: any[]) => any, D>(fn: Fn, defaultValue: D): (...args: Parameters<Fn>) => ReturnType<Fn> | D;
 export { noerr }
 export { noerr as noerr_alias_1 }
+
+export declare class NvencDualLayerEncoder implements Disposable {
+    private _s;
+    private _seiBuffer;
+    private _pts;
+    private _seiInjected;
+    private _alphaBuf?;
+    private _alphaFrame?;
+    private constructor();
+    static create(opts: HwVideoEncoderOptions): Promise<NvencDualLayerEncoder>;
+    encode(bgraFrame: Frame, muxer: FormatMuxer): Promise<void>;
+    flush(muxer: FormatMuxer): Promise<void>;
+    [Symbol.dispose](): void;
+    private drainInterleaved;
+}
+
+export declare function packBits(bits: number[]): Buffer;
 
 declare function pargs(): string[];
 export { pargs }
@@ -473,6 +541,7 @@ declare const RenderSchema: z.ZodObject<{
     outFile: z.ZodString;
     useInnerProxy: z.ZodBoolean;
     deterministic: z.ZodBoolean;
+    disableGpu: z.ZodBoolean;
 }, z.core.$strip>;
 export { RenderSchema }
 export { RenderSchema as RenderSchema_alias_1 }
@@ -484,6 +553,9 @@ declare interface RetryOptions<Args extends any[], Ret> {
 }
 export { RetryOptions }
 export { RetryOptions as RetryOptions_alias_1 }
+
+/** Rewrite nuh_layer_id in a NAL unit (returns copy). */
+export declare function rewriteNalLayerId(nal: Buffer, layerId: number): Buffer;
 
 export declare function runElectronApp(size: Size, args: unknown[], ipcSocketPath: string): Promise<ProcessHandle>;
 
@@ -498,6 +570,9 @@ export declare function shoot(writer: IpcWriter, source: string, options: Render
 declare function sleep(ms: number): Promise<void>;
 export { sleep }
 export { sleep as sleep_alias_1 }
+
+/** Split Annex B bitstream into NAL units. */
+export declare function splitNalUnits(bitstream: Buffer): NalUnit[];
 
 export declare function startStego(cdp: Debugger): Promise<any>;
 
@@ -545,6 +620,34 @@ export declare interface VideoEncoderOptions {
     bitrate: number;
     pixelFormat: AVPixelFormat;
     muxer: FormatMuxer;
+}
+
+export declare interface VideoFactoryOptions {
+    width: number;
+    height: number;
+    fps: number;
+    bitrate?: number;
+    disableGpu?: boolean;
+}
+
+export declare interface VideoSetup {
+    video?: VideoEncoder_2;
+    hwVideo?: HwEncoder;
+    codec?: CodecState_2;
+    hw?: HardwareContext;
+}
+
+export declare class VideoToolboxEncoder implements Disposable {
+    private _ctx;
+    private _pkt;
+    private _stream;
+    private _pts;
+    private constructor();
+    static create(opts: HwVideoEncoderOptions): Promise<VideoToolboxEncoder>;
+    encode(bgraFrame: Frame, muxer: FormatMuxer): Promise<void>;
+    flush(muxer: FormatMuxer): Promise<void>;
+    [Symbol.dispose](): void;
+    private drain;
 }
 
 export declare class WaitableEvent {

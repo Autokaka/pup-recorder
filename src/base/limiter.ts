@@ -1,9 +1,16 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/01/30.
 
+interface QueueEntry {
+  run: VoidFunction;
+  reject: (reason: unknown) => void;
+  signal?: AbortSignal;
+}
+
 export class ConcurrencyLimiter {
   private _active = 0;
-  private _queue: VoidFunction[] = [];
-  private _ended = false;
+  private _queue: QueueEntry[] = [];
+  private _signals = new WeakSet<AbortSignal>();
+  private _resolve?: VoidFunction;
 
   constructor(readonly maxConcurrency: number) {}
 
@@ -19,43 +26,68 @@ export class ConcurrencyLimiter {
     return `active: ${this.active}, pending: ${this.pending}`;
   }
 
-  async schedule<T>(fn: () => Promise<T>): Promise<T> {
-    if (this._ended) {
-      throw new Error("ended");
+  async schedule<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    signal?.throwIfAborted();
+
+    if (signal && !this._signals.has(signal)) {
+      this._signals.add(signal);
+      signal.addEventListener("abort", () => this.flush(signal), { once: true });
     }
+
     return new Promise<T>((resolve, reject) => {
-      const run = () => {
-        this._active++;
-        fn()
-          .then((v) => {
-            this._active--;
-            resolve(v);
+      this._queue.push({
+        run: () => {
+          if (signal?.aborted) {
+            reject(signal.reason);
             this.next();
-          })
-          .catch((e) => {
-            this._active--;
-            reject(e);
-            this.next();
-          });
-      };
-      this._queue.push(run);
+            return;
+          }
+          this._active++;
+          fn()
+            .then((v) => {
+              this._active--;
+              resolve(v);
+              this.next();
+            })
+            .catch((e) => {
+              this._active--;
+              reject(e);
+              this.next();
+            });
+        },
+        reject,
+        signal,
+      });
       this.next();
     });
   }
 
-  async end() {
-    if (this._ended) {
-      return;
+  async drain(): Promise<void> {
+    if (this._active === 0 && this.pending === 0) return;
+    return new Promise((r) => (this._resolve = r));
+  }
+
+  private flush(signal: AbortSignal) {
+    const keep: QueueEntry[] = [];
+    for (const entry of this._queue) {
+      if (entry.signal === signal) {
+        entry.reject(signal.reason);
+      } else {
+        keep.push(entry);
+      }
     }
-    this._ended = true;
-    while (this._active > 0 || this.pending > 0) {
-      await new Promise((r) => setTimeout(r, 50));
-    }
+    this._queue = keep;
+    this.next();
   }
 
   private next() {
+    if (this._active === 0 && this.pending === 0) {
+      this._resolve?.();
+      this._resolve = undefined;
+      return;
+    }
     if (this._active < this.maxConcurrency) {
-      this._queue.shift()?.();
+      this._queue.shift()?.run();
     }
   }
 }
