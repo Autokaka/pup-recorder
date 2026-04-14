@@ -23,7 +23,7 @@ import {
   type FFAudioEncoder,
 } from "node-av/constants";
 import type { FormatMuxer } from "./muxer";
-import { drainPackets, makePacket } from "./shared";
+import { drainPackets, makePacket } from "./misc";
 
 const SAMPLE_FMT_NAME: Partial<Record<number, string>> = { [AV_SAMPLE_FMT_FLT]: "flt", [AV_SAMPLE_FMT_FLTP]: "fltp" };
 

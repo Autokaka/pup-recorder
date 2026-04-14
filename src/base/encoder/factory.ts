@@ -31,23 +31,28 @@ export interface VideoFactoryOptions {
   height: number;
   fps: number;
   bitrate?: number;
-  disableGpu?: boolean;
+  disableHwCodec?: boolean;
 }
 
 export async function createVideoEncoder(opts: VideoFactoryOptions, muxer: FormatMuxer): Promise<VideoSetup> {
-  const { width, height, fps, bitrate = 8_000_000, disableGpu = false } = opts;
-  const hw = disableGpu ? undefined : (HardwareContext.auto() ?? undefined);
+  const { width, height, fps, bitrate = 8_000_000, disableHwCodec = false } = opts;
+  const hw = disableHwCodec ? undefined : (HardwareContext.auto() ?? undefined);
 
-  if (hw?.deviceTypeName === FF_HWDEVICE_TYPE_VIDEOTOOLBOX && hw.getEncoderCodec("hevc")) {
-    logger.debug(TAG, "using VideoToolbox HEVC alpha encoder");
-    const hwVideo = await VideoToolboxEncoder.create({ width, height, fps, hw, bitrate, muxer });
-    return { hwVideo, hw };
-  }
-
-  if (hw?.deviceTypeName === FF_HWDEVICE_TYPE_CUDA && hw.getEncoderCodec("hevc")) {
-    logger.debug(TAG, "using NVENC dual-layer HEVC alpha encoder");
-    const hwVideo = await NvencDualLayerEncoder.create({ width, height, fps, hw, bitrate, muxer });
-    return { hwVideo, hw };
+  try {
+    if (hw?.deviceTypeName === FF_HWDEVICE_TYPE_VIDEOTOOLBOX && hw.getEncoderCodec("hevc")) {
+      logger.debug(TAG, "using VideoToolbox HEVC alpha encoder");
+      const hwVideo = await VideoToolboxEncoder.create({ width, height, fps, hw, bitrate, muxer });
+      return { hwVideo, hw };
+    }
+    if (hw?.deviceTypeName === FF_HWDEVICE_TYPE_CUDA && hw.getEncoderCodec("hevc")) {
+      logger.debug(TAG, "using NVENC dual-layer HEVC alpha encoder");
+      const hwVideo = await NvencDualLayerEncoder.create({ width, height, fps, hw, bitrate, muxer });
+      return { hwVideo, hw };
+    }
+  } catch (e) {
+    logger.warn(TAG, "Hardware codec session limits reached, use software encoder", e);
+  } finally {
+    hw?.dispose();
   }
 
   logger.debug(TAG, "using software libx265 HEVC alpha encoder");
@@ -58,7 +63,6 @@ export async function createVideoEncoder(opts: VideoFactoryOptions, muxer: Forma
     fps,
     codecName: FF_ENCODER_LIBX265,
     codecTag: "hvc1",
-    globalHeader: true,
     codecOpts: { preset: "medium", "x265-params": "log-level=1:bframes=3:pools=+:frame-threads=0" },
     bitrate,
     pixelFormat: AV_PIX_FMT_YUVA420P,

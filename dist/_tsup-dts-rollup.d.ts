@@ -1,8 +1,10 @@
 import { AV_SAMPLE_FMT_FLT } from 'node-av/constants';
 import { AV_SAMPLE_FMT_FLTP } from 'node-av/constants';
+import { AVColorRange } from 'node-av/constants';
 import { AVPixelFormat } from 'node-av/constants';
 import { BrowserWindow } from 'electron';
 import { ChildProcess } from 'child_process';
+import { Codec } from 'node-av';
 import { CodecContext } from 'node-av';
 import type { Debugger } from 'electron';
 import { EventEmitter } from 'events';
@@ -19,6 +21,9 @@ import { SoftwareScaleContext } from 'node-av';
 import { SpawnOptions } from 'child_process';
 import { Stream } from 'node-av';
 import z from 'zod';
+
+/** Insert emulation prevention bytes (00 00 03) for Annex B compliance. */
+export declare function addEmulationPrevention(nal: Buffer): Buffer;
 
 export declare function advanceVirtualTime(cdp: Debugger, budget: number): Promise<void>;
 
@@ -67,11 +72,32 @@ export declare interface AudioEncoderOptions {
     muxer: FormatMuxer;
 }
 
-/**
- * Build alpha_channel_info SEI message (payloadType=165).
- * Layout from x265 SEIAlphaChannelInfo::writeSEI.
- */
+export declare class BitReader {
+    private _bits;
+    pos: number;
+    constructor(data: Buffer);
+    get bits(): number[];
+    read(n: number): number;
+    readUe(): number;
+}
+
+export declare class BitWriter {
+    bits: number[];
+    w(val: number, n: number): void;
+    flag(val: boolean | number): void;
+    ue(val: number): void;
+    align(pad: number): void;
+    copy(src: number[], start: number, len: number): void;
+}
+
 export declare function buildAlphaChannelInfoSEI(): Buffer;
+
+/**
+ * Build a complete alpha VPS from scratch, using the original NVENC VPS
+ * only as a source for the PTL (profile/tier/level) bytes.
+ * Matches x265 4.1 ENABLE_ALPHA VPS structure.
+ */
+export declare function buildAlphaVPS(vpsData: Buffer, width: number, height: number): Buffer;
 
 export declare function buildRust(): Promise<void>;
 
@@ -86,12 +112,7 @@ export declare function buildStegoHTML(targetURL: string, size: Size): string;
  */
 export declare function buildTickInjector(opts?: TickInjectorOptions): string;
 
-/**
- * Build unified extradata: base VPS (patched for alpha) + interleaved SPS/PPS.
- * Alpha SPS/PPS follow their base counterparts so the HVCC serializer
- * groups them into the same NAL array (required for multi-layer).
- */
-export declare function buildUnifiedExtradata(baseExtradata: Buffer, alphaExtradata: Buffer): Buffer;
+export declare function buildUnifiedExtradata(opts: UnifiedExtradataOptions): Buffer;
 
 export declare const canIUseGPU: Promise<boolean>;
 
@@ -214,7 +235,7 @@ declare interface EncoderPipelineOptions {
     fps: number;
     outFile: string;
     withAudio?: boolean;
-    disableGpu?: boolean;
+    disableHwCodec?: boolean;
 }
 export { EncoderPipelineOptions }
 export { EncoderPipelineOptions as EncoderPipelineOptions_alias_1 }
@@ -294,7 +315,6 @@ export declare interface HwVideoEncoderOptions {
     muxer: FormatMuxer;
 }
 
-/** Interleave base and alpha NALs for a single frame. */
 export declare function interleaveAccessUnits(baseNals: NalUnit[], alphaNals: NalUnit[]): Buffer;
 
 export declare interface IpcDonePayload {
@@ -426,6 +446,8 @@ export declare class NvencDualLayerEncoder implements Disposable {
     private drainInterleaved;
 }
 
+export declare function openVideoCtx(opts: VideoCtxOptions, label: string): Promise<CodecContext>;
+
 export declare function packBits(bits: number[]): Buffer;
 
 declare function pargs(): string[];
@@ -481,6 +503,10 @@ declare const pupDisableGPU: boolean;
 export { pupDisableGPU }
 export { pupDisableGPU as pupDisableGPU_alias_1 }
 
+declare const pupDisableHwCodec: boolean;
+export { pupDisableHwCodec }
+export { pupDisableHwCodec as pupDisableHwCodec_alias_1 }
+
 declare const pupExperimentalPuppeteer: boolean;
 export { pupExperimentalPuppeteer }
 export { pupExperimentalPuppeteer as pupExperimentalPuppeteer_alias_1 }
@@ -517,6 +543,9 @@ declare const pupUseInnerProxy: boolean;
 export { pupUseInnerProxy }
 export { pupUseInnerProxy as pupUseInnerProxy_alias_1 }
 
+/** Remove emulation prevention bytes (00 00 03 → 00 00) from RBSP. */
+export declare function removeEmulationPrevention(data: Buffer): Buffer;
+
 export declare function render(writer: IpcWriter, source: string, options: RenderOptions): Promise<IpcDonePayload>;
 
 declare type RenderOptions = z.infer<typeof RenderSchema>;
@@ -542,6 +571,7 @@ declare const RenderSchema: z.ZodObject<{
     useInnerProxy: z.ZodBoolean;
     deterministic: z.ZodBoolean;
     disableGpu: z.ZodBoolean;
+    disableHwCodec: z.ZodBoolean;
 }, z.core.$strip>;
 export { RenderSchema }
 export { RenderSchema as RenderSchema_alias_1 }
@@ -589,11 +619,30 @@ export declare interface TickInjectorOptions {
     skipFrameGuard?: boolean;
 }
 
+export declare interface UnifiedExtradataOptions {
+    baseExtradata: Buffer;
+    alphaExtradata: Buffer;
+    width: number;
+    height: number;
+}
+
 export declare function unsetInterceptor(window: BrowserWindow): void;
 
 declare function useRetry<Args extends any[], Ret>({ fn, maxAttempts, timeout }: RetryOptions<Args, Ret>): (...args: Args) => Promise<Ret>;
 export { useRetry }
 export { useRetry as useRetry_alias_1 }
+
+export declare interface VideoCtxOptions {
+    codec: Codec;
+    width: number;
+    height: number;
+    fps: number;
+    bitrate: number;
+    pixelFormat: AVPixelFormat;
+    codecTag?: string;
+    colorRange?: AVColorRange;
+    options?: Record<string, string>;
+}
 
 declare class VideoEncoder_2 implements Disposable {
     private readonly _ctx;
@@ -615,7 +664,6 @@ export declare interface VideoEncoderOptions {
     fps: number;
     codecName: FFVideoEncoder;
     codecTag?: string;
-    globalHeader: boolean;
     codecOpts: Record<string, string>;
     bitrate: number;
     pixelFormat: AVPixelFormat;
@@ -627,7 +675,7 @@ export declare interface VideoFactoryOptions {
     height: number;
     fps: number;
     bitrate?: number;
-    disableGpu?: boolean;
+    disableHwCodec?: boolean;
 }
 
 export declare interface VideoSetup {

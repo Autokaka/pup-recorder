@@ -28,6 +28,7 @@ export async function makeCLI(options: CLIOptions) {
     .option("-d, --deterministic", shape.deterministic.description, d.deterministic)
     .option("--use-inner-proxy", shape.useInnerProxy.description, d.useInnerProxy)
     .option("--disable-gpu", shape.disableGpu.description, d.disableGpu)
+    .option("--disable-hw-codec", shape.disableHwCodec.description, d.disableHwCodec)
     .action(async (source: string, opts) => {
       try {
         await options.run(source, {
@@ -40,6 +41,7 @@ export async function makeCLI(options: CLIOptions) {
           useInnerProxy: opts.useInnerProxy ?? d.useInnerProxy,
           deterministic: opts.deterministic ?? d.deterministic,
           disableGpu: opts.disableGpu ?? d.disableGpu,
+          disableHwCodec: opts.disableHwCodec ?? d.disableHwCodec,
         });
       } catch (e) {
         logger.fatal(e);

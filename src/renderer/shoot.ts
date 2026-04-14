@@ -4,6 +4,7 @@ import { type BrowserWindow, type NativeImage, type Size } from "electron";
 import { advanceVirtualTime, pauseVirtualTime } from "../base/cdp";
 import { debounce } from "../base/debounce";
 import { EncoderPipeline } from "../base/encoder/pipeline";
+import { canIUseGPU } from "../base/hwaccel";
 import { isEmpty } from "../base/image";
 import { Lazy } from "../base/lazy";
 import { logger } from "../base/logging";
@@ -47,23 +48,24 @@ function awaitStegoFrame({ win, size, afterTs }: StegoOptions): Promise<Buffer> 
 }
 
 export async function shoot(writer: IpcWriter, source: string, options: RenderOptions): Promise<IpcDonePayload> {
-  const { fps, width, height, duration, withAudio, outFile, disableGpu } = options;
+  const { fps, width, height, duration, withAudio, outFile, disableGpu, disableHwCodec } = options;
   if (withAudio) logger.warn(TAG, "audio will be ignored on this mode");
 
-  await using pipeline = await EncoderPipeline.create({ width, height, fps, outFile, withAudio, disableGpu });
+  await using pipeline = await EncoderPipeline.create({ width, height, fps, outFile, withAudio, disableHwCodec });
 
   const total = Math.ceil(fps * duration);
   const frameInterval = 1000 / fps;
   let written = 0;
   let progress = 0;
 
+  const gpu = (await canIUseGPU) && !disableGpu;
   const win = await loadWindow({ source, renderer: options });
   const cdp = win.webContents.debugger;
   const rootFrame = new Lazy(() => win.webContents.mainFrame.frames[0]);
   try {
     cdp.attach("1.3");
 
-    const renderFps = disableGpu ? fps : 240;
+    const renderFps = gpu ? 240 : fps;
     const renderInterval = 1000 / renderFps;
     logger.debug(TAG, { fps, frameInterval, renderFps, renderInterval });
 

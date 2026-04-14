@@ -11,9 +11,9 @@ import { decodeStego, startStego, stopStego } from "./stego";
 import { loadWindow } from "./window";
 
 export async function render(writer: IpcWriter, source: string, options: RenderOptions): Promise<IpcDonePayload> {
-  const { fps, width, height, duration, withAudio, outFile, disableGpu } = options;
+  const { fps, width, height, duration, withAudio, outFile, disableHwCodec } = options;
 
-  await using encoder = await EncoderPipeline.create({ width, height, fps, outFile, withAudio, disableGpu });
+  await using encoder = await EncoderPipeline.create({ width, height, fps, outFile, withAudio, disableHwCodec });
 
   const total = Math.ceil(fps * duration);
   const frameInterval = 1000 / fps;

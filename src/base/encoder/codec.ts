@@ -14,7 +14,7 @@ import {
   SWS_BILINEAR,
   type AVPixelFormat,
 } from "node-av";
-import { makeFrame, makePacket } from "./shared";
+import { makeFrame, makePacket } from "./misc";
 
 export class CodecState implements Disposable {
   readonly src: Frame;

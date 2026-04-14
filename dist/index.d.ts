@@ -1,6 +1,7 @@
 export { pupLogLevel } from './_tsup-dts-rollup.js';
 export { pupUseInnerProxy } from './_tsup-dts-rollup.js';
 export { pupDisableGPU } from './_tsup-dts-rollup.js';
+export { pupDisableHwCodec } from './_tsup-dts-rollup.js';
 export { pupDeterministic } from './_tsup-dts-rollup.js';
 export { pupPkgRoot } from './_tsup-dts-rollup.js';
 export { pupApp } from './_tsup-dts-rollup.js';

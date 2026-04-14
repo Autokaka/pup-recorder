@@ -24,16 +24,6 @@ export function encodeNalHeader(type: number, layerId: number, temporalId: numbe
   return [byte0, byte1];
 }
 
-export function packBits(bits: number[]): Buffer {
-  const buf = Buffer.alloc(bits.length >> 3);
-  for (let i = 0; i < buf.length; i++) {
-    let byte = 0;
-    for (let b = 0; b < 8; b++) byte = (byte << 1) | bits[i * 8 + b]!;
-    buf[i] = byte;
-  }
-  return buf;
-}
-
 /** Split Annex B bitstream into NAL units. */
 export function splitNalUnits(bitstream: Buffer): NalUnit[] {
   const nals: NalUnit[] = [];
@@ -87,4 +77,35 @@ export function rewriteNalLayerId(nal: Buffer, layerId: number): Buffer {
   out[0] = b0;
   out[1] = b1;
   return out;
+}
+
+/** Remove emulation prevention bytes (00 00 03 → 00 00) from RBSP. */
+export function removeEmulationPrevention(data: Buffer): Buffer {
+  const out: number[] = [];
+  for (let i = 0; i < data.length; i++) {
+    if (i + 2 < data.length && data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 3) {
+      out.push(0, 0);
+      i += 2;
+    } else {
+      out.push(data[i]!);
+    }
+  }
+  return Buffer.from(out);
+}
+
+/** Insert emulation prevention bytes (00 00 03) for Annex B compliance. */
+export function addEmulationPrevention(nal: Buffer): Buffer {
+  const out: number[] = [];
+  out.push(nal[0]!, nal[1]!);
+  let zeros = 0;
+  for (let i = 2; i < nal.length; i++) {
+    if (zeros === 2 && nal[i]! <= 3) {
+      out.push(3);
+      zeros = 0;
+    }
+    if (nal[i] === 0) zeros++;
+    else zeros = 0;
+    out.push(nal[i]!);
+  }
+  return Buffer.from(out);
 }

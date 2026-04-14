@@ -30,6 +30,7 @@ makeCLI({
     deterministic: false,
     useInnerProxy: false,
     disableGpu: false,
+    disableHwCodec: false,
   },
   run: async (source, options) => {
     const exit = (code: number) => {

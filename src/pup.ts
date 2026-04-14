@@ -49,6 +49,7 @@ async function runPupApp(source: string, options: AppOptions, socketPath: string
   if (options.useInnerProxy) args.push(`--use-inner-proxy`);
   if (options.deterministic) args.push(`--deterministic`);
   if (options.disableGpu) args.push(`--disable-gpu`);
+  if (options.disableHwCodec) args.push(`--disable-hw-codec`);
 
   return runElectronApp(options, args, socketPath);
 }
@@ -71,6 +72,7 @@ export async function pup(source: string, options: Partial<PupOptions>): Promise
     useInnerProxy: options.useInnerProxy ?? d.useInnerProxy,
     deterministic: options.deterministic ?? d.deterministic,
     disableGpu: options.disableGpu ?? d.disableGpu,
+    disableHwCodec: options.disableHwCodec ?? d.disableHwCodec,
     outFile,
   };
 

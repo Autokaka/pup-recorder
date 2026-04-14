@@ -1,29 +1,11 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/04/12.
 
-import {
-  Codec,
-  CodecContext,
-  FFmpegError,
-  Frame,
-  HardwareFramesContext,
-  Rational,
-  SoftwareScaleContext,
-  SWS_BILINEAR,
-  type Packet,
-  type Stream,
-} from "node-av";
-import {
-  AV_CODEC_FLAG_GLOBAL_HEADER,
-  AV_PIX_FMT_BGRA,
-  AV_PIX_FMT_CUDA,
-  AV_PIX_FMT_YUV420P,
-  AVCOL_RANGE_JPEG,
-  FF_ENCODER_HEVC_NVENC,
-} from "node-av/constants";
+import { Codec, type CodecContext, FFmpegError, Frame, type Packet, type Stream } from "node-av";
+import { AV_PIX_FMT_BGRA, AV_PIX_FMT_YUV420P, FF_ENCODER_HEVC_NVENC } from "node-av/constants";
 import { buildAlphaChannelInfoSEI, buildUnifiedExtradata, interleaveAccessUnits } from "./alpha";
 import type { FormatMuxer } from "./muxer";
 import { splitNalUnits } from "./nal";
-import { makeFrame, makePacket } from "./shared";
+import { makePacket, openVideoCtx } from "./misc";
 import type { HwVideoEncoderOptions } from "./videotoolbox";
 
 interface NvencState {
@@ -32,9 +14,6 @@ interface NvencState {
   basePkt: Packet;
   alphaPkt: Packet;
   stream: Stream;
-  baseSws: SoftwareScaleContext;
-  yuvFrame: Frame;
-  hwFramesCtx: HardwareFramesContext;
 }
 
 export class NvencDualLayerEncoder implements Disposable {
@@ -51,47 +30,17 @@ export class NvencDualLayerEncoder implements Disposable {
   }
 
   static async create(opts: HwVideoEncoderOptions): Promise<NvencDualLayerEncoder> {
-    const { width, height, fps, bitrate, hw, muxer } = opts;
+    const { width, height, fps, bitrate, muxer } = opts;
 
     const codec = Codec.findEncoderByName(FF_ENCODER_HEVC_NVENC);
     if (!codec) throw new Error("hevc_nvenc encoder not found");
 
-    const hwFramesCtx = new HardwareFramesContext();
-    hwFramesCtx.alloc(hw.deviceContext);
-    hwFramesCtx.format = AV_PIX_FMT_CUDA;
-    hwFramesCtx.swFormat = AV_PIX_FMT_YUV420P; // NVENC only accepts YUV420P/NV12, not BGRA
-    hwFramesCtx.width = width;
-    hwFramesCtx.height = height;
-    hwFramesCtx.initialPoolSize = 20;
-    FFmpegError.throwIfError(hwFramesCtx.init(), "hwFramesCtx.init");
-
-    const makeCtx = async (ctxOpts: { br: number; fullRange?: boolean; cqp?: number }) => {
-      const ctx = new CodecContext();
-      ctx.allocContext3(codec);
-      ctx.codecId = codec.id;
-      ctx.width = width;
-      ctx.height = height;
-      ctx.pixelFormat = AV_PIX_FMT_CUDA;
-      if (ctxOpts.fullRange) ctx.colorRange = AVCOL_RANGE_JPEG;
-      ctx.timeBase = new Rational(1, fps);
-      ctx.framerate = new Rational(fps, 1);
-      ctx.gopSize = fps * 2;
-      ctx.setFlags(AV_CODEC_FLAG_GLOBAL_HEADER);
-      ctx.setOption("preset", "p4");
-      ctx.setOption("bf", "0"); // no B-frames — keep base+alpha packet output in sync
-      if (ctxOpts.cqp !== undefined) {
-        ctx.setOption("rc", "constqp");
-        ctx.setOption("qp", String(ctxOpts.cqp));
-      } else {
-        ctx.bitRate = BigInt(ctxOpts.br);
-      }
-      ctx.hwFramesCtx = hwFramesCtx;
-      FFmpegError.throwIfError(await ctx.open2(codec, null), "nvenc.open2");
-      return ctx;
-    };
-
-    const baseCtx = await makeCtx({ br: bitrate });
-    const alphaCtx = await makeCtx({ br: bitrate, fullRange: true, cqp: 1 });
+    const nvencOpts = { preset: "p4", bf: "0" };
+    const common = { codec, width, height, fps, bitrate, options: nvencOpts };
+    // BGRA direct — NVENC converts internally, no SWS needed
+    const baseCtx = await openVideoCtx({ ...common, pixelFormat: AV_PIX_FMT_BGRA }, "nvenc.base.open2");
+    // Alpha as YUV420P — matching bitrate/GOP for compatible SPS across layers
+    const alphaCtx = await openVideoCtx({ ...common, pixelFormat: AV_PIX_FMT_YUV420P }, "nvenc.alpha.open2");
 
     const basePkt = makePacket();
     const alphaPkt = makePacket();
@@ -101,32 +50,26 @@ export class NvencDualLayerEncoder implements Disposable {
     const baseExtra = baseCtx.extraData;
     const alphaExtra = alphaCtx.extraData;
     if (baseExtra && alphaExtra) {
-      stream.codecpar.extradata = buildUnifiedExtradata(baseExtra, alphaExtra);
+      stream.codecpar.extradata = buildUnifiedExtradata({
+        baseExtradata: baseExtra,
+        alphaExtradata: alphaExtra,
+        width,
+        height,
+      });
     }
 
-    const baseSws = new SoftwareScaleContext();
-    baseSws.getContext(width, height, AV_PIX_FMT_BGRA, width, height, AV_PIX_FMT_YUV420P, SWS_BILINEAR);
-    return new NvencDualLayerEncoder({
-      baseCtx,
-      alphaCtx,
-      basePkt,
-      alphaPkt,
-      stream,
-      baseSws,
-      yuvFrame: makeFrame(width, height, AV_PIX_FMT_YUV420P),
-      hwFramesCtx,
-    });
+    return new NvencDualLayerEncoder({ baseCtx, alphaCtx, basePkt, alphaPkt, stream });
   }
 
   async encode(bgraFrame: Frame, muxer: FormatMuxer): Promise<void> {
-    const { baseCtx, alphaCtx, baseSws, yuvFrame, hwFramesCtx } = this._s;
+    const { baseCtx, alphaCtx } = this._s;
     const pts = this._pts++;
 
-    // Base: BGRA → SWS → YUV420P sw frame
-    FFmpegError.throwIfError(yuvFrame.makeWritable(), "yuv.makeWritable");
-    FFmpegError.throwIfError(await baseSws.scaleFrame(yuvFrame, bgraFrame), "sws.base");
+    bgraFrame.pts = pts;
+    bgraFrame.duration = 1n;
+    FFmpegError.throwIfError(await baseCtx.sendFrame(bgraFrame), "base.sendFrame");
 
-    // Alpha: extract alpha channel → YUV420P sw frame (Buffer.copy pattern from hw-encode.ts)
+    // Alpha: extract alpha channel → YUV420P
     const src = bgraFrame.data?.[0];
     const srcLs = bgraFrame.linesize?.[0];
     if (!src || !srcLs) throw new Error("encode: missing BGRA data");
@@ -143,30 +86,13 @@ export class NvencDualLayerEncoder implements Disposable {
     }
     buf.fill(128, ySize, ySize + uvSize * 2);
 
-    // fromVideoBuffer is the only way to set native frame data on Linux
     this._alphaFrame?.free();
     this._alphaFrame = Frame.fromVideoBuffer(buf, { format: AV_PIX_FMT_YUV420P, width: w, height: h });
+    this._alphaFrame.pts = pts;
+    this._alphaFrame.duration = 1n;
+    FFmpegError.throwIfError(await alphaCtx.sendFrame(this._alphaFrame), "alpha.sendFrame");
 
-    // Upload both to GPU + encode
-    const baseHwFrame = new Frame();
-    baseHwFrame.alloc();
-    FFmpegError.throwIfError(hwFramesCtx.getBuffer(baseHwFrame, 0), "base.getBuffer");
-    FFmpegError.throwIfError(await hwFramesCtx.transferData(baseHwFrame, yuvFrame, 0), "base.transfer");
-    baseHwFrame.pts = pts;
-    baseHwFrame.duration = 1n;
-
-    const alphaHwFrame = new Frame();
-    alphaHwFrame.alloc();
-    FFmpegError.throwIfError(hwFramesCtx.getBuffer(alphaHwFrame, 0), "alpha.getBuffer");
-    FFmpegError.throwIfError(await hwFramesCtx.transferData(alphaHwFrame, this._alphaFrame, 0), "alpha.transfer");
-    alphaHwFrame.pts = pts;
-    alphaHwFrame.duration = 1n;
-
-    FFmpegError.throwIfError(await baseCtx.sendFrame(baseHwFrame), "base.sendFrame");
-    FFmpegError.throwIfError(await alphaCtx.sendFrame(alphaHwFrame), "alpha.sendFrame");
     await this.drainInterleaved(muxer);
-    baseHwFrame.free();
-    alphaHwFrame.free();
   }
 
   async flush(muxer: FormatMuxer): Promise<void> {
@@ -176,13 +102,10 @@ export class NvencDualLayerEncoder implements Disposable {
   }
 
   [Symbol.dispose](): void {
-    const { basePkt, alphaPkt, yuvFrame, baseSws, hwFramesCtx, baseCtx, alphaCtx } = this._s;
+    const { basePkt, alphaPkt, baseCtx, alphaCtx } = this._s;
     basePkt.free();
     alphaPkt.free();
-    yuvFrame[Symbol.dispose]();
     this._alphaFrame?.free();
-    baseSws[Symbol.dispose]();
-    hwFramesCtx.free();
     baseCtx.freeContext();
     alphaCtx.freeContext();
   }

@@ -1,9 +1,9 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/04/12.
 
-import { CodecContext, FFmpegError, Frame, type Packet, Rational, type Stream } from "node-av";
+import { type CodecContext, FFmpegError, Frame, type Packet, type Stream } from "node-av";
 import type { HardwareContext } from "node-av/api";
-import { AV_CODEC_FLAG_GLOBAL_HEADER, AV_PIX_FMT_BGRA, AVCOL_RANGE_JPEG } from "node-av/constants";
-import { drainPackets, makePacket } from "./shared";
+import { AV_PIX_FMT_BGRA, AVCOL_RANGE_JPEG } from "node-av/constants";
+import { drainPackets, makePacket, openVideoCtx } from "./misc";
 import type { FormatMuxer } from "./muxer";
 
 export interface HwVideoEncoderOptions {
@@ -33,23 +33,20 @@ export class VideoToolboxEncoder implements Disposable {
     const codec = hw.getEncoderCodec("hevc");
     if (!codec) throw new Error("hevc_videotoolbox encoder not found");
 
-    const ctx = new CodecContext();
-    ctx.allocContext3(codec);
-    ctx.codecId = codec.id;
-    ctx.width = width;
-    ctx.height = height;
-    ctx.pixelFormat = AV_PIX_FMT_BGRA;
-    ctx.colorRange = AVCOL_RANGE_JPEG;
-    ctx.timeBase = new Rational(1, fps);
-    ctx.framerate = new Rational(fps, 1);
-    ctx.gopSize = fps * 2;
-    ctx.bitRate = BigInt(bitrate);
-    ctx.setFlags(AV_CODEC_FLAG_GLOBAL_HEADER);
-    ctx.setOption("alpha_quality", "1");
-    ctx.codecTag = "hvc1";
-
-    FFmpegError.throwIfError(await ctx.open2(codec, null), "vtEnc.open2");
-
+    const ctx = await openVideoCtx(
+      {
+        codec,
+        width,
+        height,
+        fps,
+        bitrate,
+        pixelFormat: AV_PIX_FMT_BGRA,
+        colorRange: AVCOL_RANGE_JPEG,
+        codecTag: "hvc1",
+        options: { alpha_quality: "1" },
+      },
+      "vtEnc.open2",
+    );
     const stream = muxer.addStream(ctx, "hvc1");
     return new VideoToolboxEncoder(ctx, makePacket(), stream);
   }

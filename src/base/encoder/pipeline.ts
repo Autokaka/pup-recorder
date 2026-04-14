@@ -10,7 +10,7 @@ import { AudioEncoder } from "./audio";
 import { CodecState } from "./codec";
 import { createVideoEncoder, type HwEncoder } from "./factory";
 import { FormatMuxer } from "./muxer";
-import { makeFrame } from "./shared";
+import { makeFrame } from "./misc";
 import { VideoEncoder } from "./video";
 
 export interface EncoderPipelineOptions {
@@ -19,7 +19,7 @@ export interface EncoderPipelineOptions {
   fps: number;
   outFile: string;
   withAudio?: boolean;
-  disableGpu?: boolean;
+  disableHwCodec?: boolean;
 }
 
 interface PipelineState {

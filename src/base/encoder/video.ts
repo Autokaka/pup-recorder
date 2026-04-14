@@ -1,8 +1,8 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/03/21.
 
-import { Codec, CodecContext, FFmpegError, Frame, type Packet, Rational, type Stream } from "node-av";
-import { AV_CODEC_FLAG_GLOBAL_HEADER, type AVPixelFormat, type FFVideoEncoder } from "node-av/constants";
-import { drainPackets, makePacket } from "./shared";
+import { Codec, type CodecContext, FFmpegError, Frame, type Packet, type Stream } from "node-av";
+import { type AVPixelFormat, type FFVideoEncoder } from "node-av/constants";
+import { drainPackets, makePacket, openVideoCtx } from "./misc";
 import type { FormatMuxer } from "./muxer";
 
 export interface VideoEncoderOptions {
@@ -11,7 +11,6 @@ export interface VideoEncoderOptions {
   fps: number;
   codecName: FFVideoEncoder;
   codecTag?: string;
-  globalHeader: boolean;
   codecOpts: Record<string, string>;
   bitrate: number;
   pixelFormat: AVPixelFormat;
@@ -31,26 +30,12 @@ export class VideoEncoder implements Disposable {
   }
 
   static async create(opts: VideoEncoderOptions): Promise<VideoEncoder> {
-    const { width, height, fps, codecName, codecTag, globalHeader, codecOpts, bitrate, muxer } = opts;
+    const { codecName, codecTag, codecOpts, muxer, ...rest } = opts;
 
     const codec = Codec.findEncoderByName(codecName);
     if (!codec) throw new Error(`Video encoder not found: ${codecName}`);
 
-    const ctx = new CodecContext();
-    ctx.allocContext3(codec);
-    ctx.codecId = codec.id;
-    ctx.width = width;
-    ctx.height = height;
-    ctx.pixelFormat = opts.pixelFormat;
-    ctx.timeBase = new Rational(1, fps);
-    ctx.framerate = new Rational(fps, 1);
-    ctx.gopSize = fps * 2;
-    ctx.bitRate = BigInt(bitrate);
-    if (globalHeader) ctx.setFlags(AV_CODEC_FLAG_GLOBAL_HEADER);
-    for (const [k, v] of Object.entries(codecOpts)) ctx.setOption(k, v);
-    if (codecTag) ctx.codecTag = codecTag;
-    FFmpegError.throwIfError(await ctx.open2(codec, null), "videoCtx.open2");
-
+    const ctx = await openVideoCtx({ codec, ...rest, codecTag, options: codecOpts }, "videoCtx.open2");
     const stream = muxer.addStream(ctx, codecTag);
     return new VideoEncoder(ctx, makePacket(), stream);
   }

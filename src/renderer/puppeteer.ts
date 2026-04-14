@@ -17,14 +17,14 @@ export async function doPuppeteer(
   options: RenderOptions,
   onProgress?: (p: number) => void,
 ): Promise<IpcDonePayload> {
-  const { fps, width, height, duration, outFile, disableGpu } = options;
+  const { fps, width, height, duration, outFile, disableGpu, disableHwCodec } = options;
   if (options.withAudio) logger.warn(TAG, "audio capture is not supported in Puppeteer mode");
 
   const total = Math.ceil(fps * duration);
   const frameInterval = 1000 / fps;
 
   await mkdir(dirname(outFile), { recursive: true });
-  await using pipeline = await EncoderPipeline.create({ width, height, fps, outFile, disableGpu });
+  await using pipeline = await EncoderPipeline.create({ width, height, fps, outFile, disableHwCodec });
 
   const browser = await puppeteer.launch({
     headless: "shell",
