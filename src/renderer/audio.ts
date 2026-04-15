@@ -7,6 +7,9 @@ import { tmpdir } from "os";
 import { join } from "path";
 import type { EncoderPipeline } from "../base/encoder/pipeline";
 
+const AUDIO_META_CHANNEL = "audio-meta";
+const AUDIO_CHUNK_CHANNEL = "audio-chunk";
+
 const AUDIO_CAPTURE_SCRIPT = `
 (function() {
   if (window.__pup_audio_capturing__) return;
@@ -41,7 +44,7 @@ const AUDIO_CAPTURE_SCRIPT = `
       capturedContexts.add(ctx);
       if (!metaSent) {
         metaSent = true;
-        ipcRenderer.send('audio-meta', { sampleRate: ctx.sampleRate });
+        ipcRenderer.send('${AUDIO_META_CHANNEL}', { sampleRate: ctx.sampleRate });
       }
       const node = ctx.createScriptProcessor(4096, 2, 2);
       node.onaudioprocess = (e) => {
@@ -52,7 +55,7 @@ const AUDIO_CAPTURE_SCRIPT = `
           out[i * 2] = L[i];
           out[i * 2 + 1] = R[i];
         }
-        ipcRenderer.send('audio-chunk', Buffer.from(out.buffer));
+        ipcRenderer.send('${AUDIO_CHUNK_CHANNEL}', Buffer.from(out.buffer));
       };
       node.connect(ctx.destination);
       ctx.__pup_captureNode__ = node;
@@ -96,7 +99,7 @@ export async function setupAudioCapture({
   getVideoTimeMs,
   onError,
 }: AudioCaptureOptions): Promise<AudioCapture> {
-  const preloadPath = join(tmpdir(), `pup_audio_preload_${randomUUID()}.js`);
+  const preloadPath = join(tmpdir(), `pup_audio_${randomUUID()}.js`);
   await writeFile(preloadPath, AUDIO_CAPTURE_SCRIPT);
   session.defaultSession.registerPreloadScript({
     type: "frame",
@@ -104,7 +107,7 @@ export async function setupAudioCapture({
     filePath: preloadPath,
   });
 
-  ipcMain.on("audio-meta", async (_e, data: { sampleRate: number }) => {
+  ipcMain.on(AUDIO_META_CHANNEL, async (_e, data: { sampleRate: number }) => {
     const sampleRate = data.sampleRate;
     const startMs = getVideoTimeMs();
     encoder.setupAudio(sampleRate);
@@ -119,7 +122,7 @@ export async function setupAudioCapture({
     }
   });
 
-  ipcMain.on("audio-chunk", async (_e, buffer: Buffer) => {
+  ipcMain.on(AUDIO_CHUNK_CHANNEL, async (_e, buffer: Buffer) => {
     try {
       await encoder.encodeAudio(buffer);
     } catch (error) {
@@ -129,8 +132,8 @@ export async function setupAudioCapture({
 
   return {
     async teardown() {
-      ipcMain.removeAllListeners("audio-meta");
-      ipcMain.removeAllListeners("audio-chunk");
+      ipcMain.removeAllListeners(AUDIO_META_CHANNEL);
+      ipcMain.removeAllListeners(AUDIO_CHUNK_CHANNEL);
       session.defaultSession.unregisterPreloadScript("pup-audio");
       await rm(preloadPath, { force: true });
     },

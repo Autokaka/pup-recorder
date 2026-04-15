@@ -1,7 +1,13 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/06.
 
 import z from "zod";
-import { pupDeterministic, pupDisableGPU, pupDisableHwCodec, pupUseInnerProxy } from "../base/constants";
+import {
+  pupDeterministic,
+  pupDisableGPU,
+  pupDisableHwCodec,
+  pupUseInnerProxy,
+  pupWindowTolerant,
+} from "../base/constants";
 
 export const DEFAULT_WIDTH = 1920;
 export const DEFAULT_HEIGHT = 1080;
@@ -20,6 +26,7 @@ export const RenderSchema = z.object({
   deterministic: z.boolean().describe("Render by frame rather than recording"),
   disableGpu: z.boolean().describe("Disable GPU rendering, may reduce performance but increase stability"),
   disableHwCodec: z.boolean().describe("Disable hardware video encoder (NVENC/VideoToolbox), use software x265"),
+  windowTolerant: z.boolean().describe("Fall back to dom-ready if warmup load times out"),
 });
 
 export type RenderOptions = z.infer<typeof RenderSchema>;
@@ -42,4 +49,5 @@ export const defaultRenderOptions: RenderOptions = {
   deterministic: pupDeterministic,
   disableGpu: pupDisableGPU,
   disableHwCodec: pupDisableHwCodec,
+  windowTolerant: pupWindowTolerant,
 };

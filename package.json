@@ -1,6 +1,6 @@
 {
   "name": "pup-recorder",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Record web pages as video",
   "repository": {
     "type": "git",
@@ -47,8 +47,7 @@
     "tree-kill": "latest",
     "source-map-support": "latest",
     "systeminformation": "latest",
-    "zod": "latest",
-    "puppeteer": "latest"
+    "zod": "latest"
   },
   "devDependencies": {
     "@microsoft/api-extractor": "latest",

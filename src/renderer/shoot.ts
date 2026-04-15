@@ -1,50 +1,54 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/03/13.
 
-import { type BrowserWindow, type NativeImage, type Size } from "electron";
+import { ipcMain, type BrowserWindow, type IpcMainEvent, type NativeImage, type Size } from "electron";
 import { advanceVirtualTime, pauseVirtualTime } from "../base/cdp";
-import { debounce } from "../base/debounce";
 import { EncoderPipeline } from "../base/encoder/pipeline";
 import { canIUseGPU } from "../base/hwaccel";
 import { isEmpty } from "../base/image";
-import { Lazy } from "../base/lazy";
 import { logger } from "../base/logging";
 import { IpcWriter, type IpcDonePayload } from "./ipc";
 import type { RenderOptions } from "./schema";
-import { decodeStego, startStego, stopStego } from "./stego";
+import { decodeStego, STEGO_TICK_CHANNEL, tickStego } from "./stego";
 import { buildTickInjector, doEject, doProcess } from "./tick";
 import { loadWindow } from "./window";
 
 const TAG = "[Shoot]";
 
-interface StegoOptions {
-  win: BrowserWindow;
-  size: Size;
-  afterTs: number;
+function stego(expected: number): Promise<number> {
+  return new Promise<number>((resolve) => {
+    const handler = (_e: IpcMainEvent, ms: number) => {
+      if (Math.abs(ms - expected) <= 1) {
+        ipcMain.off(STEGO_TICK_CHANNEL, handler);
+        resolve(ms);
+      }
+    };
+    ipcMain.on(STEGO_TICK_CHANNEL, handler);
+  });
 }
 
-function awaitStegoFrame({ win, size, afterTs }: StegoOptions): Promise<Buffer> {
-  const skipped = new Set<number>();
-  const report = debounce(() => {
-    const s = Array.from(skipped);
-    skipped.clear();
-    logger.debug(TAG, `skipped frames ${s.join(", ")}, expected > ${afterTs}`);
+async function paint(win: BrowserWindow, size: Size, ms: number): Promise<Buffer> {
+  const interval = setInterval(() => {
+    logger.warn(TAG, `renderer is extremely slow @ ${ms}`);
   }, 1000);
-  return new Promise((resolve) => {
-    const handler = (_e: unknown, _d: unknown, image: NativeImage) => {
-      if (isEmpty(image)) return;
-      const bitmap = image.toBitmap();
-      const ts = decodeStego(bitmap, image.getSize());
-      if (ts === undefined || ts < afterTs) {
-        skipped.add(ts ?? -1);
-        report();
-        return;
-      }
-      win.webContents.stopPainting();
-      win.webContents.off("paint", handler);
-      resolve(Buffer.from(bitmap.buffer, bitmap.byteOffset, size.height * size.width * 4));
-    };
-    win.webContents.on("paint", handler);
-  });
+  try {
+    return await new Promise<Buffer>((resolve) => {
+      const handler = (_e: unknown, _d: unknown, image: NativeImage) => {
+        if (isEmpty(image)) return;
+        const bitmap = image.toBitmap();
+        const ts = decodeStego(bitmap, image.getSize());
+        if (ts === undefined || Math.abs(ts - ms) > 1) {
+          logger.warn(TAG, `skip frame: ${ts}, expected: ${ms}, the render is slow`);
+          return;
+        }
+        win.webContents.stopPainting();
+        win.webContents.off("paint", handler);
+        resolve(Buffer.from(bitmap.buffer, bitmap.byteOffset, size.height * size.width * 4));
+      };
+      win.webContents.on("paint", handler);
+    });
+  } finally {
+    clearInterval(interval);
+  }
 }
 
 export async function shoot(writer: IpcWriter, source: string, options: RenderOptions): Promise<IpcDonePayload> {
@@ -61,7 +65,8 @@ export async function shoot(writer: IpcWriter, source: string, options: RenderOp
   const gpu = (await canIUseGPU) && !disableGpu;
   const win = await loadWindow({ source, renderer: options });
   const cdp = win.webContents.debugger;
-  const rootFrame = new Lazy(() => win.webContents.mainFrame.frames[0]);
+  const main = win.webContents.mainFrame;
+  const iframe = main.frames[0];
   try {
     cdp.attach("1.3");
 
@@ -76,22 +81,18 @@ export async function shoot(writer: IpcWriter, source: string, options: RenderOp
     win.webContents.setFrameRate(renderFps);
 
     await pauseVirtualTime(cdp);
-    const iframe = rootFrame.value;
     await iframe?.executeJavaScript(buildTickInjector());
-    await iframe?.executeJavaScript(doProcess(0));
-    await startStego(cdp);
+    iframe?.executeJavaScript(doProcess(0));
 
     for (let frame = 0; frame < total; frame++) {
       const frameMs = (frame + 1) * frameInterval;
-      const bitmap = awaitStegoFrame({
-        win,
-        size: { width, height },
-        afterTs: frameMs - renderInterval / 2,
-      });
 
-      await advanceVirtualTime(cdp, frameInterval);
+      const tick = stego(frameMs);
       await iframe?.executeJavaScript(doProcess(frameMs));
+      await tickStego(cdp, frameMs);
+      await advanceVirtualTime(cdp, frameInterval);
 
+      const bitmap = paint(win, { width, height }, await tick);
       win.webContents.startPainting();
       await pipeline.encodeBGRA(await bitmap);
       written++;
@@ -103,8 +104,7 @@ export async function shoot(writer: IpcWriter, source: string, options: RenderOp
       }
     }
   } finally {
-    await rootFrame.value?.executeJavaScript(doEject());
-    await stopStego(cdp);
+    iframe?.executeJavaScript(doEject());
     cdp.detach();
     win.close();
     await pipeline.finish();

@@ -4,14 +4,11 @@ import { ok } from "assert";
 import { randomUUID } from "crypto";
 import { rmSync } from "fs";
 import { mkdir } from "fs/promises";
-import { platform, tmpdir } from "os";
+import { tmpdir } from "os";
 import { join } from "path";
-import treeKill from "tree-kill";
-import { pupExperimentalPuppeteer } from "./base/constants";
 import { logger } from "./base/logging";
 import { runElectronApp } from "./renderer/electron";
 import { createIpcServer, type IpcDonePayload } from "./renderer/ipc";
-import { doPuppeteer } from "./renderer/puppeteer";
 import { defaultRenderOptions, type RenderOptions, type RenderResult } from "./renderer/schema";
 
 const TAG = "[pup]";
@@ -50,6 +47,7 @@ async function runPupApp(source: string, options: AppOptions, socketPath: string
   if (options.deterministic) args.push(`--deterministic`);
   if (options.disableGpu) args.push(`--disable-gpu`);
   if (options.disableHwCodec) args.push(`--disable-hw-codec`);
+  if (options.windowTolerant) args.push(`--window-tolerant`);
 
   return runElectronApp(options, args, socketPath);
 }
@@ -60,7 +58,7 @@ export async function pup(source: string, options: Partial<PupOptions>): Promise
   logger.debug(TAG, `pup`, source, options);
 
   const { signal } = options;
-  if (signal?.aborted) throw signal.reason;
+  signal?.throwIfAborted();
 
   const outFile = options.outFile ?? d.outFile;
   const renderOpts: RenderOptions = {
@@ -73,6 +71,7 @@ export async function pup(source: string, options: Partial<PupOptions>): Promise
     deterministic: options.deterministic ?? d.deterministic,
     disableGpu: options.disableGpu ?? d.disableGpu,
     disableHwCodec: options.disableHwCodec ?? d.disableHwCodec,
+    windowTolerant: options.windowTolerant ?? d.windowTolerant,
     outFile,
   };
 
@@ -83,26 +82,18 @@ export async function pup(source: string, options: Partial<PupOptions>): Promise
   const t0 = performance.now();
   const tick = (p: number) => (logger.info(TAG, `${source} progress: ${p}%`), options.onProgress?.(p));
 
-  // On Linux + deterministic mode, use Puppeteer inline (no Electron subprocess needed).
-  if (platform() === "linux" && renderOpts.deterministic && pupExperimentalPuppeteer) {
-    tick(0);
-    const summary = await doPuppeteer(source, renderOpts, tick);
-    tick(100);
-    logger.info(TAG, `done ${outFile} in ${Math.round(performance.now() - t0)}ms`);
-    return { ...summary, options: renderOpts };
-  }
-
   const server = await createIpcServer(socketPath);
   const handle = await runPupApp(source, { ...renderOpts, signal }, socketPath);
 
-  const onAbort = () => {
-    logger.debug(TAG, `aborted`);
-    const pid = handle.process.pid;
-    if (pid) treeKill(pid);
-    else handle.process.kill();
-    rmSync(tmpDir, { recursive: true, force: true });
-  };
-  signal?.addEventListener("abort", onAbort, { once: true });
+  signal?.addEventListener(
+    "abort",
+    () => {
+      logger.debug(TAG, `aborted`);
+      handle.kill();
+      rmSync(tmpDir, { recursive: true, force: true });
+    },
+    { once: true },
+  );
 
   try {
     const result = new Promise<IpcDonePayload>(async (resolve, reject) => {
@@ -120,7 +111,7 @@ export async function pup(source: string, options: Partial<PupOptions>): Promise
     logger.info(TAG, `done ${outFile} in ${Math.round(performance.now() - t0)}ms`);
     return { ...summary, options: renderOpts };
   } catch (e) {
-    if (signal?.aborted) throw signal.reason;
+    signal?.throwIfAborted();
     throw e;
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });

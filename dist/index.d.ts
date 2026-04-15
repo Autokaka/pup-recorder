@@ -6,7 +6,7 @@ export { pupDeterministic } from './_tsup-dts-rollup.js';
 export { pupPkgRoot } from './_tsup-dts-rollup.js';
 export { pupApp } from './_tsup-dts-rollup.js';
 export { pupIpcSocket } from './_tsup-dts-rollup.js';
-export { pupExperimentalPuppeteer } from './_tsup-dts-rollup.js';
+export { pupWindowTolerant } from './_tsup-dts-rollup.js';
 export { penv } from './_tsup-dts-rollup.js';
 export { EnvParser } from './_tsup-dts-rollup.js';
 export { Lazy } from './_tsup-dts-rollup.js';

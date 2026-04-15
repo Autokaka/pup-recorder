@@ -4,6 +4,7 @@ import type { Debugger, Size } from "electron";
 
 export const FRAME_SYNC_MARKER_WIDTH = 32;
 export const FRAME_SYNC_MARKER_HEIGHT = 1;
+export const STEGO_TICK_CHANNEL = "stego-tick";
 
 export function buildStegoHTML(targetURL: string, size: Size): string {
   const { width, height } = size;
@@ -39,6 +40,7 @@ export function buildStegoHTML(targetURL: string, size: Size): string {
   <canvas id="stego" width="${width}" height="1"></canvas>
   <script>
     (function() {
+      const { ipcRenderer } = require('electron');
       const WIDTH = ${width};
       const MARKER_WIDTH = ${FRAME_SYNC_MARKER_WIDTH};
       const canvas = document.getElementById('stego');
@@ -71,6 +73,7 @@ export function buildStegoHTML(targetURL: string, size: Size): string {
         }
         
         ctx.putImageData(imageData, 0, 0);
+        ipcRenderer.send("${STEGO_TICK_CHANNEL}", timestampMs);
       }
 
       function updateLoop() {
@@ -84,6 +87,10 @@ export function buildStegoHTML(targetURL: string, size: Size): string {
         startTime = performance.now();
         encodeTimestamp(0);
         requestAnimationFrame(updateLoop);
+      };
+
+      window.__pup_tick_stego__ = (ms) => {
+        requestAnimationFrame(() => encodeTimestamp(ms));
       };
 
       window.__pup_stop_stego__ = () => {
@@ -126,6 +133,12 @@ export function decodeStego(bitmap: Buffer, size: Size): number | undefined {
 export function startStego(cdp: Debugger) {
   return cdp.sendCommand("Runtime.evaluate", {
     expression: `window.__pup_start_stego__()`,
+  });
+}
+
+export function tickStego(cdp: Debugger, ms: number) {
+  return cdp.sendCommand("Runtime.evaluate", {
+    expression: `window.__pup_tick_stego__(${ms})`,
   });
 }
 

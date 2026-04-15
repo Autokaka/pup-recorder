@@ -1,6 +1,7 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/01/30.
 
 import { spawn, type ChildProcess, type SpawnOptions } from "child_process";
+import treeKill from "tree-kill";
 import { logger } from "./logging";
 
 export const PUP_ARGS_KEY = "--pup-priv-args";
@@ -22,6 +23,7 @@ export function pargs() {
 export interface ProcessHandle {
   process: ChildProcess;
   wait: Promise<void>;
+  kill(): void;
 }
 
 export function exec(cmd: string, options?: SpawnOptions): ProcessHandle {
@@ -32,5 +34,13 @@ export function exec(cmd: string, options?: SpawnOptions): ProcessHandle {
     stdio: "inherit",
     ...options,
   });
-  return { process: proc, wait: logger.attach(proc, command) };
+  return {
+    process: proc,
+    wait: logger.attach(proc, command),
+    kill() {
+      const pid = proc.pid;
+      if (pid) treeKill(pid);
+      else proc.kill();
+    },
+  };
 }

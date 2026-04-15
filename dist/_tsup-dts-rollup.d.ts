@@ -103,14 +103,7 @@ export declare function buildRust(): Promise<void>;
 
 export declare function buildStegoHTML(targetURL: string, size: Size): string;
 
-/**
- * Builds the JS injector that hooks all time-related globals in the target frame.
- * In Electron/stego mode (default), guards against running in the top-level frame.
- * In Puppeteer mode (skipFrameGuard: true), injects directly into the main document.
- * Must be injected via Page.addScriptToEvaluateOnNewDocument AND directly into
- * already-loaded frames.
- */
-export declare function buildTickInjector(opts?: TickInjectorOptions): string;
+export declare function buildTickInjector(): string;
 
 export declare function buildUnifiedExtradata(opts: UnifiedExtradataOptions): Buffer;
 
@@ -203,8 +196,6 @@ export { defaultRenderOptions as defaultRenderOptions_alias_1 }
 export declare function doEject(): string;
 
 export declare function doProcess(timestampMs: number): string;
-
-export declare function doPuppeteer(source: string, options: RenderOptions, onProgress?: (p: number) => void): Promise<IpcDonePayload>;
 
 export declare function drainPackets(ctx: CodecContext, pkt: Packet, stream: Stream, muxer: FormatMuxer): Promise<void>;
 
@@ -477,6 +468,7 @@ export { periodical as periodical_alias_1 }
 declare interface ProcessHandle {
     process: ChildProcess;
     wait: Promise<void>;
+    kill(): void;
 }
 export { ProcessHandle }
 export { ProcessHandle as ProcessHandle_alias_1 }
@@ -506,10 +498,6 @@ export { pupDisableGPU as pupDisableGPU_alias_1 }
 declare const pupDisableHwCodec: boolean;
 export { pupDisableHwCodec }
 export { pupDisableHwCodec as pupDisableHwCodec_alias_1 }
-
-declare const pupExperimentalPuppeteer: boolean;
-export { pupExperimentalPuppeteer }
-export { pupExperimentalPuppeteer as pupExperimentalPuppeteer_alias_1 }
 
 declare const pupIpcSocket: string | undefined;
 export { pupIpcSocket }
@@ -543,6 +531,10 @@ declare const pupUseInnerProxy: boolean;
 export { pupUseInnerProxy }
 export { pupUseInnerProxy as pupUseInnerProxy_alias_1 }
 
+declare const pupWindowTolerant: boolean;
+export { pupWindowTolerant }
+export { pupWindowTolerant as pupWindowTolerant_alias_1 }
+
 /** Remove emulation prevention bytes (00 00 03 → 00 00) from RBSP. */
 export declare function removeEmulationPrevention(data: Buffer): Buffer;
 
@@ -572,6 +564,7 @@ declare const RenderSchema: z.ZodObject<{
     deterministic: z.ZodBoolean;
     disableGpu: z.ZodBoolean;
     disableHwCodec: z.ZodBoolean;
+    windowTolerant: z.ZodBoolean;
 }, z.core.$strip>;
 export { RenderSchema }
 export { RenderSchema as RenderSchema_alias_1 }
@@ -606,18 +599,13 @@ export declare function splitNalUnits(bitstream: Buffer): NalUnit[];
 
 export declare function startStego(cdp: Debugger): Promise<any>;
 
+export declare const STEGO_TICK_CHANNEL = "stego-tick";
+
 export declare function stopStego(cdp: Debugger): Promise<any>;
 
 export declare const TICK_SYMBOL = "__pup_tick__";
 
-export declare interface TickInjectorOptions {
-    /**
-     * When true, skips the top-frame guard so the injector runs in the main document.
-     * Required for Puppeteer mode where the page is loaded directly (no stego iframe wrapper).
-     * Default: false (Electron/stego mode — only inject in iframes).
-     */
-    skipFrameGuard?: boolean;
-}
+export declare function tickStego(cdp: Debugger, ms: number): Promise<any>;
 
 export declare interface UnifiedExtradataOptions {
     baseExtradata: Buffer;
@@ -716,6 +704,7 @@ export declare interface WindowOptions {
     onCreated?: (window: BrowserWindow) => Promise<void>;
     renderer: RenderOptions;
     warmup?: boolean;
+    tolerant?: boolean;
 }
 
 export { }

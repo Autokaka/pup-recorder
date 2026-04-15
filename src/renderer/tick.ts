@@ -2,26 +2,9 @@
 
 export const TICK_SYMBOL = "__pup_tick__";
 
-export interface TickInjectorOptions {
-  /**
-   * When true, skips the top-frame guard so the injector runs in the main document.
-   * Required for Puppeteer mode where the page is loaded directly (no stego iframe wrapper).
-   * Default: false (Electron/stego mode — only inject in iframes).
-   */
-  skipFrameGuard?: boolean;
-}
-
-/**
- * Builds the JS injector that hooks all time-related globals in the target frame.
- * In Electron/stego mode (default), guards against running in the top-level frame.
- * In Puppeteer mode (skipFrameGuard: true), injects directly into the main document.
- * Must be injected via Page.addScriptToEvaluateOnNewDocument AND directly into
- * already-loaded frames.
- */
-export function buildTickInjector(opts?: TickInjectorOptions): string {
-  const frameGuard = opts?.skipFrameGuard ? "" : "if (window.self === window.top) return;";
+export function buildTickInjector(): string {
   return `(function() {
-  ${frameGuard}
+  if (window.self === window.top) return;
   if (typeof ${TICK_SYMBOL} !== 'undefined') return;
 
   const orig = {

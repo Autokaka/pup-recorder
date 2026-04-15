@@ -18,4 +18,4 @@ export const pupPkgRoot = dirname(require.resolve("pup-recorder/package.json"));
 export const pupApp = join(pupPkgRoot, "dist", "app.cjs");
 export const pupIpcSocket = env["PUP_IPC_SOCKET"];
 
-export const pupExperimentalPuppeteer = env["PUP_EXPERIMENTAL_PUPPETEER"] === "1";
+export const pupWindowTolerant = env["PUP_WINDOW_TOLERANT"] === "1";

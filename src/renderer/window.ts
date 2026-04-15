@@ -10,20 +10,30 @@ import { createStegoURL } from "./protocol";
 import type { RenderOptions } from "./schema";
 
 const TAG = "[Window]";
+const TIMEOUT_ERROR = new Error("window timeout");
 
-function waitForFinish(win: BrowserWindow, action: () => void) {
+function waitForFinish(win: BrowserWindow, action: () => void, tolerant = false) {
   return new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error("load window timeout")), 30_000);
-    const done = (err?: Error) => {
+    let domReady = false;
+    const done = (err?: unknown) => {
       clearTimeout(timeout);
-      err ? reject(err) : resolve();
+      if (err === TIMEOUT_ERROR && tolerant && domReady) {
+        // tolerant on timeout failure
+        resolve();
+      } else if (err) {
+        reject(err);
+      } else {
+        resolve();
+      }
     };
+    const timeout = setTimeout(() => done(TIMEOUT_ERROR), 30_000);
+    win.webContents.once("dom-ready", () => {
+      logger.debug(TAG, "dom-ready");
+      domReady = true;
+    });
     win.webContents.once("did-stop-loading", () => done());
     win.webContents.once("did-frame-finish-load", (_, isMainFrame, frameProcessId, frameRoutingId) => {
       logger.debug(TAG, "did-frame-finish-load:", { isMainFrame, frameProcessId, frameRoutingId });
-    });
-    win.webContents.once("dom-ready", () => {
-      logger.debug(TAG, "dom-ready");
     });
     win.webContents.once("did-fail-load", (_e, code, desc, url) =>
       done(new Error(`failed to load ${url}: [${code}] ${desc}`)),
@@ -48,9 +58,10 @@ export interface WindowOptions {
   onCreated?: (window: BrowserWindow) => Promise<void>;
   renderer: RenderOptions;
   warmup?: boolean;
+  tolerant?: boolean;
 }
 
-async function openWindow({ source, onCreated, renderer, warmup }: WindowOptions): Promise<BrowserWindow> {
+async function openWindow({ source, onCreated, renderer, warmup, tolerant }: WindowOptions): Promise<BrowserWindow> {
   checkHTML(source);
 
   const { width, height, useInnerProxy } = renderer;
@@ -87,7 +98,7 @@ async function openWindow({ source, onCreated, renderer, warmup }: WindowOptions
 
   try {
     const url = createStegoURL(src, { width, height });
-    await waitForFinish(win, () => win.loadURL(url));
+    await waitForFinish(win, () => win.loadURL(url), tolerant);
   } catch (e) {
     await waitForDestroy(win);
     throw e;
@@ -96,24 +107,45 @@ async function openWindow({ source, onCreated, renderer, warmup }: WindowOptions
   return win;
 }
 
+const openWindowWithRetry = useRetry({ fn: openWindow, maxAttempts: 2 });
+
 export async function loadWindow({ source, onCreated, renderer }: WindowOptions): Promise<BrowserWindow> {
   let warmup: BrowserWindow | undefined;
+  let error: unknown;
   try {
-    warmup = await useRetry({ fn: openWindow, maxAttempts: 2 })({ source, renderer, warmup: true });
+    warmup = await openWindowWithRetry({ source, renderer, warmup: true });
   } catch (e) {
-    const { message, stack } = e as Error;
-    throw new Error(`failed to load window: ${JSON.stringify({ source, message, stack })}`);
+    error = e;
   }
 
-  warmup.webContents.removeAllListeners();
-  unsetInterceptor(warmup);
+  const open = () => {
+    return openWindow({
+      source,
+      renderer,
+      onCreated,
+      tolerant: renderer.windowTolerant,
+    });
+  };
 
-  // warmup for shaders
-  await sleep(2000);
-  await waitForDestroy(warmup);
+  if (renderer.windowTolerant && error === TIMEOUT_ERROR) {
+    logger.warn(TAG, `warmup timeout: ${source}, falling back to dom-ready`);
+    return await open();
+  }
+
+  if (error) {
+    const { message, stack } = error as Error;
+    throw new Error(`failed to warmup window: ${JSON.stringify({ source, message, stack })}`);
+  }
+
+  if (warmup) {
+    warmup.webContents.removeAllListeners();
+    unsetInterceptor(warmup);
+    await sleep(2000);
+    await waitForDestroy(warmup);
+  }
 
   try {
-    return await openWindow({ source, renderer, onCreated });
+    return await open();
   } catch (e) {
     const { message, stack } = e as Error;
     throw new Error(`failed to load window: ${JSON.stringify({ source, message, stack })}`);
