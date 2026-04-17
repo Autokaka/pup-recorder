@@ -111,6 +111,7 @@ export async function pup(source: string, options: Partial<PupOptions>): Promise
     logger.info(TAG, `done ${outFile} in ${Math.round(performance.now() - t0)}ms`);
     return { ...summary, options: renderOpts };
   } catch (e) {
+    handle.kill();
     signal?.throwIfAborted();
     throw e;
   } finally {

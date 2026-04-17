@@ -1,6 +1,6 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/09.
 
-import type { Debugger, Size } from "electron";
+import { type Size, type WebFrameMain } from "electron";
 
 export const FRAME_SYNC_MARKER_WIDTH = 32;
 export const FRAME_SYNC_MARKER_HEIGHT = 1;
@@ -89,7 +89,7 @@ export function buildStegoHTML(targetURL: string, size: Size): string {
         requestAnimationFrame(updateLoop);
       };
 
-      window.__pup_tick_stego__ = (ms) => {
+      window.__pup_draw_stego__ = (ms) => {
         requestAnimationFrame(() => encodeTimestamp(ms));
       };
 
@@ -130,20 +130,24 @@ export function decodeStego(bitmap: Buffer, size: Size): number | undefined {
   return timestamp;
 }
 
-export function startStego(cdp: Debugger) {
-  return cdp.sendCommand("Runtime.evaluate", {
-    expression: `window.__pup_start_stego__()`,
-  });
+export async function startStego(frame: WebFrameMain) {
+  await frame.executeJavaScript(`__pup_start_stego__()`);
 }
 
-export function tickStego(cdp: Debugger, ms: number) {
-  return cdp.sendCommand("Runtime.evaluate", {
-    expression: `window.__pup_tick_stego__(${ms})`,
+export async function swapBuffer(frame: WebFrameMain, expected: number) {
+  const swapped = new Promise<number>((resolve) => {
+    const handler = (_e: unknown, ms: number) => {
+      if (Math.abs(ms - expected) <= 1) {
+        frame.ipc.off(STEGO_TICK_CHANNEL, handler);
+        resolve(ms);
+      }
+    };
+    frame.ipc.on(STEGO_TICK_CHANNEL, handler);
   });
+  await frame.executeJavaScript(`__pup_draw_stego__(${expected})`);
+  await swapped;
 }
 
-export function stopStego(cdp: Debugger) {
-  return cdp.sendCommand("Runtime.evaluate", {
-    expression: `window.__pup_stop_stego__()`,
-  });
+export async function stopStego(frame: WebFrameMain) {
+  await frame.executeJavaScript(`__pup_stop_stego__()`);
 }

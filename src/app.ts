@@ -53,7 +53,8 @@ makeCLI({
       ipc.writeDone(await action(ipc, source, options));
     } catch (e) {
       const error = e as Error;
-      ipc.writeError(error.stack ?? "unknown error");
+      const m = error.stack ?? error.message ?? String(e ?? "unknown error");
+      ipc.writeError(m);
     } finally {
       app.quit();
     }

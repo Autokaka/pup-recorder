@@ -1,6 +1,6 @@
 {
   "name": "pup-recorder",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Record web pages as video",
   "repository": {
     "type": "git",
@@ -41,7 +41,7 @@
   ],
   "dependencies": {
     "commander": "latest",
-    "electron": "latest",
+    "electron": "41.2.0",
     "fflate": "latest",
     "node-av": "latest",
     "tree-kill": "latest",

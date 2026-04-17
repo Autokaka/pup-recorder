@@ -36,6 +36,12 @@ export async function chromiumOptions(disableGpu: boolean) {
     "font-render-hinting=none",
     // 资源控制
     "disable-background-networking",
+    "js-flags=--max-old-space-size=512",
+    "renderer-process-limit=1",
+    "num-raster-threads=1",
+    "disable-background-timer-throttling",
+    "disable-renderer-backgrounding",
+    "disable-backgrounding-occluded-windows",
   ];
 
   if (pupLogLevel < 3) {

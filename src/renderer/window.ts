@@ -12,34 +12,55 @@ import type { RenderOptions } from "./schema";
 const TAG = "[Window]";
 const TIMEOUT_ERROR = new Error("window timeout");
 
-function waitForFinish(win: BrowserWindow, action: () => void, tolerant = false) {
+interface FinishOptions {
+  source: string;
+  win: BrowserWindow;
+  action: () => void;
+  tolerant?: boolean;
+}
+
+function waitForFinish({ source, win, action, tolerant }: FinishOptions) {
   return new Promise<void>((resolve, reject) => {
-    let domReady = false;
+    let interval: NodeJS.Timeout;
+    let timeout: NodeJS.Timeout;
+
     const done = (err?: unknown) => {
       clearTimeout(timeout);
-      if (err === TIMEOUT_ERROR && tolerant && domReady) {
-        // tolerant on timeout failure
-        resolve();
-      } else if (err) {
-        reject(err);
-      } else {
-        resolve();
-      }
+      clearInterval(interval);
+      if (err) reject(err);
+      else resolve();
     };
-    const timeout = setTimeout(() => done(TIMEOUT_ERROR), 30_000);
-    win.webContents.once("dom-ready", () => {
-      logger.debug(TAG, "dom-ready");
-      domReady = true;
+
+    timeout = setTimeout(() => done(TIMEOUT_ERROR), 30_000);
+    const stegoFrame = new Promise<void>((attached) => {
+      interval = setInterval(() => {
+        if (win.webContents.mainFrame.frames[0]) {
+          logger.debug(TAG, "stego-frame-attached:", { source });
+          clearInterval(interval);
+          attached();
+        }
+      });
     });
-    win.webContents.once("did-stop-loading", () => done());
+    win.webContents.once("dom-ready", async () => {
+      logger.debug(TAG, "dom-ready:", { source });
+      if (tolerant) {
+        await stegoFrame;
+        done();
+      }
+    });
+    win.webContents.once("did-stop-loading", async () => {
+      logger.debug(TAG, "did-stop-loading:", { source });
+      await stegoFrame;
+      done();
+    });
     win.webContents.once("did-frame-finish-load", (_, isMainFrame, frameProcessId, frameRoutingId) => {
-      logger.debug(TAG, "did-frame-finish-load:", { isMainFrame, frameProcessId, frameRoutingId });
+      logger.debug(TAG, source, "did-frame-finish-load:", { isMainFrame, frameProcessId, frameRoutingId });
     });
     win.webContents.once("did-fail-load", (_e, code, desc, url) =>
-      done(new Error(`failed to load ${url}: [${code}] ${desc}`)),
+      done(new Error(`did-fail-load ${{ url, source, code, desc }}`)),
     );
     win.webContents.once("render-process-gone", (_e, { exitCode, reason }) =>
-      done(new Error(`renderer crashed: ${exitCode}, ${reason}`)),
+      done(new Error(`render-process-gone: ${{ source, exitCode, reason }}`)),
     );
     action();
   });
@@ -98,7 +119,7 @@ async function openWindow({ source, onCreated, renderer, warmup, tolerant }: Win
 
   try {
     const url = createStegoURL(src, { width, height });
-    await waitForFinish(win, () => win.loadURL(url), tolerant);
+    await waitForFinish({ source, win, action: () => win.loadURL(url), tolerant });
   } catch (e) {
     await waitForDestroy(win);
     throw e;

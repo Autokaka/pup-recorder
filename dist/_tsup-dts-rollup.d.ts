@@ -20,6 +20,7 @@ import { Socket } from 'net';
 import { SoftwareScaleContext } from 'node-av';
 import { SpawnOptions } from 'child_process';
 import { Stream } from 'node-av';
+import { WebFrameMain } from 'electron';
 import z from 'zod';
 
 /** Insert emulation prevention bytes (00 00 03) for Annex B compliance. */
@@ -102,8 +103,6 @@ export declare function buildAlphaVPS(vpsData: Buffer, width: number, height: nu
 export declare function buildRust(): Promise<void>;
 
 export declare function buildStegoHTML(targetURL: string, size: Size): string;
-
-export declare function buildTickInjector(): string;
 
 export declare function buildUnifiedExtradata(opts: UnifiedExtradataOptions): Buffer;
 
@@ -192,10 +191,6 @@ export { DEFAULT_WIDTH as DEFAULT_WIDTH_alias_1 }
 declare const defaultRenderOptions: RenderOptions;
 export { defaultRenderOptions }
 export { defaultRenderOptions as defaultRenderOptions_alias_1 }
-
-export declare function doEject(): string;
-
-export declare function doProcess(timestampMs: number): string;
 
 export declare function drainPackets(ctx: CodecContext, pkt: Packet, stream: Stream, muxer: FormatMuxer): Promise<void>;
 
@@ -597,15 +592,17 @@ export { sleep as sleep_alias_1 }
 /** Split Annex B bitstream into NAL units. */
 export declare function splitNalUnits(bitstream: Buffer): NalUnit[];
 
-export declare function startStego(cdp: Debugger): Promise<any>;
+export declare function startStego(frame: WebFrameMain): Promise<void>;
 
 export declare const STEGO_TICK_CHANNEL = "stego-tick";
 
-export declare function stopStego(cdp: Debugger): Promise<any>;
+export declare function stopStego(frame: WebFrameMain): Promise<void>;
+
+export declare function swapBuffer(frame: WebFrameMain, expected: number): Promise<void>;
+
+export declare function tick(frame: WebFrameMain | undefined, timestampMs: number): Promise<void>;
 
 export declare const TICK_SYMBOL = "__pup_tick__";
-
-export declare function tickStego(cdp: Debugger, ms: number): Promise<any>;
 
 export declare interface UnifiedExtradataOptions {
     baseExtradata: Buffer;

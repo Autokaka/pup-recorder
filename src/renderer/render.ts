@@ -40,6 +40,7 @@ export async function render(writer: IpcWriter, source: string, options: RenderO
 
     if (isEmpty(image)) return;
 
+    // Decode stego timestamp from the bottom pixel row without full bitmap copy
     const bitmap = image.toBitmap();
     const currentTime = decodeStego(bitmap, image.getSize());
     if (currentTime === undefined) {
@@ -47,30 +48,29 @@ export async function render(writer: IpcWriter, source: string, options: RenderO
       return;
     }
 
-    const bytesPerRow = width * 4;
-    const cropped = Buffer.from(bitmap.buffer, bitmap.byteOffset, height * bytesPerRow);
+    // Skip frames that arrive too soon (< 80% of frame interval)
+    if (lastWrittenTime !== undefined && currentTime - lastWrittenTime < frameInterval * 0.8) return;
+
+    const cropped = Buffer.from(bitmap.buffer, bitmap.byteOffset, height * width * 4);
 
     if (lastWrittenTime === undefined) {
       scheduleFrame(cropped);
       dropStats.wrote();
-      lastWrittenTime = currentTime;
     } else {
       const timeDelta = currentTime - lastWrittenTime;
-      if (timeDelta >= frameInterval * 0.8) {
-        if (timeDelta <= frameInterval * 1.2) {
+      if (timeDelta <= frameInterval * 1.2) {
+        scheduleFrame(cropped);
+        dropStats.wrote();
+      } else {
+        const framesToInsert = Math.round(timeDelta / frameInterval);
+        dropStats.dropped(framesToInsert - 1);
+        dropStats.wrote();
+        for (let i = 0; i < framesToInsert && written < total; i++) {
           scheduleFrame(cropped);
-          dropStats.wrote();
-        } else {
-          const framesToInsert = Math.round(timeDelta / frameInterval);
-          dropStats.dropped(framesToInsert - 1);
-          dropStats.wrote();
-          for (let i = 0; i < framesToInsert && written < total; i++) {
-            scheduleFrame(cropped);
-          }
         }
-        lastWrittenTime = currentTime;
       }
     }
+    lastWrittenTime = currentTime;
 
     const newProgress = Math.floor((written / total) * 100);
     if (Math.abs(newProgress - progress) > 10) {
@@ -98,16 +98,19 @@ export async function render(writer: IpcWriter, source: string, options: RenderO
     },
   });
   const cdp = win.webContents.debugger;
-  win.webContents.setFrameRate(fps);
-  if (!win.webContents.isPainting()) win.webContents.startPainting();
   cdp.attach("1.3");
+
+  const main = win.webContents.mainFrame;
+  win.webContents.stopPainting();
+  win.webContents.setFrameRate(fps);
   win.webContents.on("paint", paint);
+  win.webContents.startPainting();
 
   try {
-    await startStego(cdp);
+    await startStego(main);
     await new Promise<void>((r, j) => ([resolver, rejecter] = [r, j]));
   } finally {
-    await stopStego(cdp);
+    await stopStego(main);
     win.webContents.off("paint", paint);
     win.close();
     await audio?.teardown();

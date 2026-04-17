@@ -56,7 +56,6 @@ export async function createVideoEncoder(opts: VideoFactoryOptions, muxer: Forma
   }
 
   logger.debug(TAG, "using software libx265 HEVC alpha encoder");
-  hw?.dispose();
   const video = await VideoEncoder.create({
     width,
     height,

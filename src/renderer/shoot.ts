@@ -1,6 +1,6 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/03/13.
 
-import { ipcMain, type BrowserWindow, type IpcMainEvent, type NativeImage, type Size } from "electron";
+import { type BrowserWindow, type NativeImage, type Size } from "electron";
 import { advanceVirtualTime, pauseVirtualTime } from "../base/cdp";
 import { EncoderPipeline } from "../base/encoder/pipeline";
 import { canIUseGPU } from "../base/hwaccel";
@@ -8,23 +8,11 @@ import { isEmpty } from "../base/image";
 import { logger } from "../base/logging";
 import { IpcWriter, type IpcDonePayload } from "./ipc";
 import type { RenderOptions } from "./schema";
-import { decodeStego, STEGO_TICK_CHANNEL, tickStego } from "./stego";
-import { buildTickInjector, doEject, doProcess } from "./tick";
+import { decodeStego, swapBuffer } from "./stego";
+import { tick } from "./tick";
 import { loadWindow } from "./window";
 
 const TAG = "[Shoot]";
-
-function stego(expected: number): Promise<number> {
-  return new Promise<number>((resolve) => {
-    const handler = (_e: IpcMainEvent, ms: number) => {
-      if (Math.abs(ms - expected) <= 1) {
-        ipcMain.off(STEGO_TICK_CHANNEL, handler);
-        resolve(ms);
-      }
-    };
-    ipcMain.on(STEGO_TICK_CHANNEL, handler);
-  });
-}
 
 async function paint(win: BrowserWindow, size: Size, ms: number): Promise<Buffer> {
   const interval = setInterval(() => {
@@ -44,7 +32,9 @@ async function paint(win: BrowserWindow, size: Size, ms: number): Promise<Buffer
         win.webContents.off("paint", handler);
         resolve(Buffer.from(bitmap.buffer, bitmap.byteOffset, size.height * size.width * 4));
       };
+      win.webContents.stopPainting();
       win.webContents.on("paint", handler);
+      win.webContents.startPainting();
     });
   } finally {
     clearInterval(interval);
@@ -81,20 +71,15 @@ export async function shoot(writer: IpcWriter, source: string, options: RenderOp
     win.webContents.setFrameRate(renderFps);
 
     await pauseVirtualTime(cdp);
-    await iframe?.executeJavaScript(buildTickInjector());
-    iframe?.executeJavaScript(doProcess(0));
-
     for (let frame = 0; frame < total; frame++) {
       const frameMs = (frame + 1) * frameInterval;
 
-      const tick = stego(frameMs);
-      await iframe?.executeJavaScript(doProcess(frameMs));
-      await tickStego(cdp, frameMs);
+      await tick(iframe, frameMs);
+      await swapBuffer(main, frameMs);
       await advanceVirtualTime(cdp, frameInterval);
 
-      const bitmap = paint(win, { width, height }, await tick);
-      win.webContents.startPainting();
-      await pipeline.encodeBGRA(await bitmap);
+      const bitmap = await paint(win, { width, height }, frameMs);
+      await pipeline.encodeBGRA(bitmap);
       written++;
 
       const newProgress = Math.floor((written / total) * 100);
@@ -104,7 +89,6 @@ export async function shoot(writer: IpcWriter, source: string, options: RenderOp
       }
     }
   } finally {
-    iframe?.executeJavaScript(doEject());
     cdp.detach();
     win.close();
     await pipeline.finish();
