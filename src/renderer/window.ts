@@ -66,11 +66,25 @@ function waitForFinish({ source, win, action, tolerant }: FinishOptions) {
   });
 }
 
-function waitForDestroy(win: BrowserWindow) {
+export function disposeWindow(win: BrowserWindow) {
   return new Promise<void>((resolve) => {
     unsetInterceptor(win);
-    win.once("closed", resolve);
-    win.destroy();
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    win.once("closed", done);
+    win.close();
+    setTimeout(() => {
+      if (settled) return;
+      try {
+        logger.warn(TAG, "force close");
+        win.destroy();
+      } catch {}
+      done();
+    }, 1000);
   });
 }
 
@@ -91,6 +105,13 @@ async function openWindow({ source, onCreated, renderer, warmup, tolerant }: Win
   const win = new BrowserWindow({
     width,
     height: height + 1,
+    minWidth: width,
+    minHeight: height + 1,
+    maxWidth: width,
+    maxHeight: height + 1,
+    resizable: false,
+    minimizable: false,
+    movable: false,
     show: false,
     transparent: true,
     backgroundColor: undefined,
@@ -121,7 +142,7 @@ async function openWindow({ source, onCreated, renderer, warmup, tolerant }: Win
     const url = createStegoURL(src, { width, height });
     await waitForFinish({ source, win, action: () => win.loadURL(url), tolerant });
   } catch (e) {
-    await waitForDestroy(win);
+    await disposeWindow(win);
     throw e;
   }
 
@@ -162,7 +183,7 @@ export async function loadWindow({ source, onCreated, renderer }: WindowOptions)
     warmup.webContents.removeAllListeners();
     unsetInterceptor(warmup);
     await sleep(2000);
-    await waitForDestroy(warmup);
+    await disposeWindow(warmup);
   }
 
   try {

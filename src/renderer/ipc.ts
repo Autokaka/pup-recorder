@@ -1,14 +1,12 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/04/01.
 
+import type { ChildProcess } from "child_process";
 import { EventEmitter } from "events";
-import { createConnection, createServer, type Socket } from "net";
-
-const HEADER_SIZE = 8;
 
 export const enum IpcMsgType {
-  PROGRESS = 1,
-  DONE = 2,
-  ERROR = 3,
+  PROGRESS = "progress",
+  DONE = "done",
+  ERROR = "error",
 }
 
 export interface IpcDonePayload {
@@ -17,135 +15,56 @@ export interface IpcDonePayload {
   outFile: string;
 }
 
+type Msg =
+  | { type: IpcMsgType.PROGRESS; value: number }
+  | { type: IpcMsgType.DONE; payload: IpcDonePayload }
+  | { type: IpcMsgType.ERROR; error: string };
+
 export class IpcWriter {
-  constructor(private readonly _socket: Socket) {}
-
   writeProgress(value: number): void {
-    this.write(IpcMsgType.PROGRESS, Buffer.from(`${value}`));
+    this.send({ type: IpcMsgType.PROGRESS, value });
   }
 
-  writeError(error: string) {
-    this.write(IpcMsgType.ERROR, Buffer.from(error));
-    this._socket.end();
+  writeError(error: string): Promise<void> {
+    return this.send({ type: IpcMsgType.ERROR, error });
   }
 
-  writeDone(payload: IpcDonePayload): void {
-    this.write(IpcMsgType.DONE, Buffer.from(JSON.stringify(payload)));
-    this._socket.end();
+  writeDone(payload: IpcDonePayload): Promise<void> {
+    return this.send({ type: IpcMsgType.DONE, payload });
   }
 
-  private write(type: IpcMsgType, payload: Buffer): void {
-    const header = Buffer.alloc(HEADER_SIZE);
-    header.writeUInt32LE(type, 0);
-    header.writeUInt32LE(payload.byteLength, 4);
-    this._socket.write(header);
-    this._socket.write(payload);
+  private send(msg: Msg): Promise<void> {
+    return new Promise((resolve) => {
+      if (!process.send) return resolve();
+      process.send(msg, () => resolve());
+    });
   }
-}
-
-export function connectIpc(socketPath: string): Promise<IpcWriter> {
-  return new Promise((resolve, reject) => {
-    const socket = createConnection(socketPath);
-    socket.once("connect", () => resolve(new IpcWriter(socket)));
-    socket.once("error", reject);
-  });
 }
 
 export class IpcReader extends EventEmitter<{
   progress: [value: number];
-  message: [type: IpcMsgType, buffer: Buffer];
+  message: [msg: Msg];
   done: [payload: IpcDonePayload];
   error: [error: Error];
   close: [];
 }> {
-  private _chunks: Buffer[] = [];
-  private _buffered = 0;
-
-  constructor(private readonly _socket: Socket) {
+  constructor(child: ChildProcess) {
     super();
-    this._socket.on("data", (data) => this.onData(data));
-    this._socket.on("error", (err) => this.emit("error", err));
-    this._socket.on("close", () => this.emit("close"));
-  }
-
-  private onData(data: Buffer): void {
-    this._chunks.push(data);
-    this._buffered += data.byteLength;
-    this.flush();
-  }
-
-  private flush(): void {
-    for (;;) {
-      if (this._buffered < HEADER_SIZE) return;
-      const header = this.peek(HEADER_SIZE);
-      const type = header.readUInt32LE(0) as IpcMsgType;
-      const len = header.readUInt32LE(4);
-      if (this._buffered < HEADER_SIZE + len) return;
-      this.consume(HEADER_SIZE);
-      const payload = this.consume(len);
-      this.emit("message", type, payload);
-      switch (type) {
-        case IpcMsgType.PROGRESS: {
-          this.emit("progress", Number(payload.toString()));
+    child.on("message", (raw) => {
+      const msg = raw as Msg;
+      this.emit("message", msg);
+      switch (msg.type) {
+        case IpcMsgType.PROGRESS:
+          this.emit("progress", msg.value);
           break;
-        }
-        case IpcMsgType.DONE: {
-          this.emit("done", JSON.parse(payload.toString()));
+        case IpcMsgType.DONE:
+          this.emit("done", msg.payload);
           break;
-        }
-        case IpcMsgType.ERROR: {
-          this.emit("error", new Error(payload.toString()));
+        case IpcMsgType.ERROR:
+          this.emit("error", new Error(msg.error));
           break;
-        }
       }
-    }
-  }
-
-  private peek(n: number): Buffer {
-    if (this._chunks[0] && this._chunks[0].byteLength >= n) return this._chunks[0];
-    return Buffer.concat(this._chunks).subarray(0, n);
-  }
-
-  private consume(n: number): Buffer {
-    const out = Buffer.allocUnsafe(n);
-    let offset = 0;
-    while (offset < n) {
-      const chunk = this._chunks[0]!;
-      const take = Math.min(chunk.byteLength, n - offset);
-      chunk.copy(out, offset, 0, take);
-      if (take === chunk.byteLength) {
-        this._chunks.shift();
-      } else {
-        this._chunks[0] = chunk.subarray(take);
-      }
-      offset += take;
-    }
-    this._buffered -= n;
-    return out;
-  }
-}
-
-export interface IpcServer {
-  waitForConnection(): Promise<IpcReader>;
-  close(): void;
-}
-
-export function createIpcServer(socketPath: string): Promise<IpcServer> {
-  return new Promise((resolve, reject) => {
-    const server = createServer();
-    server.once("error", reject);
-    server.listen(socketPath, () => {
-      resolve({
-        waitForConnection() {
-          return new Promise<IpcReader>((ok, no) => {
-            server.once("connection", (socket) => ok(new IpcReader(socket)));
-            server.once("error", no);
-          });
-        },
-        close() {
-          server.close();
-        },
-      });
     });
-  });
+    child.once("exit", () => this.emit("close"));
+  }
 }

@@ -1,6 +1,6 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/03/13.
 
-import type { Debugger } from "electron";
+import type { Debugger, Size } from "electron";
 
 const ADVANCE_TIMEOUT_MS = 30_000;
 
@@ -28,4 +28,12 @@ export function advanceVirtualTime(cdp: Debugger, budget: number): Promise<void>
 
 export function pauseVirtualTime(cdp: Debugger): Promise<void> {
   return cdp.sendCommand("Emulation.setVirtualTimePolicy", { policy: "pause" });
+}
+
+export async function resizeDrawable(cdp: Debugger, size: Size) {
+  await cdp.sendCommand("Emulation.setDeviceMetricsOverride", {
+    ...size,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
 }

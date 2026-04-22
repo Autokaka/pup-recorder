@@ -6,7 +6,7 @@ import { BrowserWindow } from 'electron';
 import { ChildProcess } from 'child_process';
 import { Codec } from 'node-av';
 import { CodecContext } from 'node-av';
-import type { Debugger } from 'electron';
+import { Debugger } from 'electron';
 import { EventEmitter } from 'events';
 import { FFAudioEncoder } from 'node-av/constants';
 import { FFVideoEncoder } from 'node-av/constants';
@@ -16,11 +16,10 @@ import { HardwareContext } from 'node-av/api';
 import type { NativeImage } from 'electron';
 import { Packet } from 'node-av';
 import { Size } from 'electron';
-import { Socket } from 'net';
 import { SoftwareScaleContext } from 'node-av';
 import { SpawnOptions } from 'child_process';
 import { Stream } from 'node-av';
-import { WebFrameMain } from 'electron';
+import type { WebFrameMain } from 'electron';
 import z from 'zod';
 
 /** Insert emulation prevention bytes (00 00 03) for Annex B compliance. */
@@ -156,10 +155,6 @@ declare class ConcurrencyLimiter {
 export { ConcurrencyLimiter }
 export { ConcurrencyLimiter as ConcurrencyLimiter_alias_1 }
 
-export declare function connectIpc(socketPath: string): Promise<IpcWriter>;
-
-export declare function createIpcServer(socketPath: string): Promise<IpcServer>;
-
 export declare function createStegoURL(src: string, size: Size): string;
 
 export declare function createVideoEncoder(opts: VideoFactoryOptions, muxer: FormatMuxer): Promise<VideoSetup>;
@@ -191,6 +186,8 @@ export { DEFAULT_WIDTH as DEFAULT_WIDTH_alias_1 }
 declare const defaultRenderOptions: RenderOptions;
 export { defaultRenderOptions }
 export { defaultRenderOptions as defaultRenderOptions_alias_1 }
+
+export declare function disposeWindow(win: BrowserWindow): Promise<void>;
 
 export declare function drainPackets(ctx: CodecContext, pkt: Packet, stream: Stream, muxer: FormatMuxer): Promise<void>;
 
@@ -310,40 +307,26 @@ export declare interface IpcDonePayload {
 }
 
 export declare const enum IpcMsgType {
-    PROGRESS = 1,
-    DONE = 2,
-    ERROR = 3
+    PROGRESS = "progress",
+    DONE = "done",
+    ERROR = "error"
 }
 
 export declare class IpcReader extends EventEmitter<{
     progress: [value: number];
-    message: [type: IpcMsgType, buffer: Buffer];
+    message: [msg: Msg];
     done: [payload: IpcDonePayload];
     error: [error: Error];
     close: [];
 }> {
-    private readonly _socket;
-    private _chunks;
-    private _buffered;
-    constructor(_socket: Socket);
-    private onData;
-    private flush;
-    private peek;
-    private consume;
-}
-
-export declare interface IpcServer {
-    waitForConnection(): Promise<IpcReader>;
-    close(): void;
+    constructor(child: ChildProcess);
 }
 
 export declare class IpcWriter {
-    private readonly _socket;
-    constructor(_socket: Socket);
     writeProgress(value: number): void;
-    writeError(error: string): void;
-    writeDone(payload: IpcDonePayload): void;
-    private write;
+    writeError(error: string): Promise<void>;
+    writeDone(payload: IpcDonePayload): Promise<void>;
+    private send;
 }
 
 export declare function isEmpty(image: NativeImage): boolean;
@@ -398,6 +381,17 @@ export declare function makeCLI(options: CLIOptions): Promise<void>;
 export declare function makeFrame(width: number, height: number, pixFmt: AVPixelFormat): Frame;
 
 export declare function makePacket(): Packet;
+
+declare type Msg = {
+    type: IpcMsgType.PROGRESS;
+    value: number;
+} | {
+    type: IpcMsgType.DONE;
+    payload: IpcDonePayload;
+} | {
+    type: IpcMsgType.ERROR;
+    error: string;
+};
 
 export declare const NAL_HEADER_SIZE = 2;
 
@@ -463,6 +457,7 @@ export { periodical as periodical_alias_1 }
 declare interface ProcessHandle {
     process: ChildProcess;
     wait: Promise<void>;
+    get killed(): boolean;
     kill(): void;
 }
 export { ProcessHandle }
@@ -493,10 +488,6 @@ export { pupDisableGPU as pupDisableGPU_alias_1 }
 declare const pupDisableHwCodec: boolean;
 export { pupDisableHwCodec }
 export { pupDisableHwCodec as pupDisableHwCodec_alias_1 }
-
-declare const pupIpcSocket: string | undefined;
-export { pupIpcSocket }
-export { pupIpcSocket as pupIpcSocket_alias_1 }
 
 declare const pupLogLevel: number;
 export { pupLogLevel }
@@ -564,6 +555,8 @@ declare const RenderSchema: z.ZodObject<{
 export { RenderSchema }
 export { RenderSchema as RenderSchema_alias_1 }
 
+export declare function resizeDrawable(cdp: Debugger, size: Size): Promise<void>;
+
 declare interface RetryOptions<Args extends any[], Ret> {
     fn: (...args: Args) => Promise<Ret>;
     maxAttempts?: number;
@@ -575,7 +568,12 @@ export { RetryOptions as RetryOptions_alias_1 }
 /** Rewrite nuh_layer_id in a NAL unit (returns copy). */
 export declare function rewriteNalLayerId(nal: Buffer, layerId: number): Buffer;
 
-export declare function runElectronApp(size: Size, args: unknown[], ipcSocketPath: string): Promise<ProcessHandle>;
+export declare function runElectronApp({ args, display }: RunElectronAppOptions): Promise<ProcessHandle>;
+
+export declare interface RunElectronAppOptions {
+    args: unknown[];
+    display?: number;
+}
 
 export declare function setInterceptor({ source, window, useInnerProxy }: NetworkOptions): void;
 
@@ -585,6 +583,8 @@ export declare function setupPupProtocol(): void;
 
 export declare function shoot(writer: IpcWriter, source: string, options: RenderOptions): Promise<IpcDonePayload>;
 
+export declare function sizeEquals(a: Size, b: Size): boolean;
+
 declare function sleep(ms: number): Promise<void>;
 export { sleep }
 export { sleep as sleep_alias_1 }
@@ -592,13 +592,17 @@ export { sleep as sleep_alias_1 }
 /** Split Annex B bitstream into NAL units. */
 export declare function splitNalUnits(bitstream: Buffer): NalUnit[];
 
-export declare function startStego(frame: WebFrameMain): Promise<void>;
+export declare function startElectronCrashReporter(): void;
+
+export declare function startStego(cdp: Debugger): Promise<void>;
+
+export declare function startXvfb(width: number, height: number): XvfbHandle;
 
 export declare const STEGO_TICK_CHANNEL = "stego-tick";
 
-export declare function stopStego(frame: WebFrameMain): Promise<void>;
+export declare function stopStego(cdp: Debugger): Promise<void>;
 
-export declare function swapBuffer(frame: WebFrameMain, expected: number): Promise<void>;
+export declare function swapBuffer(cdp: Debugger, expected: number): Promise<void>;
 
 export declare function tick(frame: WebFrameMain | undefined, timestampMs: number): Promise<void>;
 
@@ -702,6 +706,11 @@ export declare interface WindowOptions {
     renderer: RenderOptions;
     warmup?: boolean;
     tolerant?: boolean;
+}
+
+export declare interface XvfbHandle {
+    display: number;
+    stop(): void;
 }
 
 export { }

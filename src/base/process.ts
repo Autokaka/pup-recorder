@@ -23,6 +23,7 @@ export function pargs() {
 export interface ProcessHandle {
   process: ChildProcess;
   wait: Promise<void>;
+  get killed(): boolean;
   kill(): void;
 }
 
@@ -34,13 +35,19 @@ export function exec(cmd: string, options?: SpawnOptions): ProcessHandle {
     stdio: "inherit",
     ...options,
   });
+  let killed = false;
   return {
     process: proc,
     wait: logger.attach(proc, command),
+    get killed() {
+      return killed;
+    },
     kill() {
+      if (killed) return;
+      killed = true;
       const pid = proc.pid;
-      if (pid) treeKill(pid);
-      else proc.kill();
+      if (pid) treeKill(pid, "SIGKILL");
+      else proc.kill("SIGKILL");
     },
   };
 }

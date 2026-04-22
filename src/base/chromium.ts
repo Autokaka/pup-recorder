@@ -42,9 +42,13 @@ export async function chromiumOptions(disableGpu: boolean) {
     "disable-background-timer-throttling",
     "disable-renderer-backgrounding",
     "disable-backgrounding-occluded-windows",
+    // 日志追踪
+    "enable-logging=stderr",
   ];
 
-  if (pupLogLevel < 3) {
+  if (pupLogLevel >= 3) {
+    opts.push("log-level=0", "v=1");
+  } else {
     opts.push("log-level=3");
   }
 

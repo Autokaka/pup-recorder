@@ -1,6 +1,6 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/06.
 
-import { ChildProcess, type Serializable } from "child_process";
+import type { ChildProcess } from "child_process";
 import { Log } from "node-av";
 import { AV_LOG_ERROR, AV_LOG_WARNING } from "node-av/constants";
 import { pupLogLevel } from "./constants";
@@ -109,7 +109,7 @@ export class Logger implements LoggerLike {
     return new Promise<void>((resolve, reject) => {
       this.debug(`${name}.attach`);
       let fatal: string = "";
-      const dispatch = (data: Buffer | Serializable) => {
+      const dispatch = (data: Buffer) => {
         const message = data.toString();
         if (message.startsWith(FATAL)) {
           fatal += message.slice(FATAL.length + 1);
@@ -120,7 +120,6 @@ export class Logger implements LoggerLike {
       proc.stderr?.on("data", dispatch);
       proc.stdout?.on("data", dispatch);
       proc
-        .on("message", dispatch)
         .on("error", (err) => {
           fatal += err.message;
           proc.kill();

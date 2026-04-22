@@ -4,16 +4,18 @@ import { ok } from "assert";
 import { app } from "electron";
 import { mkdir } from "fs/promises";
 import { dirname } from "path";
-import { pupIpcSocket } from "./base/constants";
+import { startElectronCrashReporter } from "./base/crash";
 import { logger } from "./base/logging";
 import { makeCLI } from "./common";
-import { connectIpc } from "./renderer/ipc";
+import { IpcWriter } from "./renderer/ipc";
 import { setupPupProtocol } from "./renderer/protocol";
 import { render } from "./renderer/render";
 import { defaultRenderOptions } from "./renderer/schema";
 import { shoot } from "./renderer/shoot";
 
 const TAG = "[App]";
+
+startElectronCrashReporter();
 
 function printFeatures() {
   logger.debug(TAG, "gpu features:", app.getGPUFeatureStatus());
@@ -41,8 +43,8 @@ makeCLI({
     process.once("SIGTERM", () => exit(143));
     process.once("SIGINT", () => exit(130));
     process.once("exit", (c) => exit(c));
-    ok(pupIpcSocket, "pupIpcSocket not set");
-    const ipc = await connectIpc(pupIpcSocket);
+    ok(process.send, "ipc channel missing — spawn with stdio[3]='ipc'");
+    const ipc = new IpcWriter();
     try {
       app.on("gpu-info-update", printFeatures);
       await app.whenReady();
@@ -50,13 +52,13 @@ makeCLI({
       printFeatures();
       await mkdir(dirname(options.outFile), { recursive: true });
       const action = options.deterministic ? shoot : render;
-      ipc.writeDone(await action(ipc, source, options));
+      await ipc.writeDone(await action(ipc, source, options));
     } catch (e) {
       const error = e as Error;
       const m = error.stack ?? error.message ?? String(e ?? "unknown error");
-      ipc.writeError(m);
+      await ipc.writeError(m);
     } finally {
-      app.quit();
+      app.exit();
     }
   },
 });

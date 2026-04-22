@@ -1,14 +1,10 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/09.
 
-import { ok } from "assert";
-import { randomUUID } from "crypto";
-import { rmSync } from "fs";
-import { mkdir } from "fs/promises";
-import { tmpdir } from "os";
-import { join } from "path";
+import { platform } from "os";
 import { logger } from "./base/logging";
+import { startXvfb } from "./base/xvfb";
 import { runElectronApp } from "./renderer/electron";
-import { createIpcServer, type IpcDonePayload } from "./renderer/ipc";
+import { IpcReader, type IpcDonePayload } from "./renderer/ipc";
 import { defaultRenderOptions, type RenderOptions, type RenderResult } from "./renderer/schema";
 
 const TAG = "[pup]";
@@ -23,10 +19,10 @@ export interface PupOptions extends Partial<RenderOptions> {
 export interface PupResult extends RenderResult {}
 
 interface AppOptions extends RenderOptions {
-  signal?: AbortSignal;
+  display?: number;
 }
 
-async function runPupApp(source: string, options: AppOptions, socketPath: string) {
+async function runPupApp(source: string, options: AppOptions) {
   logger.debug(TAG, `runPupApp`, source, options);
 
   const args: string[] = [
@@ -49,7 +45,7 @@ async function runPupApp(source: string, options: AppOptions, socketPath: string
   if (options.disableHwCodec) args.push(`--disable-hw-codec`);
   if (options.windowTolerant) args.push(`--window-tolerant`);
 
-  return runElectronApp(options, args, socketPath);
+  return runElectronApp({ args, display: options.display });
 }
 
 const d = defaultRenderOptions;
@@ -75,38 +71,35 @@ export async function pup(source: string, options: Partial<PupOptions>): Promise
     outFile,
   };
 
-  const tmpDir = join(tmpdir(), "pup", randomUUID());
-  await mkdir(tmpDir, { recursive: true });
-  const socketPath = join(tmpDir, "pup.sock");
-
   const t0 = performance.now();
-  const tick = (p: number) => (logger.info(TAG, `${source} progress: ${p}%`), options.onProgress?.(p));
 
-  const server = await createIpcServer(socketPath);
-  const handle = await runPupApp(source, { ...renderOpts, signal }, socketPath);
+  let progress = 0;
+  const tick = (p: number) => {
+    logger.info(TAG, `${source} progress: ${p}%`);
+    progress = p;
+    options.onProgress?.(p);
+  };
 
-  signal?.addEventListener(
-    "abort",
-    () => {
-      logger.debug(TAG, `aborted`);
-      handle.kill();
-      rmSync(tmpDir, { recursive: true, force: true });
-    },
-    { once: true },
-  );
+  const xvfb = platform() === "linux" ? startXvfb(renderOpts.width, renderOpts.height + 1) : undefined;
+  const handle = await runPupApp(source, { ...renderOpts, display: xvfb?.display });
+
+  const onAbort = () => (logger.error(TAG, `aborted`), handle.kill());
+  signal?.addEventListener("abort", onAbort, { once: true });
 
   try {
-    const result = new Promise<IpcDonePayload>(async (resolve, reject) => {
-      (await server.waitForConnection())
-        .on("close", () => reject(new Error("IPC closed without result")))
+    const result = new Promise<IpcDonePayload>((resolve, reject) => {
+      new IpcReader(handle.process)
+        .on("close", () => {
+          const msg = JSON.stringify({ source, progress, killed: handle.killed });
+          reject(new Error(`crashed: ${msg}`));
+        })
         .on("message", () => signal?.aborted && reject(signal.reason))
         .on("progress", tick)
         .on("done", resolve)
         .on("error", reject);
-    }).finally(() => server.close());
+    });
     tick(0);
-    const summary = await Promise.race([result, handle.wait]);
-    ok(summary, "no summary received");
+    const [summary] = await Promise.all([result, handle.wait]);
     tick(100);
     logger.info(TAG, `done ${outFile} in ${Math.round(performance.now() - t0)}ms`);
     return { ...summary, options: renderOpts };
@@ -115,6 +108,7 @@ export async function pup(source: string, options: Partial<PupOptions>): Promise
     signal?.throwIfAborted();
     throw e;
   } finally {
-    rmSync(tmpDir, { recursive: true, force: true });
+    signal?.removeEventListener("abort", onAbort);
+    xvfb?.stop();
   }
 }

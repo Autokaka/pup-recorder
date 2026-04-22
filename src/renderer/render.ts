@@ -1,14 +1,15 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/09.
 
-import { type NativeImage } from "electron";
+import { type NativeImage, type Size } from "electron";
+import { resizeDrawable } from "../base/cdp";
 import { EncoderPipeline } from "../base/encoder/pipeline";
 import { FrameDropStats } from "../base/frame_drop";
-import { isEmpty } from "../base/image";
+import { sizeEquals } from "../base/image";
 import { setupAudioCapture, type AudioCapture } from "./audio";
 import type { IpcDonePayload, IpcWriter } from "./ipc";
 import type { RenderOptions } from "./schema";
 import { decodeStego, startStego, stopStego } from "./stego";
-import { loadWindow } from "./window";
+import { disposeWindow, loadWindow } from "./window";
 
 export async function render(writer: IpcWriter, source: string, options: RenderOptions): Promise<IpcDonePayload> {
   const { fps, width, height, duration, withAudio, outFile, disableHwCodec } = options;
@@ -17,6 +18,7 @@ export async function render(writer: IpcWriter, source: string, options: RenderO
 
   const total = Math.ceil(fps * duration);
   const frameInterval = 1000 / fps;
+  const frameSize: Size = { width, height: height + 1 };
 
   let written = 0;
   let lastWrittenTime: number | undefined;
@@ -38,11 +40,16 @@ export async function render(writer: IpcWriter, source: string, options: RenderO
       return;
     }
 
-    if (isEmpty(image)) return;
+    const imageSize = image.getSize();
+    if (!sizeEquals(imageSize, frameSize)) {
+      // NOTE(Autokaka): We must ensure frame is ready on electron v41+
+      resizeDrawable(cdp, frameSize);
+      return;
+    }
 
     // Decode stego timestamp from the bottom pixel row without full bitmap copy
     const bitmap = image.toBitmap();
-    const currentTime = decodeStego(bitmap, image.getSize());
+    const currentTime = decodeStego(bitmap, imageSize);
     if (currentTime === undefined) {
       encodeError ??= new Error(`no timestamp @ ${written}`);
       return;
@@ -100,19 +107,18 @@ export async function render(writer: IpcWriter, source: string, options: RenderO
   const cdp = win.webContents.debugger;
   cdp.attach("1.3");
 
-  const main = win.webContents.mainFrame;
   win.webContents.stopPainting();
   win.webContents.setFrameRate(fps);
   win.webContents.on("paint", paint);
   win.webContents.startPainting();
 
   try {
-    await startStego(main);
+    await startStego(cdp);
     await new Promise<void>((r, j) => ([resolver, rejecter] = [r, j]));
   } finally {
-    await stopStego(main);
+    await stopStego(cdp);
     win.webContents.off("paint", paint);
-    win.close();
+    await disposeWindow(win);
     await audio?.teardown();
     await encoder.finish();
   }

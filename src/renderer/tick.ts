@@ -1,8 +1,10 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/04/01.
 
 import type { WebFrameMain } from "electron";
+import { logger } from "../base/logging";
 
 export const TICK_SYMBOL = "__pup_tick__";
+const TAG = `[Tick]`;
 
 const HOOK = `(function() {
   if (window.self === window.top) return;
@@ -103,9 +105,10 @@ const HOOK = `(function() {
 export async function tick(frame: WebFrameMain | undefined, timestampMs: number) {
   try {
     await frame?.executeJavaScript(`${HOOK} ${TICK_SYMBOL}.process(${timestampMs})`);
-  } catch {
+  } catch (e) {
     // NOTE(Autokaka):
     // Side-effects may throw (e.g. uncaught error on animation callback), ignore to let recorder continue
     // The errors will be dispatched to window console, just like how render.ts works
+    logger.error(TAG, "tick failed:", e);
   }
 }
