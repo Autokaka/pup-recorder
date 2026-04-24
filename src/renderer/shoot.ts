@@ -10,7 +10,6 @@ import {
 } from "electron";
 import { advanceVirtualTime, pauseVirtualTime, resizeDrawable } from "../base/cdp";
 import { EncoderPipeline } from "../base/encoder/pipeline";
-import { canIUseGPU } from "../base/hwaccel";
 import { sizeEquals } from "../base/image";
 import { logger } from "../base/logging";
 import { IpcWriter, type IpcDonePayload } from "./ipc";
@@ -66,19 +65,15 @@ async function paint({ source, win, size, ms }: PaintOptions): Promise<Buffer> {
 }
 
 export async function shoot(writer: IpcWriter, source: string, options: RenderOptions): Promise<IpcDonePayload> {
-  const { fps, width, height, duration, withAudio, outFile, disableGpu, disableHwCodec } = options;
+  const { fps, width, height, duration, withAudio, outFile, disableHwCodec } = options;
   if (withAudio) logger.warn(TAG, "audio will be ignored on this mode");
 
   await using pipeline = await EncoderPipeline.create({ width, height, fps, outFile, withAudio, disableHwCodec });
 
-  const gpu = (await canIUseGPU) && !disableGpu;
   const total = Math.ceil(fps * duration);
   const frameInterval = 1000 / fps;
   let written = 0;
   let progress = 0;
-
-  const renderFps = gpu ? 240 : fps;
-  logger.debug(TAG, { renderFps, fps });
 
   const win = await loadWindow({ source, renderer: options });
   const cdp = win.webContents.debugger;
@@ -87,7 +82,7 @@ export async function shoot(writer: IpcWriter, source: string, options: RenderOp
   try {
     cdp.attach("1.3");
 
-    win.webContents.setFrameRate(renderFps);
+    win.webContents.setFrameRate(fps);
     win.webContents.stopPainting();
 
     await pauseVirtualTime(cdp);

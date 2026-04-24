@@ -21,7 +21,7 @@ export const RenderSchema = z.object({
   height: z.number().describe("Video height"),
   fps: z.number().describe("Frames per second"),
   withAudio: z.boolean().describe("Capture and encode audio"),
-  outFile: z.string().describe("Output mp4 file path"),
+  outFile: z.string().describe("Comma-separated output paths; extension (.mp4/.webm) selects encoder"),
   useInnerProxy: z.boolean().describe("Use bilibili inner proxy for resource access"),
   deterministic: z.boolean().describe("Render by frame rather than recording"),
   disableGpu: z.boolean().describe("Disable GPU rendering, may reduce performance but increase stability"),

@@ -31,7 +31,7 @@ function waitForFinish({ source, win, action, tolerant }: FinishOptions) {
       else resolve();
     };
 
-    timeout = setTimeout(() => done(TIMEOUT_ERROR), 30_000);
+    timeout = setTimeout(() => done(TIMEOUT_ERROR), 10_000);
     const stegoFrame = new Promise<void>((attached) => {
       interval = setInterval(() => {
         if (win.webContents.mainFrame.frames[0]) {

@@ -1,6 +1,6 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/04/12.
 
-import { Codec, CodecContext, FFmpegError, Frame, Packet, Rational, type Stream } from "node-av";
+import { Codec, CodecContext, FFmpegError, Frame, HardwareFramesContext, Packet, Rational, type Stream } from "node-av";
 import {
   AV_CODEC_FLAG_GLOBAL_HEADER,
   AVERROR_EAGAIN,
@@ -20,6 +20,7 @@ export interface VideoCtxOptions {
   codecTag?: string;
   colorRange?: AVColorRange;
   options?: Record<string, string>;
+  hwFramesCtx?: HardwareFramesContext;
 }
 
 export async function openVideoCtx(opts: VideoCtxOptions, label: string): Promise<CodecContext> {
@@ -36,6 +37,7 @@ export async function openVideoCtx(opts: VideoCtxOptions, label: string): Promis
   ctx.setFlags(AV_CODEC_FLAG_GLOBAL_HEADER);
   if (opts.codecTag) ctx.codecTag = opts.codecTag;
   if (opts.colorRange !== undefined) ctx.colorRange = opts.colorRange;
+  if (opts.hwFramesCtx) ctx.hwFramesCtx = opts.hwFramesCtx;
   for (const [k, v] of Object.entries(opts.options ?? {})) ctx.setOption(k, v);
   FFmpegError.throwIfError(await ctx.open2(opts.codec, null), label);
   return ctx;

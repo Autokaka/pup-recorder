@@ -24,35 +24,37 @@ export interface VideoSetup {
   hwVideo?: HwEncoder;
   codec?: CodecState;
   hw?: HardwareContext;
+  ownsHw: boolean;
 }
 
-export interface VideoFactoryOptions {
+export interface HwVideoFactoryOptions {
   width: number;
   height: number;
   fps: number;
   bitrate?: number;
   disableHwCodec?: boolean;
+  sharedHw?: HardwareContext;
 }
 
-export async function createVideoEncoder(opts: VideoFactoryOptions, muxer: FormatMuxer): Promise<VideoSetup> {
-  const { width, height, fps, bitrate = 8_000_000, disableHwCodec = false } = opts;
-  const hw = disableHwCodec ? undefined : (HardwareContext.auto() ?? undefined);
+export async function createHwVideoEncoder(opts: HwVideoFactoryOptions, muxer: FormatMuxer): Promise<VideoSetup> {
+  const { width, height, fps, bitrate = 8_000_000, disableHwCodec = false, sharedHw } = opts;
+  const hw = sharedHw ?? (disableHwCodec ? undefined : (HardwareContext.auto() ?? undefined));
+  const ownsHw = !sharedHw && !!hw;
 
   try {
     if (hw?.deviceTypeName === FF_HWDEVICE_TYPE_VIDEOTOOLBOX && hw.getEncoderCodec("hevc")) {
       logger.debug(TAG, "using VideoToolbox HEVC alpha encoder");
       const hwVideo = await VideoToolboxEncoder.create({ width, height, fps, hw, bitrate, muxer });
-      return { hwVideo, hw };
+      return { hwVideo, hw, ownsHw };
     }
     if (hw?.deviceTypeName === FF_HWDEVICE_TYPE_CUDA && hw.getEncoderCodec("hevc")) {
       logger.debug(TAG, "using NVENC dual-layer HEVC alpha encoder");
       const hwVideo = await NvencDualLayerEncoder.create({ width, height, fps, hw, bitrate, muxer });
-      return { hwVideo, hw };
+      return { hwVideo, hw, ownsHw };
     }
   } catch (e) {
     logger.warn(TAG, "Hardware codec session limits reached, use software encoder", e);
-  } finally {
-    hw?.dispose();
+    if (ownsHw) hw?.dispose();
   }
 
   logger.debug(TAG, "using software libx265 HEVC alpha encoder");
@@ -67,5 +69,5 @@ export async function createVideoEncoder(opts: VideoFactoryOptions, muxer: Forma
     pixelFormat: AV_PIX_FMT_YUVA420P,
     muxer,
   });
-  return { video, codec: await CodecState.create(width, height) };
+  return { video, codec: await CodecState.create(width, height), ownsHw: false };
 }

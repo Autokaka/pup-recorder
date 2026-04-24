@@ -13,6 +13,7 @@ import { FFVideoEncoder } from 'node-av/constants';
 import { FormatContext } from 'node-av';
 import { Frame } from 'node-av';
 import { HardwareContext } from 'node-av/api';
+import { HardwareFramesContext } from 'node-av';
 import type { NativeImage } from 'electron';
 import { Packet } from 'node-av';
 import { Size } from 'electron';
@@ -155,9 +156,9 @@ declare class ConcurrencyLimiter {
 export { ConcurrencyLimiter }
 export { ConcurrencyLimiter as ConcurrencyLimiter_alias_1 }
 
-export declare function createStegoURL(src: string, size: Size): string;
+export declare function createHwVideoEncoder(opts: HwVideoFactoryOptions, muxer: FormatMuxer): Promise<VideoSetup>;
 
-export declare function createVideoEncoder(opts: VideoFactoryOptions, muxer: FormatMuxer): Promise<VideoSetup>;
+export declare function createStegoURL(src: string, size: Size): string;
 
 export declare function debounce<T extends (...args: unknown[]) => void>(fn: T, delay?: number): T;
 
@@ -189,6 +190,11 @@ export { defaultRenderOptions as defaultRenderOptions_alias_1 }
 
 export declare function disposeWindow(win: BrowserWindow): Promise<void>;
 
+export declare interface DoneMsg {
+    type: IpcMsgType.DONE;
+    payload: IpcDonePayload;
+}
+
 export declare function drainPackets(ctx: CodecContext, pkt: Packet, stream: Stream, muxer: FormatMuxer): Promise<void>;
 
 export declare function electronOpts(disableGpu: boolean): Promise<string[]>;
@@ -204,7 +210,7 @@ declare class EncoderPipeline {
     encodeBGRA(input: Buffer): Promise<void>;
     encodePNG(pngData: Buffer): Promise<void>;
     encodeAudio(pcm: Buffer): Promise<void>;
-    finish(): Promise<string>;
+    finish(): Promise<string[]>;
     [Symbol.asyncDispose](): Promise<void>;
     private free;
     private bgraFrame;
@@ -227,9 +233,16 @@ declare type EnvParser<T> = (value: unknown) => T;
 export { EnvParser }
 export { EnvParser as EnvParser_alias_1 }
 
+export declare interface ErrorMsg {
+    type: IpcMsgType.ERROR;
+    error: string;
+}
+
 declare function exec(cmd: string, options?: SpawnOptions): ProcessHandle;
 export { exec }
 export { exec as exec_alias_1 }
+
+export declare function extractAlphaToYuv420pBuffer(bgraFrame: Frame, buf: Buffer): void;
 
 export declare interface FixedBufferWriter {
     new (path: string, bufferSize: number, queueDepth?: number): FixedBufferWriter;
@@ -298,6 +311,15 @@ export declare interface HwVideoEncoderOptions {
     muxer: FormatMuxer;
 }
 
+export declare interface HwVideoFactoryOptions {
+    width: number;
+    height: number;
+    fps: number;
+    bitrate?: number;
+    disableHwCodec?: boolean;
+    sharedHw?: HardwareContext;
+}
+
 export declare function interleaveAccessUnits(baseNals: NalUnit[], alphaNals: NalUnit[]): Buffer;
 
 export declare interface IpcDonePayload {
@@ -306,19 +328,23 @@ export declare interface IpcDonePayload {
     outFile: string;
 }
 
+export declare interface IpcEvents {
+    progress: [value: number];
+    message: [msg: IpcMsg];
+    done: [payload: IpcDonePayload];
+    error: [error: Error];
+    close: [code: number | null];
+}
+
+export declare type IpcMsg = ProgressMsg | DoneMsg | ErrorMsg;
+
 export declare const enum IpcMsgType {
     PROGRESS = "progress",
     DONE = "done",
     ERROR = "error"
 }
 
-export declare class IpcReader extends EventEmitter<{
-    progress: [value: number];
-    message: [msg: Msg];
-    done: [payload: IpcDonePayload];
-    error: [error: Error];
-    close: [];
-}> {
+export declare class IpcReader extends EventEmitter<IpcEvents> {
     constructor(child: ChildProcess);
 }
 
@@ -382,17 +408,6 @@ export declare function makeFrame(width: number, height: number, pixFmt: AVPixel
 
 export declare function makePacket(): Packet;
 
-declare type Msg = {
-    type: IpcMsgType.PROGRESS;
-    value: number;
-} | {
-    type: IpcMsgType.DONE;
-    payload: IpcDonePayload;
-} | {
-    type: IpcMsgType.ERROR;
-    error: string;
-};
-
 export declare const NAL_HEADER_SIZE = 2;
 
 export declare interface NalUnit {
@@ -416,17 +431,34 @@ export declare class NvencDualLayerEncoder implements Disposable {
     private _seiBuffer;
     private _pts;
     private _seiInjected;
-    private _alphaBuf?;
-    private _alphaFrame?;
     private constructor();
     static create(opts: HwVideoEncoderOptions): Promise<NvencDualLayerEncoder>;
     encode(bgraFrame: Frame, muxer: FormatMuxer): Promise<void>;
     flush(muxer: FormatMuxer): Promise<void>;
     [Symbol.dispose](): void;
+    private allocHwFrame;
     private drainInterleaved;
 }
 
 export declare function openVideoCtx(opts: VideoCtxOptions, label: string): Promise<CodecContext>;
+
+export declare class OutputSink implements AsyncDisposable {
+    private _s;
+    private _disposed;
+    private constructor();
+    static kindFromPath(path: string): SinkKind;
+    static create(opts: SinkOptions): Promise<OutputSink>;
+    private static mp4Video;
+    private static webmVideo;
+    private static audioFor;
+    setInputRate(sampleRate: number): void;
+    encodeBGRA(bgraFrame: Frame): Promise<void>;
+    encodeDecodedFrame(src: Frame): Promise<void>;
+    encodeAudio(pcm: Buffer): Promise<void>;
+    flush(): Promise<void>;
+    [Symbol.asyncDispose](): Promise<void>;
+    private swEncode;
+}
 
 export declare function packBits(bits: number[]): Buffer;
 
@@ -462,6 +494,11 @@ declare interface ProcessHandle {
 }
 export { ProcessHandle }
 export { ProcessHandle as ProcessHandle_alias_1 }
+
+export declare interface ProgressMsg {
+    type: IpcMsgType.PROGRESS;
+    value: number;
+}
 
 export declare function proxiedUrl(url: string): string;
 
@@ -568,11 +605,10 @@ export { RetryOptions as RetryOptions_alias_1 }
 /** Rewrite nuh_layer_id in a NAL unit (returns copy). */
 export declare function rewriteNalLayerId(nal: Buffer, layerId: number): Buffer;
 
-export declare function runElectronApp({ args, display }: RunElectronAppOptions): Promise<ProcessHandle>;
+export declare function runElectronApp({ args }: RunElectronAppOptions): Promise<ProcessHandle>;
 
 export declare interface RunElectronAppOptions {
     args: unknown[];
-    display?: number;
 }
 
 export declare function setInterceptor({ source, window, useInnerProxy }: NetworkOptions): void;
@@ -582,6 +618,19 @@ export declare function setupAudioCapture({ encoder, getVideoTimeMs, onError, }:
 export declare function setupPupProtocol(): void;
 
 export declare function shoot(writer: IpcWriter, source: string, options: RenderOptions): Promise<IpcDonePayload>;
+
+export declare type SinkKind = "mp4" | "webm";
+
+export declare interface SinkOptions {
+    outFile: string;
+    kind: SinkKind;
+    width: number;
+    height: number;
+    fps: number;
+    withAudio: boolean;
+    disableHwCodec: boolean;
+    sharedHw?: HardwareContext;
+}
 
 export declare function sizeEquals(a: Size, b: Size): boolean;
 
@@ -595,8 +644,6 @@ export declare function splitNalUnits(bitstream: Buffer): NalUnit[];
 export declare function startElectronCrashReporter(): void;
 
 export declare function startStego(cdp: Debugger): Promise<void>;
-
-export declare function startXvfb(width: number, height: number): XvfbHandle;
 
 export declare const STEGO_TICK_CHANNEL = "stego-tick";
 
@@ -631,6 +678,7 @@ export declare interface VideoCtxOptions {
     codecTag?: string;
     colorRange?: AVColorRange;
     options?: Record<string, string>;
+    hwFramesCtx?: HardwareFramesContext;
 }
 
 declare class VideoEncoder_2 implements Disposable {
@@ -659,19 +707,12 @@ export declare interface VideoEncoderOptions {
     muxer: FormatMuxer;
 }
 
-export declare interface VideoFactoryOptions {
-    width: number;
-    height: number;
-    fps: number;
-    bitrate?: number;
-    disableHwCodec?: boolean;
-}
-
 export declare interface VideoSetup {
     video?: VideoEncoder_2;
     hwVideo?: HwEncoder;
     codec?: CodecState_2;
     hw?: HardwareContext;
+    ownsHw: boolean;
 }
 
 export declare class VideoToolboxEncoder implements Disposable {
@@ -706,11 +747,6 @@ export declare interface WindowOptions {
     renderer: RenderOptions;
     warmup?: boolean;
     tolerant?: boolean;
-}
-
-export declare interface XvfbHandle {
-    display: number;
-    stop(): void;
 }
 
 export { }

@@ -14,10 +14,9 @@ const TAG = "[Electron]";
 
 export interface RunElectronAppOptions {
   args: unknown[];
-  display?: number;
 }
 
-export async function runElectronApp({ args, display }: RunElectronAppOptions) {
+export async function runElectronApp({ args }: RunElectronAppOptions) {
   const opts = await electronOpts(args.includes("--disable-gpu"));
   const electronArgs = opts.map((a) => `--${a}`);
   electronArgs.push(`${PUP_ARGS_KEY}=${Buffer.from(JSON.stringify(args)).toString("base64")}`);
@@ -25,7 +24,5 @@ export async function runElectronApp({ args, display }: RunElectronAppOptions) {
   logger.debug(TAG, cmd);
 
   const env: NodeJS.ProcessEnv = { ...process.env, RUST_BACKTRACE: "full" };
-  if (display !== undefined) env["DISPLAY"] = `:${display}`;
-
   return exec(cmd, { stdio: ["ignore", "pipe", "pipe", "ipc"], env });
 }

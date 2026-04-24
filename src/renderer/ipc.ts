@@ -15,10 +15,30 @@ export interface IpcDonePayload {
   outFile: string;
 }
 
-type Msg =
-  | { type: IpcMsgType.PROGRESS; value: number }
-  | { type: IpcMsgType.DONE; payload: IpcDonePayload }
-  | { type: IpcMsgType.ERROR; error: string };
+export interface ProgressMsg {
+  type: IpcMsgType.PROGRESS;
+  value: number;
+}
+
+export interface DoneMsg {
+  type: IpcMsgType.DONE;
+  payload: IpcDonePayload;
+}
+
+export interface ErrorMsg {
+  type: IpcMsgType.ERROR;
+  error: string;
+}
+
+export type IpcMsg = ProgressMsg | DoneMsg | ErrorMsg;
+
+export interface IpcEvents {
+  progress: [value: number];
+  message: [msg: IpcMsg];
+  done: [payload: IpcDonePayload];
+  error: [error: Error];
+  close: [code: number | null];
+}
 
 export class IpcWriter {
   writeProgress(value: number): void {
@@ -33,7 +53,7 @@ export class IpcWriter {
     return this.send({ type: IpcMsgType.DONE, payload });
   }
 
-  private send(msg: Msg): Promise<void> {
+  private send(msg: IpcMsg): Promise<void> {
     return new Promise((resolve) => {
       if (!process.send) return resolve();
       process.send(msg, () => resolve());
@@ -41,17 +61,11 @@ export class IpcWriter {
   }
 }
 
-export class IpcReader extends EventEmitter<{
-  progress: [value: number];
-  message: [msg: Msg];
-  done: [payload: IpcDonePayload];
-  error: [error: Error];
-  close: [];
-}> {
+export class IpcReader extends EventEmitter<IpcEvents> {
   constructor(child: ChildProcess) {
     super();
     child.on("message", (raw) => {
-      const msg = raw as Msg;
+      const msg = raw as IpcMsg;
       this.emit("message", msg);
       switch (msg.type) {
         case IpcMsgType.PROGRESS:
@@ -65,6 +79,6 @@ export class IpcReader extends EventEmitter<{
           break;
       }
     });
-    child.once("exit", () => this.emit("close"));
+    child.once("exit", (c) => this.emit("close", c));
   }
 }

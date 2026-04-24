@@ -50,7 +50,9 @@ makeCLI({
       await app.whenReady();
       setupPupProtocol();
       printFeatures();
-      await mkdir(dirname(options.outFile), { recursive: true });
+      for (const out of options.outFile.split(",")) {
+        await mkdir(dirname(out), { recursive: true });
+      }
       const action = options.deterministic ? shoot : render;
       await ipc.writeDone(await action(ipc, source, options));
     } catch (e) {

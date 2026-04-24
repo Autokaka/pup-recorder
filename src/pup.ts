@@ -1,8 +1,6 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/09.
 
-import { platform } from "os";
 import { logger } from "./base/logging";
-import { startXvfb } from "./base/xvfb";
 import { runElectronApp } from "./renderer/electron";
 import { IpcReader, type IpcDonePayload } from "./renderer/ipc";
 import { defaultRenderOptions, type RenderOptions, type RenderResult } from "./renderer/schema";
@@ -18,34 +16,30 @@ export interface PupOptions extends Partial<RenderOptions> {
 
 export interface PupResult extends RenderResult {}
 
-interface AppOptions extends RenderOptions {
-  display?: number;
-}
-
-async function runPupApp(source: string, options: AppOptions) {
-  logger.debug(TAG, `runPupApp`, source, options);
+async function runPupApp(source: string, render: RenderOptions) {
+  logger.debug(TAG, `runPupApp`, source, render);
 
   const args: string[] = [
     source,
     `--width`,
-    `${options.width}`,
+    `${render.width}`,
     `--height`,
-    `${options.height}`,
+    `${render.height}`,
     `--fps`,
-    `${options.fps}`,
+    `${render.fps}`,
     `--duration`,
-    `${options.duration}`,
+    `${render.duration}`,
     `--out-file`,
-    `${options.outFile}`,
+    `${render.outFile}`,
   ];
-  if (options.withAudio) args.push(`--with-audio`);
-  if (options.useInnerProxy) args.push(`--use-inner-proxy`);
-  if (options.deterministic) args.push(`--deterministic`);
-  if (options.disableGpu) args.push(`--disable-gpu`);
-  if (options.disableHwCodec) args.push(`--disable-hw-codec`);
-  if (options.windowTolerant) args.push(`--window-tolerant`);
+  if (render.withAudio) args.push(`--with-audio`);
+  if (render.useInnerProxy) args.push(`--use-inner-proxy`);
+  if (render.deterministic) args.push(`--deterministic`);
+  if (render.disableGpu) args.push(`--disable-gpu`);
+  if (render.disableHwCodec) args.push(`--disable-hw-codec`);
+  if (render.windowTolerant) args.push(`--window-tolerant`);
 
-  return runElectronApp({ args, display: options.display });
+  return runElectronApp({ args });
 }
 
 const d = defaultRenderOptions;
@@ -80,8 +74,7 @@ export async function pup(source: string, options: Partial<PupOptions>): Promise
     options.onProgress?.(p);
   };
 
-  const xvfb = platform() === "linux" ? startXvfb(renderOpts.width, renderOpts.height + 1) : undefined;
-  const handle = await runPupApp(source, { ...renderOpts, display: xvfb?.display });
+  const handle = await runPupApp(source, renderOpts);
 
   const onAbort = () => (logger.error(TAG, `aborted`), handle.kill());
   signal?.addEventListener("abort", onAbort, { once: true });
@@ -89,8 +82,8 @@ export async function pup(source: string, options: Partial<PupOptions>): Promise
   try {
     const result = new Promise<IpcDonePayload>((resolve, reject) => {
       new IpcReader(handle.process)
-        .on("close", () => {
-          const msg = JSON.stringify({ source, progress, killed: handle.killed });
+        .on("close", (code) => {
+          const msg = JSON.stringify({ source, progress, code, killed: handle.killed });
           reject(new Error(`crashed: ${msg}`));
         })
         .on("message", () => signal?.aborted && reject(signal.reason))
@@ -109,6 +102,5 @@ export async function pup(source: string, options: Partial<PupOptions>): Promise
     throw e;
   } finally {
     signal?.removeEventListener("abort", onAbort);
-    xvfb?.stop();
   }
 }

@@ -1,8 +1,30 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/04/12.
 
+import type { Frame } from "node-av";
 import { packBits } from "./bit";
 import { ANNEX_B_START_CODE, encodeNalHeader, type NalUnit, rewriteNalLayerId, splitNalUnits } from "./nal";
 import { buildAlphaVPS } from "./vps";
+
+// BGRA alpha → Y plane of packed YUV420P. Caller pre-fills UV=128.
+// Uint32 path: BGRA LE u32 >>> 24 = A byte.
+export function extractAlphaToYuv420pBuffer(bgraFrame: Frame, buf: Buffer): void {
+  const src = bgraFrame.data?.[0];
+  const srcLs = bgraFrame.linesize?.[0];
+  if (!src || !srcLs) throw new Error("extractAlpha: missing BGRA data");
+  const w = bgraFrame.width;
+  const h = bgraFrame.height;
+  const ySize = w * h;
+  if (src.byteOffset % 4 === 0 && srcLs === w * 4) {
+    const src32 = new Uint32Array(src.buffer, src.byteOffset, ySize);
+    for (let i = 0; i < ySize; i++) buf[i] = src32[i]! >>> 24;
+  } else {
+    for (let y = 0; y < h; y++) {
+      const rowBase = y * srcLs + 3;
+      const dstBase = y * w;
+      for (let x = 0; x < w; x++) buf[dstBase + x] = src[rowBase + x * 4]!;
+    }
+  }
+}
 
 const NAL_UNIT_PREFIX_SEI = 39;
 
