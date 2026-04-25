@@ -38,7 +38,7 @@ export async function chromiumOptions(disableGpu: boolean) {
     "disable-background-networking",
     "js-flags=--max-old-space-size=512",
     "renderer-process-limit=1",
-    "num-raster-threads=1",
+    "num-raster-threads=2",
     "disable-background-timer-throttling",
     "disable-renderer-backgrounding",
     "disable-backgrounding-occluded-windows",

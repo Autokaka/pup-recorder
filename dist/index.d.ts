@@ -23,6 +23,7 @@ export { ProcessHandle } from './_tsup-dts-rollup.js';
 export { useRetry } from './_tsup-dts-rollup.js';
 export { RetryOptions } from './_tsup-dts-rollup.js';
 export { sleep } from './_tsup-dts-rollup.js';
+export { withTimeout } from './_tsup-dts-rollup.js';
 export { periodical } from './_tsup-dts-rollup.js';
 export { FormatMuxer } from './_tsup-dts-rollup.js';
 export { EncoderPipelineOptions } from './_tsup-dts-rollup.js';

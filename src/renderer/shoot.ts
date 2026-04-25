@@ -53,8 +53,8 @@ async function paint({ source, win, size, ms }: PaintOptions): Promise<Buffer> {
           return;
         }
         win.webContents.off("paint", handler);
-        win.webContents.stopPainting();
         resolve(Buffer.from(bitmap.buffer, bitmap.byteOffset, size.height * size.width * 4));
+        win.webContents.stopPainting();
       };
       win.webContents.on("paint", handler);
       win.webContents.startPainting();
@@ -68,14 +68,18 @@ export async function shoot(writer: IpcWriter, source: string, options: RenderOp
   const { fps, width, height, duration, withAudio, outFile, disableHwCodec } = options;
   if (withAudio) logger.warn(TAG, "audio will be ignored on this mode");
 
+  const tInit = performance.now();
+  const winP = loadWindow({ source, renderer: options });
   await using pipeline = await EncoderPipeline.create({ width, height, fps, outFile, withAudio, disableHwCodec });
+  const win = await winP;
+  logger.debug(TAG, "init done:", { source, cost: performance.now() - tInit });
 
   const total = Math.ceil(fps * duration);
   const frameInterval = 1000 / fps;
+
   let written = 0;
   let progress = 0;
-
-  const win = await loadWindow({ source, renderer: options });
+  let encodeError: Error | undefined;
   const cdp = win.webContents.debugger;
   const main = win.webContents.mainFrame;
   const iframe = main.frames[0];
@@ -84,23 +88,27 @@ export async function shoot(writer: IpcWriter, source: string, options: RenderOp
 
     win.webContents.setFrameRate(fps);
     win.webContents.stopPainting();
-
     await pauseVirtualTime(cdp);
+
+    const t2 = performance.now();
+    const updated = Promise.all([tick(iframe, 0), swapBuffer(cdp, 0)]);
+    await advanceVirtualTime(cdp, frameInterval);
+    await updated;
+    await paint({ source, win, size: { width, height }, ms: 0 });
+    logger.debug(TAG, "first frame:", { source, cost: performance.now() - t2 });
+
     for (let frame = 0; frame < total; frame++) {
       const frameMs = (frame + 1) * frameInterval;
 
       const updated = Promise.all([tick(iframe, frameMs), swapBuffer(cdp, frameMs)]);
       await advanceVirtualTime(cdp, frameInterval);
       await updated;
-      const bitmap = await paint({
-        source,
-        win,
-        size: { width, height },
-        ms: frameMs,
-      });
-
-      await pipeline.encodeBGRA(bitmap);
+      const bitmap = await paint({ source, win, size: { width, height }, ms: frameMs });
+      // Kick off encode without awaiting; pipeline limiter serializes internally.
+      // Encode runs concurrent with next frame's CDP/paint setup.
+      pipeline.encodeBGRA(bitmap).catch((e) => (encodeError ??= e));
       written++;
+      if (encodeError) throw encodeError;
 
       const newProgress = Math.floor((written / total) * 100);
       if (Math.abs(newProgress - progress) > 10) {
@@ -109,11 +117,13 @@ export async function shoot(writer: IpcWriter, source: string, options: RenderOp
       }
     }
   } finally {
+    win.webContents.stopPainting();
     cdp.detach();
     await disposeWindow(win);
     await pipeline.finish();
   }
 
+  if (encodeError) throw encodeError;
   if (written === 0) {
     throw new Error("no frames captured");
   } else {

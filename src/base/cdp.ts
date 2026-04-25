@@ -1,15 +1,20 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/03/13.
 
 import type { Debugger, Size } from "electron";
+import { withTimeout } from "./timing";
 
-const ADVANCE_TIMEOUT_MS = 30_000;
+const CDP_TIMEOUT_MS = 5_000;
+
+export function send(cdp: Debugger, method: string, params?: object): Promise<unknown> {
+  return withTimeout(cdp.sendCommand(method, params), CDP_TIMEOUT_MS, `cdp.${method}`);
+}
 
 export function advanceVirtualTime(cdp: Debugger, budget: number): Promise<void> {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       cdp.off("message", handler);
-      reject(new Error(`advanceVirtualTime timed out after ${ADVANCE_TIMEOUT_MS}ms`));
-    }, ADVANCE_TIMEOUT_MS);
+      reject(new Error(`advanceVirtualTime timed out after ${CDP_TIMEOUT_MS}ms`));
+    }, CDP_TIMEOUT_MS);
 
     const handler = (_: Electron.Event, method: string) => {
       if (method === "Emulation.virtualTimeBudgetExpired") {
@@ -19,19 +24,20 @@ export function advanceVirtualTime(cdp: Debugger, budget: number): Promise<void>
       }
     };
     cdp.on("message", handler);
-    cdp.sendCommand("Emulation.setVirtualTimePolicy", {
-      policy: "advance",
-      budget,
+    send(cdp, "Emulation.setVirtualTimePolicy", { policy: "advance", budget }).catch((e) => {
+      clearTimeout(timeout);
+      cdp.off("message", handler);
+      reject(e);
     });
   });
 }
 
-export function pauseVirtualTime(cdp: Debugger): Promise<void> {
-  return cdp.sendCommand("Emulation.setVirtualTimePolicy", { policy: "pause" });
+export async function pauseVirtualTime(cdp: Debugger): Promise<void> {
+  await send(cdp, "Emulation.setVirtualTimePolicy", { policy: "pause" });
 }
 
 export async function resizeDrawable(cdp: Debugger, size: Size) {
-  await cdp.sendCommand("Emulation.setDeviceMetricsOverride", {
+  await send(cdp, "Emulation.setDeviceMetricsOverride", {
     ...size,
     deviceScaleFactor: 1,
     mobile: false,

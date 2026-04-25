@@ -79,7 +79,7 @@ export class OutputSink implements AsyncDisposable {
       height,
       fps,
       codecName: FF_ENCODER_LIBVPX_VP9,
-      codecOpts: { deadline: "realtime", "cpu-used": "8", "row-mt": "1" },
+      codecOpts: { deadline: "realtime", "cpu-used": "8", "row-mt": "1", threads: "2" },
       bitrate: 4_000_000,
       pixelFormat: AV_PIX_FMT_YUVA420P,
       muxer,

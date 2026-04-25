@@ -2,6 +2,7 @@
 
 import type { WebFrameMain } from "electron";
 import { logger } from "../base/logging";
+import { withTimeout } from "../base/timing";
 
 export const TICK_SYMBOL = "__pup_tick__";
 const TAG = `[Tick]`;
@@ -103,8 +104,13 @@ const HOOK = `(function() {
 })();`;
 
 export async function tick(frame: WebFrameMain | undefined, timestampMs: number) {
+  if (!frame) return;
   try {
-    await frame?.executeJavaScript(`${HOOK} ${TICK_SYMBOL}.process(${timestampMs})`);
+    await withTimeout(
+      frame.executeJavaScript(`${HOOK} ${TICK_SYMBOL}.process(${timestampMs})`),
+      5_000,
+      "tick.executeJavaScript",
+    );
   } catch (e) {
     // NOTE(Autokaka):
     // Side-effects may throw (e.g. uncaught error on animation callback), ignore to let recorder continue

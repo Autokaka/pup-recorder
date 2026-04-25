@@ -4,6 +4,13 @@ export function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
+export function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    p.then(resolve, reject).finally(() => clearTimeout(timer));
+  });
+}
+
 export function periodical(callback: (count: number) => Promise<void> | void, ms: number) {
   let token: NodeJS.Timeout;
   let closed = false;

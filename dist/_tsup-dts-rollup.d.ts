@@ -436,7 +436,6 @@ export declare class NvencDualLayerEncoder implements Disposable {
     encode(bgraFrame: Frame, muxer: FormatMuxer): Promise<void>;
     flush(muxer: FormatMuxer): Promise<void>;
     [Symbol.dispose](): void;
-    private allocHwFrame;
     private drainInterleaved;
 }
 
@@ -611,6 +610,8 @@ export declare interface RunElectronAppOptions {
     args: unknown[];
 }
 
+export declare function send(cdp: Debugger, method: string, params?: object): Promise<unknown>;
+
 export declare function setInterceptor({ source, window, useInnerProxy }: NetworkOptions): void;
 
 export declare function setupAudioCapture({ encoder, getVideoTimeMs, onError, }: AudioCaptureOptions): Promise<AudioCapture>;
@@ -748,5 +749,9 @@ export declare interface WindowOptions {
     warmup?: boolean;
     tolerant?: boolean;
 }
+
+declare function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T>;
+export { withTimeout }
+export { withTimeout as withTimeout_alias_1 }
 
 export { }

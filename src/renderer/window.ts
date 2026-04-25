@@ -21,47 +21,30 @@ interface FinishOptions {
 
 function waitForFinish({ source, win, action, tolerant }: FinishOptions) {
   return new Promise<void>((resolve, reject) => {
-    let interval: NodeJS.Timeout;
-    let timeout: NodeJS.Timeout;
-
+    const timeout = setTimeout(() => done(TIMEOUT_ERROR), 10_000);
     const done = (err?: unknown) => {
       clearTimeout(timeout);
-      clearInterval(interval);
       if (err) reject(err);
       else resolve();
     };
-
-    timeout = setTimeout(() => done(TIMEOUT_ERROR), 10_000);
-    const stegoFrame = new Promise<void>((attached) => {
-      interval = setInterval(() => {
-        if (win.webContents.mainFrame.frames[0]) {
-          logger.debug(TAG, "stego-frame-attached:", { source });
-          clearInterval(interval);
-          attached();
-        }
-      });
-    });
-    win.webContents.once("dom-ready", async () => {
+    win.webContents.once("dom-ready", () => {
       logger.debug(TAG, "dom-ready:", { source });
-      if (tolerant) {
-        await stegoFrame;
-        done();
-      }
+      if (tolerant) done();
     });
-    win.webContents.once("did-stop-loading", async () => {
+    win.webContents.once("did-stop-loading", () => {
       logger.debug(TAG, "did-stop-loading:", { source });
-      await stegoFrame;
       done();
     });
-    win.webContents.once("did-frame-finish-load", (_, isMainFrame, frameProcessId, frameRoutingId) => {
-      logger.debug(TAG, source, "did-frame-finish-load:", { isMainFrame, frameProcessId, frameRoutingId });
+    win.webContents.once("did-fail-load", (_e, code, desc, url) => {
+      const msg = `did-fail-load: ${JSON.stringify({ url, source, code, desc })}`;
+      logger.error(TAG, msg);
+      done(new Error(msg));
     });
-    win.webContents.once("did-fail-load", (_e, code, desc, url) =>
-      done(new Error(`did-fail-load ${{ url, source, code, desc }}`)),
-    );
-    win.webContents.once("render-process-gone", (_e, { exitCode, reason }) =>
-      done(new Error(`render-process-gone: ${{ source, exitCode, reason }}`)),
-    );
+    win.webContents.once("render-process-gone", (_e, { exitCode, reason }) => {
+      const msg = `render-process-gone: ${JSON.stringify({ source, exitCode, reason })}`;
+      logger.error(TAG, msg);
+      done(new Error(msg));
+    });
     action();
   });
 }

@@ -1,6 +1,8 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/09.
 
 import { ipcMain, type Debugger, type Size } from "electron";
+import { send } from "../base/cdp";
+import { withTimeout } from "../base/timing";
 
 export const FRAME_SYNC_MARKER_WIDTH = 32;
 export const FRAME_SYNC_MARKER_HEIGHT = 1;
@@ -131,15 +133,20 @@ export function decodeStego(bitmap: Buffer, size: Size): number | undefined {
 }
 
 export async function startStego(cdp: Debugger) {
-  await cdp.sendCommand("Runtime.evaluate", { expression: `__pup_start_stego__()` });
+  await send(cdp, "Runtime.evaluate", { expression: `__pup_start_stego__()` });
 }
 
 export async function swapBuffer(cdp: Debugger, expected: number) {
+  const handler = () => {};
   const swapped = new Promise<void>((r) => ipcMain.once(STEGO_TICK_CHANNEL, () => r()));
-  await cdp.sendCommand("Runtime.evaluate", { expression: `__pup_draw_stego__(${expected})` });
-  await swapped;
+  await send(cdp, "Runtime.evaluate", { expression: `__pup_draw_stego__(${expected})` });
+  try {
+    await withTimeout(swapped, 5_000, "swapBuffer stego ipc");
+  } finally {
+    ipcMain.removeListener(STEGO_TICK_CHANNEL, handler);
+  }
 }
 
 export async function stopStego(cdp: Debugger) {
-  await cdp.sendCommand("Runtime.evaluate", { expression: `__pup_stop_stego__()` });
+  await send(cdp, "Runtime.evaluate", { expression: `__pup_stop_stego__()` });
 }

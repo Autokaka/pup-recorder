@@ -82,7 +82,7 @@ export class EncoderPipeline {
   async encodeBGRA(input: Buffer): Promise<void> {
     await this._s.limiter.schedule(async () => {
       using frame = this.bgraFrame(input);
-      for (const sink of this._s.sinks) await sink.encodeBGRA(frame);
+      await Promise.all(this._s.sinks.map((sink) => sink.encodeBGRA(frame)));
     });
   }
 
