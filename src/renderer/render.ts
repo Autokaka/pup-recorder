@@ -2,17 +2,18 @@
 
 import { type NativeImage, type Size } from "electron";
 import { resizeDrawable } from "../base/cdp";
+import { pupAudioPreload } from "../base/constants";
 import { EncoderPipeline } from "../base/encoder/pipeline";
 import { FrameDropStats } from "../base/frame_drop";
 import { sizeEquals } from "../base/image";
-import { setupAudioCapture, type AudioCapture } from "./audio";
-import type { IpcDonePayload, IpcWriter } from "./ipc";
-import type { RenderOptions } from "./schema";
-import { decodeStego, startStego, stopStego } from "./stego";
+import { attachAudioListeners, type AudioDisposal } from "./audio";
+import type { IpcDonePayload } from "./ipc";
+import type { IPCRenderOptions } from "./schema";
+import { decodeStego, startStego } from "./stego";
 import { disposeWindow, loadWindow } from "./window";
 
-export async function render(writer: IpcWriter, source: string, options: RenderOptions): Promise<IpcDonePayload> {
-  const { fps, width, height, duration, withAudio, outFile, disableHwCodec } = options;
+export async function render(options: IPCRenderOptions): Promise<IpcDonePayload> {
+  const { source, fps, width, height, duration, withAudio, outFile, disableHwCodec, signal, onProgress } = options;
 
   await using encoder = await EncoderPipeline.create({ width, height, fps, outFile, withAudio, disableHwCodec });
 
@@ -28,13 +29,14 @@ export async function render(writer: IpcWriter, source: string, options: RenderO
   let rejecter: ((reason?: unknown) => void) | undefined;
   const dropStats = new FrameDropStats(fps);
 
-  let audio: AudioCapture | undefined;
+  let disposeAudio: AudioDisposal | undefined;
   const scheduleFrame = (frame: Buffer) => {
     written++;
     encoder.encodeBGRA(frame).catch((e) => (encodeError ??= e));
   };
 
   const paint = (_e: unknown, _r: unknown, image: NativeImage) => {
+    encodeError ??= signal?.reason;
     if (encodeError) {
       rejecter?.(encodeError);
       return;
@@ -82,7 +84,7 @@ export async function render(writer: IpcWriter, source: string, options: RenderO
     const newProgress = Math.floor((written / total) * 100);
     if (Math.abs(newProgress - progress) > 10) {
       progress = newProgress;
-      writer.writeProgress(progress);
+      onProgress(progress);
     }
 
     const durationMs = duration * 1000;
@@ -94,32 +96,34 @@ export async function render(writer: IpcWriter, source: string, options: RenderO
   const win = await loadWindow({
     source,
     renderer: options,
-    onCreated: async () => {
+    signal,
+    preload: withAudio ? pupAudioPreload : undefined,
+    onCreated: (win) => {
       if (withAudio) {
-        audio = await setupAudioCapture({
+        disposeAudio = attachAudioListeners({
+          wc: win.webContents,
           encoder,
           getVideoTimeMs: () => lastWrittenTime ?? 0,
-          onError: (e) => (encodeError ??= e),
+          onError: (e: Error) => (encodeError ??= e),
         });
       }
     },
   });
   const cdp = win.webContents.debugger;
-  cdp.attach("1.3");
-
-  win.webContents.stopPainting();
-  win.webContents.setFrameRate(fps);
-  win.webContents.on("paint", paint);
-  win.webContents.startPainting();
 
   try {
+    win.webContents.stopPainting();
+    win.webContents.setFrameRate(fps);
+    win.webContents.on("paint", paint);
+    win.webContents.startPainting();
+    signal?.throwIfAborted();
+    signal?.addEventListener("abort", () => rejecter?.(signal.reason), { once: true });
     await startStego(cdp);
     await new Promise<void>((r, j) => ([resolver, rejecter] = [r, j]));
   } finally {
-    await stopStego(cdp);
     win.webContents.off("paint", paint);
     await disposeWindow(win);
-    await audio?.teardown();
+    disposeAudio?.();
     await encoder.finish();
   }
 

@@ -1,7 +1,7 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/09.
 
-import { ipcMain, type Debugger, type Size } from "electron";
-import { send } from "../base/cdp";
+import { type Debugger, type Size, type WebContents } from "electron";
+import { advanceVirtualTime, evalIn } from "../base/cdp";
 import { withTimeout } from "../base/timing";
 
 export const FRAME_SYNC_MARKER_WIDTH = 32;
@@ -132,21 +132,17 @@ export function decodeStego(bitmap: Buffer, size: Size): number | undefined {
   return timestamp;
 }
 
-export async function startStego(cdp: Debugger) {
-  await send(cdp, "Runtime.evaluate", { expression: `__pup_start_stego__()` });
+export function startStego(cdp: Debugger) {
+  return evalIn(cdp, `__pup_start_stego__()`);
 }
 
-export async function swapBuffer(cdp: Debugger, expected: number) {
-  const handler = () => {};
-  const swapped = new Promise<void>((r) => ipcMain.once(STEGO_TICK_CHANNEL, () => r()));
-  await send(cdp, "Runtime.evaluate", { expression: `__pup_draw_stego__(${expected})` });
-  try {
-    await withTimeout(swapped, 5_000, "swapBuffer stego ipc");
-  } finally {
-    ipcMain.removeListener(STEGO_TICK_CHANNEL, handler);
-  }
+export function stopStego(cdp: Debugger) {
+  return evalIn(cdp, `__pup_stop_stego__()`);
 }
 
-export async function stopStego(cdp: Debugger) {
-  await send(cdp, "Runtime.evaluate", { expression: `__pup_stop_stego__()` });
+export async function swapBuffer(wc: WebContents, expected: number, interval: number): Promise<void> {
+  const swapped = new Promise((r) => wc.ipc.once(STEGO_TICK_CHANNEL, r));
+  await evalIn(wc.debugger, `__pup_draw_stego__(${expected})`);
+  await advanceVirtualTime(wc.debugger, interval);
+  await withTimeout(swapped, 5_000, "swapBuffer");
 }

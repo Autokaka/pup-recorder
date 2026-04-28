@@ -5,6 +5,17 @@ const ANNEX_B_START_CODE = Buffer.from([0x00, 0x00, 0x00, 0x01]);
 
 export { ANNEX_B_START_CODE, NAL_HEADER_SIZE };
 
+// HEVC NAL unit types (T-REC-H.265 Table 7-1)
+export const NAL_BLA_W_LP = 16;
+export const NAL_IDR_W_RADL = 19;
+export const NAL_IDR_N_LP = 20;
+export const NAL_RSV_IRAP_VCL23 = 23;
+export const NAL_VPS = 32;
+export const NAL_SPS = 33;
+export const NAL_PPS = 34;
+export const NAL_SEI_PREFIX = 39;
+export const NAL_SEI_SUFFIX = 40;
+
 export interface NalUnit {
   type: number;
   layerId: number;
@@ -74,6 +85,16 @@ export function rewriteNalLayerId(nal: Buffer, layerId: number): Buffer {
   const out = Buffer.from(nal);
   const { type, temporalId } = parseNalType(out[0]!, out[1]!);
   const [b0, b1] = encodeNalHeader(type, layerId, temporalId);
+  out[0] = b0;
+  out[1] = b1;
+  return out;
+}
+
+/** Rewrite nal_unit_type in a NAL unit (returns copy). */
+export function rewriteNalType(nal: Buffer, newType: number): Buffer {
+  const out = Buffer.from(nal);
+  const { layerId, temporalId } = parseNalType(out[0]!, out[1]!);
+  const [b0, b1] = encodeNalHeader(newType, layerId, temporalId);
   out[0] = b0;
   out[1] = b1;
   return out;

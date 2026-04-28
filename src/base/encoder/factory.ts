@@ -11,7 +11,7 @@ import {
 import { logger } from "../logging";
 import { CodecState } from "./codec";
 import type { FormatMuxer } from "./muxer";
-import { NvencDualLayerEncoder } from "./nvenc";
+import { NvencDualLayerEncoder } from "./hevc_alpha/nvenc";
 import { VideoEncoder } from "./video";
 import { VideoToolboxEncoder } from "./videotoolbox";
 

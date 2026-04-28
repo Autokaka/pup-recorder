@@ -38,3 +38,10 @@ await build({
   format: "cjs",
   outDir: "dist",
 });
+
+await build({
+  ...common,
+  entry: ["src/audio_preload.ts"],
+  format: "cjs",
+  outDir: "dist",
+});

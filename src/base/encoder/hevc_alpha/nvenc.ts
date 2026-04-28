@@ -2,16 +2,13 @@
 
 import { Codec, type CodecContext, FFmpegError, Frame, type Packet, type Stream } from "node-av";
 import { AV_PIX_FMT_BGRA, AV_PIX_FMT_YUV420P, FF_ENCODER_HEVC_NVENC } from "node-av/constants";
-import {
-  buildAlphaChannelInfoSEI,
-  buildUnifiedExtradata,
-  extractAlphaToYuv420pBuffer,
-  interleaveAccessUnits,
-} from "./alpha";
-import type { FormatMuxer } from "./muxer";
+import { makeFrame, makePacket, openVideoCtx } from "../misc";
+import type { FormatMuxer } from "../muxer";
+import type { HwVideoEncoderOptions } from "../videotoolbox";
+import { buildUnifiedExtradata, extractAlphaToYuv420pBuffer, interleaveAccessUnits } from "./alpha";
+import { patchHevcAlphaPtl } from "./alpha_darwin";
 import { splitNalUnits } from "./nal";
-import { makeFrame, makePacket, openVideoCtx } from "./misc";
-import type { HwVideoEncoderOptions } from "./videotoolbox";
+import { type NvencHevcConfig, parseNvencHevcConfig } from "./parser";
 
 interface NvencState {
   baseCtx: CodecContext;
@@ -21,17 +18,15 @@ interface NvencState {
   stream: Stream;
   alphaSwFrame: Frame;
   alphaBuf: Buffer;
+  hevcCfg: NvencHevcConfig;
 }
 
 export class NvencDualLayerEncoder implements Disposable {
   private _s: NvencState;
-  private _seiBuffer: Buffer;
   private _pts = 0n;
-  private _seiInjected = false;
 
   private constructor(s: NvencState) {
     this._s = s;
-    this._seiBuffer = buildAlphaChannelInfoSEI();
   }
 
   static async create(opts: HwVideoEncoderOptions): Promise<NvencDualLayerEncoder> {
@@ -40,21 +35,25 @@ export class NvencDualLayerEncoder implements Disposable {
     const codec = Codec.findEncoderByName(FF_ENCODER_HEVC_NVENC);
     if (!codec) throw new Error("hevc_nvenc encoder not found");
 
-    const nvencOpts = { preset: "p4", bf: "0" };
+    // tier=main matches Apple VideoToolbox; macOS Chrome requires Main tier for HEVC alpha decode.
+    const nvencOpts = { preset: "p4", bf: "0", tier: "main" };
     const common = { codec, width, height, fps, bitrate, options: nvencOpts };
     // BGRA direct — NVENC converts internally, no CPU SWS, no hwFramesCtx needed.
     const baseCtx = await openVideoCtx({ ...common, pixelFormat: AV_PIX_FMT_BGRA }, "nvenc.base.open2");
     const alphaCtx = await openVideoCtx({ ...common, pixelFormat: AV_PIX_FMT_YUV420P }, "nvenc.alpha.open2");
 
+    if (!baseCtx.extraData || !alphaCtx.extraData) throw new Error("nvenc: codec extradata missing");
+    const hevcCfg = parseNvencHevcConfig(baseCtx.extraData);
+
     const stream = muxer.addStream(baseCtx, "hvc1");
-    if (baseCtx.extraData && alphaCtx.extraData) {
-      stream.codecpar.extradata = buildUnifiedExtradata({
-        baseExtradata: baseCtx.extraData,
-        alphaExtradata: alphaCtx.extraData,
-        width,
-        height,
-      });
-    }
+    const unified = buildUnifiedExtradata({
+      baseExtradata: baseCtx.extraData,
+      alphaExtradata: alphaCtx.extraData,
+      width,
+      height,
+    });
+    // Apple-VTB compat: rewrite VPS+SPS PTL bits to match x265/VTB output (tier=Main, compat[2]=1).
+    stream.codecpar.extradata = patchHevcAlphaPtl(unified);
 
     const ySize = width * height;
     const uvSize = (width >> 1) * (height >> 1);
@@ -69,6 +68,7 @@ export class NvencDualLayerEncoder implements Disposable {
       stream,
       alphaSwFrame: makeFrame(width, height, AV_PIX_FMT_YUV420P),
       alphaBuf,
+      hevcCfg,
     });
   }
 
@@ -119,21 +119,22 @@ export class NvencDualLayerEncoder implements Disposable {
       // bf=0 → both streams emit in lockstep.
       if (baseReady !== alphaReady) throw new Error(`NVENC desync: base=${baseReady}, alpha=${alphaReady}`);
 
-      const chunks: Buffer[] = [];
-      if (!this._seiInjected) {
-        chunks.push(this._seiBuffer);
-        this._seiInjected = true;
-      }
-      chunks.push(interleaveAccessUnits(splitNalUnits(basePkt.data!), splitNalUnits(alphaPkt.data!)));
+      // Alpha SEI lives only in extradata (matches x265 ENABLE_ALPHA); duplicate in-band SEI confuses VTB.
+      // Patch in-band VPS/SPS PTL bits for Apple-VTB compat (encoder repeats headers per IDR).
+      const interleaved = interleaveAccessUnits(splitNalUnits(basePkt.data!), splitNalUnits(alphaPkt.data!), this._s.hevcCfg);
+      const chunks = [patchHevcAlphaPtl(interleaved)];
 
-      // basePkt.data setter clears pts/dts/duration.
+      // basePkt.data setter clears pts/dts/duration/flags.
+      // Flags carry AV_PKT_FLAG_KEY — without it mov muxer omits stss, breaks QuickLook thumbnail + seek.
       const pts = basePkt.pts;
       const dts = basePkt.dts;
       const duration = basePkt.duration;
+      const flags = basePkt.flags;
       basePkt.data = Buffer.concat(chunks);
       basePkt.pts = pts;
       basePkt.dts = dts;
       basePkt.duration = duration === 0n ? 1n : duration;
+      basePkt.flags = flags;
       basePkt.streamIndex = stream.index;
       basePkt.rescaleTs(baseCtx.timeBase, stream.timeBase);
       await muxer.writePacket(basePkt);

@@ -20,6 +20,7 @@ import { Size } from 'electron';
 import { SoftwareScaleContext } from 'node-av';
 import { SpawnOptions } from 'child_process';
 import { Stream } from 'node-av';
+import { WebContents } from 'electron';
 import type { WebFrameMain } from 'electron';
 import z from 'zod';
 
@@ -30,15 +31,13 @@ export declare function advanceVirtualTime(cdp: Debugger, budget: number): Promi
 
 export declare const ANNEX_B_START_CODE: Buffer<ArrayBuffer>;
 
-export declare interface AudioCapture {
-    teardown(): Promise<void>;
-}
+export declare function attachAudioListeners({ wc, encoder, getVideoTimeMs, onError }: AudioListenerOptions): AudioDisposal;
 
-export declare interface AudioCaptureOptions {
-    encoder: EncoderPipeline;
-    getVideoTimeMs: () => number;
-    onError: (error: Error) => void;
-}
+export declare const AUDIO_CHUNK_CHANNEL = "audio-chunk";
+
+export declare const AUDIO_META_CHANNEL = "audio-meta";
+
+export declare type AudioDisposal = () => void;
 
 declare class AudioEncoder_2 implements Disposable {
     private _ctx;
@@ -71,6 +70,13 @@ export declare interface AudioEncoderOptions {
     globalHeader: boolean;
     bitrate: number;
     muxer: FormatMuxer;
+}
+
+export declare interface AudioListenerOptions {
+    wc: WebContents;
+    encoder: EncoderPipeline;
+    getVideoTimeMs: () => number;
+    onError: (error: Error) => void;
 }
 
 export declare class BitReader {
@@ -106,6 +112,11 @@ export declare function buildStegoHTML(targetURL: string, size: Size): string;
 
 export declare function buildUnifiedExtradata(opts: UnifiedExtradataOptions): Buffer;
 
+export declare interface CancelMsg {
+    type: IpcMsgType.CANCEL;
+    reason?: string;
+}
+
 export declare const canIUseGPU: Promise<boolean>;
 
 export declare function checkHTML(source: string): void;
@@ -114,7 +125,6 @@ export declare function chromiumOptions(disableGpu: boolean): Promise<string[]>;
 
 export declare interface CLIOptions {
     name: string;
-    defaults: RenderOptions;
     run: (source: string, options: RenderOptions) => Promise<unknown>;
 }
 
@@ -156,6 +166,16 @@ declare class ConcurrencyLimiter {
 export { ConcurrencyLimiter }
 export { ConcurrencyLimiter as ConcurrencyLimiter_alias_1 }
 
+declare type ConsoleCallback = (level: string, message: string) => void;
+export { ConsoleCallback }
+export { ConsoleCallback as ConsoleCallback_alias_1 }
+
+export declare interface ConsoleMsg {
+    type: IpcMsgType.CONSOLE;
+    level: string;
+    message: string;
+}
+
 export declare function createHwVideoEncoder(opts: HwVideoFactoryOptions, muxer: FormatMuxer): Promise<VideoSetup>;
 
 export declare function createStegoURL(src: string, size: Size): string;
@@ -176,7 +196,7 @@ declare const DEFAULT_HEIGHT = 1080;
 export { DEFAULT_HEIGHT }
 export { DEFAULT_HEIGHT as DEFAULT_HEIGHT_alias_1 }
 
-declare const DEFAULT_OUT_FILE = "output.mp4";
+declare const DEFAULT_OUT_FILE = "out/html.mp4,out/html.webm";
 export { DEFAULT_OUT_FILE }
 export { DEFAULT_OUT_FILE as DEFAULT_OUT_FILE_alias_1 }
 
@@ -237,6 +257,8 @@ export declare interface ErrorMsg {
     type: IpcMsgType.ERROR;
     error: string;
 }
+
+export declare function evalIn(cdp: Debugger, expression: string): Promise<unknown>;
 
 declare function exec(cmd: string, options?: SpawnOptions): ProcessHandle;
 export { exec }
@@ -320,7 +342,7 @@ export declare interface HwVideoFactoryOptions {
     sharedHw?: HardwareContext;
 }
 
-export declare function interleaveAccessUnits(baseNals: NalUnit[], alphaNals: NalUnit[]): Buffer;
+export declare function interleaveAccessUnits(baseNals: NalUnit[], alphaNals: NalUnit[], cfg: NvencHevcConfig): Buffer;
 
 export declare interface IpcDonePayload {
     written: number;
@@ -330,25 +352,37 @@ export declare interface IpcDonePayload {
 
 export declare interface IpcEvents {
     progress: [value: number];
-    message: [msg: IpcMsg];
+    console: [level: string, msg: string];
     done: [payload: IpcDonePayload];
     error: [error: Error];
     close: [code: number | null];
 }
 
-export declare type IpcMsg = ProgressMsg | DoneMsg | ErrorMsg;
+export declare type IpcMsg = ConsoleMsg | ProgressMsg | DoneMsg | ErrorMsg | CancelMsg;
 
 export declare const enum IpcMsgType {
+    CONSOLE = "console",
     PROGRESS = "progress",
     DONE = "done",
-    ERROR = "error"
+    ERROR = "error",
+    CANCEL = "cancel"
 }
 
 export declare class IpcReader extends EventEmitter<IpcEvents> {
     constructor(child: ChildProcess);
 }
 
+declare interface IPCRenderOptions extends RenderOptions {
+    source: string;
+    signal: AbortSignal;
+    onProgress: ProgressCallback;
+    onConsole: ConsoleCallback;
+}
+export { IPCRenderOptions }
+export { IPCRenderOptions as IPCRenderOptions_alias_1 }
+
 export declare class IpcWriter {
+    writeConsole(level: string, message: string): void;
     writeProgress(value: number): void;
     writeError(error: string): Promise<void>;
     writeDone(payload: IpcDonePayload): Promise<void>;
@@ -368,7 +402,7 @@ declare class Lazy<T> {
 export { Lazy }
 export { Lazy as Lazy_alias_1 }
 
-export declare function loadWindow({ source, onCreated, renderer }: WindowOptions): Promise<BrowserWindow>;
+export declare function loadWindow({ source, renderer, preload, onCreated, signal, }: WindowOptions): Promise<BrowserWindow>;
 
 declare class Logger implements LoggerLike {
     private _level;
@@ -408,7 +442,25 @@ export declare function makeFrame(width: number, height: number, pixFmt: AVPixel
 
 export declare function makePacket(): Packet;
 
+export declare const NAL_BLA_W_LP = 16;
+
 export declare const NAL_HEADER_SIZE = 2;
+
+export declare const NAL_IDR_N_LP = 20;
+
+export declare const NAL_IDR_W_RADL = 19;
+
+export declare const NAL_PPS = 34;
+
+export declare const NAL_RSV_IRAP_VCL23 = 23;
+
+export declare const NAL_SEI_PREFIX = 39;
+
+export declare const NAL_SEI_SUFFIX = 40;
+
+export declare const NAL_SPS = 33;
+
+export declare const NAL_VPS = 32;
 
 export declare interface NalUnit {
     type: number;
@@ -428,15 +480,24 @@ export { noerr as noerr_alias_1 }
 
 export declare class NvencDualLayerEncoder implements Disposable {
     private _s;
-    private _seiBuffer;
     private _pts;
-    private _seiInjected;
     private constructor();
     static create(opts: HwVideoEncoderOptions): Promise<NvencDualLayerEncoder>;
     encode(bgraFrame: Frame, muxer: FormatMuxer): Promise<void>;
     flush(muxer: FormatMuxer): Promise<void>;
     [Symbol.dispose](): void;
     private drainInterleaved;
+}
+
+export declare interface NvencHevcConfig {
+    log2MaxPocLsb: number;
+    numShortTermRefPicSets: number;
+    numDeltaPocsSet0: number;
+    longTermRefPicsPresent: boolean;
+    spsTemporalMvpEnabled: boolean;
+    saoEnabled: boolean;
+    cabacInitPresent: boolean;
+    ppsHasLoopFilterAcrossSlicesFlag: boolean;
 }
 
 export declare function openVideoCtx(opts: VideoCtxOptions, label: string): Promise<CodecContext>;
@@ -469,9 +530,14 @@ declare function parseNumber(x: unknown): number;
 export { parseNumber }
 export { parseNumber as parseNumber_alias_1 }
 
+export declare function parseNvencHevcConfig(extradata: Buffer): NvencHevcConfig;
+
 declare function parseString(x: unknown): string;
 export { parseString }
 export { parseString as parseString_alias_1 }
+
+/** Patch every VPS/SPS NAL in an Annex B bitstream so PTL matches Apple/x265. */
+export declare function patchHevcAlphaPtl(bitstream: Buffer): Buffer;
 
 export declare function pauseVirtualTime(cdp: Debugger): Promise<void>;
 
@@ -494,6 +560,10 @@ declare interface ProcessHandle {
 export { ProcessHandle }
 export { ProcessHandle as ProcessHandle_alias_1 }
 
+declare type ProgressCallback = (progress: number) => void;
+export { ProgressCallback }
+export { ProgressCallback as ProgressCallback_alias_1 }
+
 export declare interface ProgressMsg {
     type: IpcMsgType.PROGRESS;
     value: number;
@@ -513,17 +583,9 @@ declare const pupApp: string;
 export { pupApp }
 export { pupApp as pupApp_alias_1 }
 
-declare const pupDeterministic: boolean;
-export { pupDeterministic }
-export { pupDeterministic as pupDeterministic_alias_1 }
-
-declare const pupDisableGPU: boolean;
-export { pupDisableGPU }
-export { pupDisableGPU as pupDisableGPU_alias_1 }
-
-declare const pupDisableHwCodec: boolean;
-export { pupDisableHwCodec }
-export { pupDisableHwCodec as pupDisableHwCodec_alias_1 }
+declare const pupAudioPreload: string;
+export { pupAudioPreload }
+export { pupAudioPreload as pupAudioPreload_alias_1 }
 
 declare const pupLogLevel: number;
 export { pupLogLevel }
@@ -531,7 +593,8 @@ export { pupLogLevel as pupLogLevel_alias_1 }
 
 declare interface PupOptions extends Partial<RenderOptions> {
     signal?: AbortSignal;
-    onProgress?: PupProgressCallback;
+    onProgress?: ProgressCallback;
+    onConsole?: ConsoleCallback;
 }
 export { PupOptions }
 export { PupOptions as PupOptions_alias_1 }
@@ -540,27 +603,15 @@ declare const pupPkgRoot: string;
 export { pupPkgRoot }
 export { pupPkgRoot as pupPkgRoot_alias_1 }
 
-declare type PupProgressCallback = (progress: number) => Promise<void> | void;
-export { PupProgressCallback }
-export { PupProgressCallback as PupProgressCallback_alias_1 }
-
 declare interface PupResult extends RenderResult {
 }
 export { PupResult }
 export { PupResult as PupResult_alias_1 }
 
-declare const pupUseInnerProxy: boolean;
-export { pupUseInnerProxy }
-export { pupUseInnerProxy as pupUseInnerProxy_alias_1 }
-
-declare const pupWindowTolerant: boolean;
-export { pupWindowTolerant }
-export { pupWindowTolerant as pupWindowTolerant_alias_1 }
-
 /** Remove emulation prevention bytes (00 00 03 → 00 00) from RBSP. */
 export declare function removeEmulationPrevention(data: Buffer): Buffer;
 
-export declare function render(writer: IpcWriter, source: string, options: RenderOptions): Promise<IpcDonePayload>;
+export declare function render(options: IPCRenderOptions): Promise<IpcDonePayload>;
 
 declare type RenderOptions = z.infer<typeof RenderSchema>;
 export { RenderOptions }
@@ -601,8 +652,24 @@ declare interface RetryOptions<Args extends any[], Ret> {
 export { RetryOptions }
 export { RetryOptions as RetryOptions_alias_1 }
 
+/** Alpha PPS: pps_pic_parameter_set_id 0 → 1, pps_seq_parameter_set_id 0 → 1. */
+export declare function rewriteAlphaPps(pps: Buffer): Buffer;
+
+/**
+ * Rewrite alpha slice header: slice_pic_parameter_set_id 0 → 1.
+ * The +2-bit shift is absorbed by emitting a fresh byte_alignment then appending the
+ * original CABAC slice_segment_data bytes verbatim. CABAC byte boundary is preserved.
+ */
+export declare function rewriteAlphaSliceHeader(slice: Buffer, nalType: number, cfg: NvencHevcConfig): Buffer;
+
+/** Alpha SPS: sps_seq_parameter_set_id 0 → 1. */
+export declare function rewriteAlphaSps(sps: Buffer): Buffer;
+
 /** Rewrite nuh_layer_id in a NAL unit (returns copy). */
 export declare function rewriteNalLayerId(nal: Buffer, layerId: number): Buffer;
+
+/** Rewrite nal_unit_type in a NAL unit (returns copy). */
+export declare function rewriteNalType(nal: Buffer, newType: number): Buffer;
 
 export declare function runElectronApp({ args }: RunElectronAppOptions): Promise<ProcessHandle>;
 
@@ -614,11 +681,9 @@ export declare function send(cdp: Debugger, method: string, params?: object): Pr
 
 export declare function setInterceptor({ source, window, useInnerProxy }: NetworkOptions): void;
 
-export declare function setupAudioCapture({ encoder, getVideoTimeMs, onError, }: AudioCaptureOptions): Promise<AudioCapture>;
-
 export declare function setupPupProtocol(): void;
 
-export declare function shoot(writer: IpcWriter, source: string, options: RenderOptions): Promise<IpcDonePayload>;
+export declare function shoot(options: IPCRenderOptions): Promise<IpcDonePayload>;
 
 export declare type SinkKind = "mp4" | "webm";
 
@@ -644,13 +709,13 @@ export declare function splitNalUnits(bitstream: Buffer): NalUnit[];
 
 export declare function startElectronCrashReporter(): void;
 
-export declare function startStego(cdp: Debugger): Promise<void>;
+export declare function startStego(cdp: Debugger): Promise<unknown>;
 
 export declare const STEGO_TICK_CHANNEL = "stego-tick";
 
-export declare function stopStego(cdp: Debugger): Promise<void>;
+export declare function stopStego(cdp: Debugger): Promise<unknown>;
 
-export declare function swapBuffer(cdp: Debugger, expected: number): Promise<void>;
+export declare function swapBuffer(wc: WebContents, expected: number, interval: number): Promise<void>;
 
 export declare function tick(frame: WebFrameMain | undefined, timestampMs: number): Promise<void>;
 
@@ -742,12 +807,15 @@ export declare interface WaitOptions {
     onTimeout?: () => void;
 }
 
+export declare type WindowCreatedCallback = (window: BrowserWindow) => void | Promise<void>;
+
 export declare interface WindowOptions {
     source: string;
-    onCreated?: (window: BrowserWindow) => Promise<void>;
-    renderer: RenderOptions;
-    warmup?: boolean;
+    renderer: IPCRenderOptions;
     tolerant?: boolean;
+    preload?: string;
+    onCreated?: WindowCreatedCallback;
+    signal?: AbortSignal;
 }
 
 declare function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T>;

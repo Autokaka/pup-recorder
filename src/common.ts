@@ -5,17 +5,16 @@ import { logger } from "./base/logging";
 import { noerr } from "./base/noerr";
 import { parseNumber } from "./base/parser";
 import { pargs } from "./base/process";
-import { RenderSchema, type RenderOptions } from "./renderer/schema";
+import { defaultRenderOptions, RenderSchema, type RenderOptions } from "./renderer/schema";
 
 export interface CLIOptions {
   name: string;
-  defaults: RenderOptions;
   run: (source: string, options: RenderOptions) => Promise<unknown>;
 }
 
 export async function makeCLI(options: CLIOptions) {
   const shape = RenderSchema.shape;
-  const d = options.defaults;
+  const d = defaultRenderOptions;
   program
     .name(options.name)
     .argument("<source>", "file://, http(s)://, or data: URI")

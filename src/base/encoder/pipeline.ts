@@ -23,9 +23,8 @@ interface PipelineState {
   sharedHw?: HardwareContext;
   limiter: ConcurrencyLimiter;
   pngCodec?: CodecState;
-  width: number;
-  height: number;
   outFiles: string[];
+  opts: EncoderPipelineOptions;
 }
 
 export class EncoderPipeline {
@@ -65,14 +64,7 @@ export class EncoderPipeline {
       sinks.push(sink);
     }
 
-    return new EncoderPipeline({
-      sinks,
-      sharedHw,
-      limiter: new ConcurrencyLimiter(1),
-      width,
-      height,
-      outFiles,
-    });
+    return new EncoderPipeline({ sinks, sharedHw, limiter: new ConcurrencyLimiter(1), outFiles, opts });
   }
 
   setupAudio(sampleRate: number): void {
@@ -88,7 +80,7 @@ export class EncoderPipeline {
 
   async encodePNG(pngData: Buffer): Promise<void> {
     await this._s.limiter.schedule(async () => {
-      const { width, height } = this._s;
+      const { width, height } = this._s.opts;
       this._s.pngCodec ??= await CodecState.create(width, height);
       const src = await this._s.pngCodec.decodePNG(pngData);
       for (const sink of this._s.sinks) await sink.encodeDecodedFrame(src);
@@ -126,7 +118,7 @@ export class EncoderPipeline {
   }
 
   private bgraFrame(input: Buffer): Frame {
-    const frame = makeFrame(this._s.width, this._s.height, AV_PIX_FMT_BGRA);
+    const frame = makeFrame(this._s.opts.width, this._s.opts.height, AV_PIX_FMT_BGRA);
     FFmpegError.throwIfError(frame.fromBuffer(input), "bgraFrame.fromBuffer");
     return frame;
   }

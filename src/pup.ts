@@ -2,16 +2,21 @@
 
 import { logger } from "./base/logging";
 import { runElectronApp } from "./renderer/electron";
-import { IpcReader, type IpcDonePayload } from "./renderer/ipc";
-import { defaultRenderOptions, type RenderOptions, type RenderResult } from "./renderer/schema";
+import { IpcMsgType, IpcReader, type IpcDonePayload } from "./renderer/ipc";
+import {
+  defaultRenderOptions,
+  type ConsoleCallback,
+  type ProgressCallback,
+  type RenderOptions,
+  type RenderResult,
+} from "./renderer/schema";
 
 const TAG = "[pup]";
 
-export type PupProgressCallback = (progress: number) => Promise<void> | void;
-
 export interface PupOptions extends Partial<RenderOptions> {
   signal?: AbortSignal;
-  onProgress?: PupProgressCallback;
+  onProgress?: ProgressCallback;
+  onConsole?: ConsoleCallback;
 }
 
 export interface PupResult extends RenderResult {}
@@ -66,7 +71,6 @@ export async function pup(source: string, options: Partial<PupOptions>): Promise
   };
 
   const t0 = performance.now();
-
   let progress = 0;
   const tick = (p: number) => {
     logger.info(TAG, `${source} progress: ${p}%`);
@@ -76,7 +80,10 @@ export async function pup(source: string, options: Partial<PupOptions>): Promise
 
   const handle = await runPupApp(source, renderOpts);
 
-  const onAbort = () => (logger.error(TAG, `aborted`), handle.kill());
+  const onAbort = () => {
+    handle.process.send?.({ type: IpcMsgType.CANCEL, reason: String(signal?.reason ?? "abort") });
+    setTimeout(() => handle.kill(), 5_000);
+  };
   signal?.addEventListener("abort", onAbort, { once: true });
 
   try {
@@ -86,8 +93,8 @@ export async function pup(source: string, options: Partial<PupOptions>): Promise
           const msg = JSON.stringify({ source, progress, code, killed: handle.killed });
           reject(new Error(`crashed: ${msg}`));
         })
-        .on("message", () => signal?.aborted && reject(signal.reason))
         .on("progress", tick)
+        .on("console", (l, m) => options.onConsole?.(l, m))
         .on("done", resolve)
         .on("error", reject);
     });

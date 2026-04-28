@@ -1,141 +1,47 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/03/02.
 
-import { randomUUID } from "crypto";
-import { ipcMain, session } from "electron";
-import { rm, writeFile } from "fs/promises";
-import { tmpdir } from "os";
-import { join } from "path";
+import { type WebContents } from "electron";
 import type { EncoderPipeline } from "../base/encoder/pipeline";
 
-const AUDIO_META_CHANNEL = "audio-meta";
-const AUDIO_CHUNK_CHANNEL = "audio-chunk";
+export const AUDIO_META_CHANNEL = "audio-meta";
+export const AUDIO_CHUNK_CHANNEL = "audio-chunk";
 
-const AUDIO_CAPTURE_SCRIPT = `
-(function() {
-  if (window.__pup_audio_capturing__) return;
-  window.__pup_audio_capturing__ = true;
-
-  const { ipcRenderer } = require('electron');
-  const capturedContexts = new WeakSet();
-  const sourcedElements = new WeakSet();
-  let metaSent = false;
-
-  const origCreateMES = AudioContext.prototype.createMediaElementSource;
-  AudioContext.prototype.createMediaElementSource = function(el) {
-    sourcedElements.add(el);
-    return origCreateMES.call(this, el);
-  };
-
-  const origConnect = AudioNode.prototype.connect;
-  AudioNode.prototype.connect = function(dest, outIdx, inIdx) {
-    const captureNode = dest?.context?.__pup_captureNode__;
-    if (captureNode && dest === dest.context.destination && this !== captureNode) {
-      origConnect.call(this, captureNode, outIdx, inIdx);
-    }
-    return origConnect.call(this, dest, outIdx, inIdx);
-  };
-
-  const OrigAC = window.AudioContext || window.webkitAudioContext;
-  if (!OrigAC) return;
-
-  function PatchedAC() {
-    const ctx = new OrigAC(...arguments);
-    if (!capturedContexts.has(ctx)) {
-      capturedContexts.add(ctx);
-      if (!metaSent) {
-        metaSent = true;
-        ipcRenderer.send('${AUDIO_META_CHANNEL}', { sampleRate: ctx.sampleRate });
-      }
-      const node = ctx.createScriptProcessor(4096, 2, 2);
-      node.onaudioprocess = (e) => {
-        const L = e.inputBuffer.getChannelData(0);
-        const R = e.inputBuffer.getChannelData(1);
-        const out = new Float32Array(L.length * 2);
-        for (let i = 0; i < L.length; i++) {
-          out[i * 2] = L[i];
-          out[i * 2 + 1] = R[i];
-        }
-        ipcRenderer.send('${AUDIO_CHUNK_CHANNEL}', Buffer.from(out.buffer));
-      };
-      node.connect(ctx.destination);
-      ctx.__pup_captureNode__ = node;
-    }
-    return ctx;
-  }
-  PatchedAC.prototype = OrigAC.prototype;
-  Object.setPrototypeOf(PatchedAC, OrigAC);
-  window.AudioContext = PatchedAC;
-  if ('webkitAudioContext' in window) window.webkitAudioContext = PatchedAC;
-
-  const origPlay = HTMLMediaElement.prototype.play;
-  HTMLMediaElement.prototype.play = function() {
-    if (!this.__pup_captured__) {
-      this.__pup_captured__ = true;
-      const el = this;
-      Promise.resolve().then(() => {
-        if (!sourcedElements.has(el)) {
-          const ctx = new PatchedAC();
-          ctx.createMediaElementSource(el).connect(ctx.destination);
-        }
-      });
-    }
-    return origPlay.call(this);
-  };
-})();
-`;
-
-export interface AudioCapture {
-  teardown(): Promise<void>;
-}
-
-export interface AudioCaptureOptions {
+export interface AudioListenerOptions {
+  wc: WebContents;
   encoder: EncoderPipeline;
   getVideoTimeMs: () => number;
   onError: (error: Error) => void;
 }
 
-export async function setupAudioCapture({
-  encoder,
-  getVideoTimeMs,
-  onError,
-}: AudioCaptureOptions): Promise<AudioCapture> {
-  const preloadPath = join(tmpdir(), `pup_audio_${randomUUID()}.js`);
-  await writeFile(preloadPath, AUDIO_CAPTURE_SCRIPT);
-  session.defaultSession.registerPreloadScript({
-    type: "frame",
-    id: "pup-audio",
-    filePath: preloadPath,
-  });
+export type AudioDisposal = () => void;
 
-  ipcMain.on(AUDIO_META_CHANNEL, async (_e, data: { sampleRate: number }) => {
+export function attachAudioListeners({ wc, encoder, getVideoTimeMs, onError }: AudioListenerOptions): AudioDisposal {
+  const onMeta = async (_e: unknown, data: { sampleRate: number }) => {
     const sampleRate = data.sampleRate;
     const startMs = getVideoTimeMs();
     encoder.setupAudio(sampleRate);
     const silenceSamples = Math.ceil((startMs * sampleRate) / 1000);
-    if (silenceSamples <= 0) {
-      return;
-    }
+    if (silenceSamples <= 0) return;
     try {
       await encoder.encodeAudio(Buffer.alloc(silenceSamples * 2 * 4));
     } catch (error) {
       onError(error as Error);
     }
-  });
+  };
 
-  ipcMain.on(AUDIO_CHUNK_CHANNEL, async (_e, buffer: Buffer) => {
+  const onChunk = async (_e: unknown, buffer: Buffer) => {
     try {
       await encoder.encodeAudio(buffer);
     } catch (error) {
       onError(error as Error);
     }
-  });
+  };
 
-  return {
-    async teardown() {
-      ipcMain.removeAllListeners(AUDIO_META_CHANNEL);
-      ipcMain.removeAllListeners(AUDIO_CHUNK_CHANNEL);
-      session.defaultSession.unregisterPreloadScript("pup-audio");
-      await rm(preloadPath, { force: true });
-    },
+  wc.ipc.on(AUDIO_META_CHANNEL, onMeta);
+  wc.ipc.on(AUDIO_CHUNK_CHANNEL, onChunk);
+
+  return () => {
+    wc.ipc.removeListener(AUDIO_META_CHANNEL, onMeta);
+    wc.ipc.removeListener(AUDIO_CHUNK_CHANNEL, onChunk);
   };
 }

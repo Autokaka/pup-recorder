@@ -1,8 +1,20 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/04/12.
 
 import type { Frame } from "node-av";
+import { rewriteAlphaPps, rewriteAlphaSliceHeader, rewriteAlphaSps } from "./alpha_darwin";
 import { packBits } from "./bit";
-import { ANNEX_B_START_CODE, encodeNalHeader, type NalUnit, rewriteNalLayerId, splitNalUnits } from "./nal";
+import {
+  ANNEX_B_START_CODE,
+  encodeNalHeader,
+  NAL_SEI_PREFIX,
+  NAL_SPS,
+  NAL_PPS,
+  NAL_VPS,
+  type NalUnit,
+  rewriteNalLayerId,
+  splitNalUnits,
+} from "./nal";
+import type { NvencHevcConfig } from "./parser";
 import { buildAlphaVPS } from "./vps";
 
 // BGRA alpha → Y plane of packed YUV420P. Caller pre-fills UV=128.
@@ -26,13 +38,18 @@ export function extractAlphaToYuv420pBuffer(bgraFrame: Frame, buf: Buffer): void
   }
 }
 
-const NAL_UNIT_PREFIX_SEI = 39;
-
 export interface UnifiedExtradataOptions {
   baseExtradata: Buffer;
   alphaExtradata: Buffer;
   width: number;
   height: number;
+}
+
+// Apple HEVC Alpha Profile: alpha SPS sps_seq_parameter_set_id=1, alpha PPS pic+seq id=1.
+function rewriteAlphaParamSet(type: number, data: Buffer): Buffer {
+  if (type === NAL_SPS) return rewriteAlphaSps(data);
+  if (type === NAL_PPS) return rewriteAlphaPps(data);
+  return data;
 }
 
 export function buildUnifiedExtradata(opts: UnifiedExtradataOptions): Buffer {
@@ -42,7 +59,7 @@ export function buildUnifiedExtradata(opts: UnifiedExtradataOptions): Buffer {
 
   const alphaByType = new Map<number, NalUnit[]>();
   for (const nal of alphaNals) {
-    if (nal.type === 32) continue;
+    if (nal.type === NAL_VPS) continue;
     const arr = alphaByType.get(nal.type) ?? [];
     arr.push(nal);
     alphaByType.set(nal.type, arr);
@@ -51,12 +68,13 @@ export function buildUnifiedExtradata(opts: UnifiedExtradataOptions): Buffer {
   const chunks: Buffer[] = [];
   const emitted = new Set<number>();
   for (const nal of baseNals) {
-    const data = nal.type === 32 ? buildAlphaVPS(nal.data, opts.width, opts.height) : nal.data;
+    const data = nal.type === NAL_VPS ? buildAlphaVPS(nal.data, opts.width, opts.height) : nal.data;
     chunks.push(ANNEX_B_START_CODE, data);
     if (!emitted.has(nal.type)) {
       emitted.add(nal.type);
       for (const alphaNal of alphaByType.get(nal.type) ?? []) {
-        chunks.push(ANNEX_B_START_CODE, rewriteNalLayerId(alphaNal.data, 1));
+        const aData = rewriteAlphaParamSet(nal.type, alphaNal.data);
+        chunks.push(ANNEX_B_START_CODE, rewriteNalLayerId(aData, 1));
       }
     }
   }
@@ -68,7 +86,7 @@ export function buildUnifiedExtradata(opts: UnifiedExtradataOptions): Buffer {
 export function buildAlphaChannelInfoSEI(): Buffer {
   const payloadType = 165;
   const payloadSize = 4;
-  const [h0, h1] = encodeNalHeader(NAL_UNIT_PREFIX_SEI, 0, 1);
+  const [h0, h1] = encodeNalHeader(NAL_SEI_PREFIX, 0, 1);
 
   const bits: number[] = [];
   const writeBits = (val: number, n: number) => {
@@ -76,7 +94,7 @@ export function buildAlphaChannelInfoSEI(): Buffer {
   };
 
   writeBits(0, 1); // alpha_channel_cancel_flag
-  writeBits(0, 3); // alpha_channel_use_idc
+  writeBits(0, 3); // alpha_channel_use_idc (0 = unspecified/premultiplied; matches x265 ENABLE_ALPHA)
   writeBits(0, 3); // alpha_channel_bit_depth_minus8
   writeBits(0, 9); // alpha_transparent_value
   writeBits(255, 9); // alpha_opaque_value
@@ -94,14 +112,15 @@ export function buildAlphaChannelInfoSEI(): Buffer {
   ]);
 }
 
-export function interleaveAccessUnits(baseNals: NalUnit[], alphaNals: NalUnit[]): Buffer {
+export function interleaveAccessUnits(baseNals: NalUnit[], alphaNals: NalUnit[], cfg: NvencHevcConfig): Buffer {
   const chunks: Buffer[] = [];
   for (const nal of baseNals) {
     chunks.push(ANNEX_B_START_CODE, nal.data);
   }
   for (const nal of alphaNals) {
-    if (nal.type < 32) {
-      chunks.push(ANNEX_B_START_CODE, rewriteNalLayerId(nal.data, 1));
+    if (nal.type < NAL_VPS) {
+      const data = rewriteAlphaSliceHeader(nal.data, nal.type, cfg);
+      chunks.push(ANNEX_B_START_CODE, rewriteNalLayerId(data, 1));
     }
   }
   return Buffer.concat(chunks);

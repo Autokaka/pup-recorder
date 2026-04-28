@@ -37,7 +37,7 @@ export function setupPupProtocol(): void {
 
 export function createStegoURL(src: string, size: Size): string {
   const url = new URL(`${PUP_SCHEME}://stego`);
-  url.searchParams.set("src", src);
+  url.searchParams.set("src", src.replace("http://", "https://"));
   url.searchParams.set("w", String(size.width));
   url.searchParams.set("h", String(size.height));
   return url.toString();

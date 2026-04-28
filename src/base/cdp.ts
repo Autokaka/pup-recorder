@@ -9,6 +9,10 @@ export function send(cdp: Debugger, method: string, params?: object): Promise<un
   return withTimeout(cdp.sendCommand(method, params), CDP_TIMEOUT_MS, `cdp.${method}`);
 }
 
+export function evalIn(cdp: Debugger, expression: string): Promise<unknown> {
+  return withTimeout(send(cdp, "Runtime.evaluate", { expression }), CDP_TIMEOUT_MS, "evalIn");
+}
+
 export function advanceVirtualTime(cdp: Debugger, budget: number): Promise<void> {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {

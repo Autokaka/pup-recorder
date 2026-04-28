@@ -4,9 +4,24 @@ import type { ChildProcess } from "child_process";
 import { EventEmitter } from "events";
 
 export const enum IpcMsgType {
+  // child → parent
+  CONSOLE = "console",
   PROGRESS = "progress",
   DONE = "done",
   ERROR = "error",
+  // parent → child
+  CANCEL = "cancel",
+}
+
+export interface ConsoleMsg {
+  type: IpcMsgType.CONSOLE;
+  level: string;
+  message: string;
+}
+
+export interface CancelMsg {
+  type: IpcMsgType.CANCEL;
+  reason?: string;
 }
 
 export interface IpcDonePayload {
@@ -30,17 +45,21 @@ export interface ErrorMsg {
   error: string;
 }
 
-export type IpcMsg = ProgressMsg | DoneMsg | ErrorMsg;
+export type IpcMsg = ConsoleMsg | ProgressMsg | DoneMsg | ErrorMsg | CancelMsg;
 
 export interface IpcEvents {
   progress: [value: number];
-  message: [msg: IpcMsg];
+  console: [level: string, msg: string];
   done: [payload: IpcDonePayload];
   error: [error: Error];
   close: [code: number | null];
 }
 
 export class IpcWriter {
+  writeConsole(level: string, message: string) {
+    this.send({ type: IpcMsgType.CONSOLE, level, message });
+  }
+
   writeProgress(value: number): void {
     this.send({ type: IpcMsgType.PROGRESS, value });
   }
@@ -66,17 +85,23 @@ export class IpcReader extends EventEmitter<IpcEvents> {
     super();
     child.on("message", (raw) => {
       const msg = raw as IpcMsg;
-      this.emit("message", msg);
       switch (msg.type) {
-        case IpcMsgType.PROGRESS:
+        case IpcMsgType.CONSOLE: {
+          this.emit("console", msg.level, msg.message);
+          break;
+        }
+        case IpcMsgType.PROGRESS: {
           this.emit("progress", msg.value);
           break;
-        case IpcMsgType.DONE:
+        }
+        case IpcMsgType.DONE: {
           this.emit("done", msg.payload);
           break;
-        case IpcMsgType.ERROR:
+        }
+        case IpcMsgType.ERROR: {
           this.emit("error", new Error(msg.error));
           break;
+        }
       }
     });
     child.once("exit", (c) => this.emit("close", c));

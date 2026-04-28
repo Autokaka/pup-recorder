@@ -1,19 +1,12 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/06.
 
 import z from "zod";
-import {
-  pupDeterministic,
-  pupDisableGPU,
-  pupDisableHwCodec,
-  pupUseInnerProxy,
-  pupWindowTolerant,
-} from "../base/constants";
 
 export const DEFAULT_WIDTH = 1920;
 export const DEFAULT_HEIGHT = 1080;
 export const DEFAULT_FPS = 30;
 export const DEFAULT_DURATION = 5;
-export const DEFAULT_OUT_FILE = "output.mp4";
+export const DEFAULT_OUT_FILE = "out/html.mp4,out/html.webm";
 
 export const RenderSchema = z.object({
   duration: z.number().describe("Duration in seconds"),
@@ -31,6 +24,17 @@ export const RenderSchema = z.object({
 
 export type RenderOptions = z.infer<typeof RenderSchema>;
 
+export type ConsoleCallback = (level: string, message: string) => void;
+
+export type ProgressCallback = (progress: number) => void;
+
+export interface IPCRenderOptions extends RenderOptions {
+  source: string;
+  signal: AbortSignal;
+  onProgress: ProgressCallback;
+  onConsole: ConsoleCallback;
+}
+
 export interface RenderResult {
   options: RenderOptions;
   written: number;
@@ -45,9 +49,9 @@ export const defaultRenderOptions: RenderOptions = {
   duration: DEFAULT_DURATION,
   outFile: DEFAULT_OUT_FILE,
   withAudio: false,
-  useInnerProxy: pupUseInnerProxy,
-  deterministic: pupDeterministic,
-  disableGpu: pupDisableGPU,
-  disableHwCodec: pupDisableHwCodec,
-  windowTolerant: pupWindowTolerant,
+  useInnerProxy: false,
+  deterministic: false,
+  disableGpu: false,
+  disableHwCodec: false,
+  windowTolerant: false,
 };
