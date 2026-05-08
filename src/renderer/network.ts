@@ -35,7 +35,7 @@ export interface NetworkOptions {
 
 export function setInterceptor({ source, window, useInnerProxy }: NetworkOptions) {
   const req = window.webContents.session.webRequest;
-  const limiter = new ConcurrencyLimiter(64);
+  const limiter = new ConcurrencyLimiter(256);
   const events = new Map<string, WaitableEvent>();
 
   async function wait(key: string, onTimeout?: () => void) {

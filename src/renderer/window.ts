@@ -89,8 +89,6 @@ async function openWindow({
   signal,
   onCreated,
 }: WindowOptions): Promise<BrowserWindow> {
-  checkHTML(source);
-
   const { width, height, useInnerProxy } = renderer;
   const src = useInnerProxy ? proxiedUrl(source) : source;
 
@@ -152,6 +150,8 @@ export async function loadWindow({
   onCreated,
   signal,
 }: WindowOptions): Promise<BrowserWindow> {
+  checkHTML(source);
+
   signal?.throwIfAborted();
   let warmup: BrowserWindow | undefined;
   let error: unknown;
