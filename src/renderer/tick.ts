@@ -1,11 +1,9 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/04/01.
 
 import type { WebFrameMain } from "electron";
-import { logger } from "../base/logging";
 import { withTimeout } from "../base/timing";
 
 export const TICK_SYMBOL = "__pup_tick__";
-const TAG = `[Tick]`;
 
 const HOOK = `(function() {
   if (window.self === window.top) return;
@@ -66,6 +64,15 @@ const HOOK = `(function() {
   };
   window.clearInterval = function(id) { delete timers[id]; };
 
+  function safeInvoke(fn, args) {
+    try {
+      if (typeof fn === 'string') eval(fn);
+      else fn.apply(undefined, args || []);
+    } catch (e) {
+      console.error('[Tick] error:', e && e.stack || e);
+    }
+  }
+
   function process(timestampMs) {
     currMs = timestampMs;
     document.getAnimations().forEach(a => {
@@ -77,14 +84,14 @@ const HOOK = `(function() {
       const t = timers[ids[i]];
       if (!t) continue;
       while (t.next <= currMs) {
-        if (typeof t.cb === 'string') eval(t.cb); else t.cb.apply(undefined, t.args);
+        safeInvoke(t.cb, t.args);
         if (t.type === 'timeout') { delete timers[ids[i]]; break; }
         t.next += t.delay;
       }
     }
     const rafs = rafQueue.splice(0);
     for (let j = 0; j < rafs.length; j++) {
-      rafs[j].cb(currMs);
+      safeInvoke(rafs[j].cb, [currMs]);
     }
   }
 
@@ -105,16 +112,11 @@ const HOOK = `(function() {
 
 export async function tick(frame: WebFrameMain | undefined, timestampMs: number) {
   if (!frame) return;
-  try {
-    await withTimeout(
-      frame.executeJavaScript(`${HOOK} ${TICK_SYMBOL}.process(${timestampMs})`),
-      5_000,
-      "tick.executeJavaScript",
-    );
-  } catch (e) {
-    // NOTE(Autokaka):
-    // Side-effects may throw (e.g. uncaught error on animation callback), ignore to let recorder continue
-    // The errors will be dispatched to window console, just like how render.ts works
-    logger.error(TAG, "tick failed:", e);
-  }
+  // Per-callback errors are swallowed inside HOOK (see safeInvoke). Only CDP/timeout failures
+  // surface here — they signal a real fault (renderer hang, IPC broken) and must propagate.
+  await withTimeout(
+    frame.executeJavaScript(`${HOOK} ${TICK_SYMBOL}.process(${timestampMs})`),
+    5_000,
+    "tick.executeJavaScript",
+  );
 }

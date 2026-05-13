@@ -13,6 +13,7 @@ import { EncoderPipeline } from "../base/encoder/pipeline";
 import { sizeEquals } from "../base/image";
 import { logger } from "../base/logging";
 import { type IpcDonePayload } from "./ipc";
+import { RerenderError } from "./rerender";
 import type { IPCRenderOptions } from "./schema";
 import { decodeStego, swapBuffer } from "./stego";
 import { tick } from "./tick";
@@ -30,14 +31,21 @@ interface PaintOptions {
 async function paint({ source, win, size, ms }: PaintOptions): Promise<Buffer> {
   let lastTs: number | undefined;
   let laggy = 0;
+  let stuck = 0;
+  let interval: NodeJS.Timeout | undefined;
   const cdp = win.webContents.debugger;
   const frameSize: Size = { width: size.width, height: size.height + 1 };
-  const interval = setInterval(() => {
-    logger.warn(TAG, `${source} render is extremely slow @ ${ms}, current: ${lastTs} with ${laggy} repeats`);
-    win.webContents.invalidate();
-  }, 1000);
   try {
-    return await new Promise<Buffer>((resolve) => {
+    return await new Promise<Buffer>((resolve, reject) => {
+      interval = setInterval(() => {
+        if (stuck >= 3) {
+          reject(new RerenderError("drawable timeout"));
+          return;
+        }
+        stuck++;
+        logger.warn(TAG, `${source} render is extremely slow @ ${ms}, current: ${lastTs} with ${stuck} repeats`);
+        win.webContents.invalidate();
+      }, 1000);
       const handler = (_e: Event<WebContentsPaintEventParams>, _d: Rectangle, image: NativeImage) => {
         const imageSize = image.getSize();
         if (!sizeEquals(imageSize, frameSize)) {

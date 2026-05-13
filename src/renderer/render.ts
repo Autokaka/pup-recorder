@@ -6,11 +6,15 @@ import { pupAudioPreload } from "../base/constants";
 import { EncoderPipeline } from "../base/encoder/pipeline";
 import { FrameDropStats } from "../base/frame_drop";
 import { sizeEquals } from "../base/image";
+import { logger } from "../base/logging";
 import { attachAudioListeners, type AudioDisposal } from "./audio";
 import type { IpcDonePayload } from "./ipc";
+import { RerenderError } from "./rerender";
 import type { IPCRenderOptions } from "./schema";
 import { decodeStego, startStego } from "./stego";
 import { disposeWindow, loadWindow } from "./window";
+
+const TAG = "[Render]";
 
 export async function render(options: IPCRenderOptions): Promise<IpcDonePayload> {
   const { source, fps, width, height, duration, withAudio, outFile, disableHwCodec, signal, onProgress } = options;
@@ -27,6 +31,7 @@ export async function render(options: IPCRenderOptions): Promise<IpcDonePayload>
   let encodeError: Error | undefined;
   let resolver: (() => void) | undefined;
   let rejecter: ((reason?: unknown) => void) | undefined;
+  let interval: NodeJS.Timeout | undefined;
   const dropStats = new FrameDropStats(fps);
 
   let disposeAudio: AudioDisposal | undefined;
@@ -119,8 +124,27 @@ export async function render(options: IPCRenderOptions): Promise<IpcDonePayload>
     signal?.throwIfAborted();
     signal?.addEventListener("abort", () => rejecter?.(signal.reason), { once: true });
     await startStego(cdp);
-    await new Promise<void>((r, j) => ([resolver, rejecter] = [r, j]));
+    await new Promise<void>((r, j) => {
+      [resolver, rejecter] = [r, j];
+      let lastWritten = 0;
+      let stuck = 0;
+      interval = setInterval(() => {
+        if (written !== lastWritten) {
+          lastWritten = written;
+          stuck = 0;
+          return;
+        }
+        if (stuck >= 3) {
+          rejecter?.(new RerenderError("drawable timeout"));
+          return;
+        }
+        logger.warn(TAG, `${source} render is extremely slow, written=${written} stuck=${stuck}`);
+        stuck++;
+        win.webContents.invalidate();
+      }, 1000);
+    });
   } finally {
+    clearInterval(interval);
     win.webContents.off("paint", paint);
     await disposeWindow(win);
     disposeAudio?.();

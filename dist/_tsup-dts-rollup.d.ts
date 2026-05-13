@@ -442,6 +442,8 @@ export declare function makeFrame(width: number, height: number, pixFmt: AVPixel
 
 export declare function makePacket(): Packet;
 
+export declare const MAX_RENDER_ATTEMPTS = 3;
+
 export declare const NAL_BLA_W_LP = 16;
 
 export declare const NAL_HEADER_SIZE = 2;
@@ -642,12 +644,17 @@ declare const RenderSchema: z.ZodObject<{
 export { RenderSchema }
 export { RenderSchema as RenderSchema_alias_1 }
 
+export declare class RerenderError extends Error {
+    constructor(message: string);
+}
+
 export declare function resizeDrawable(cdp: Debugger, size: Size): Promise<void>;
 
 declare interface RetryOptions<Args extends any[], Ret> {
     fn: (...args: Args) => Promise<Ret>;
     maxAttempts?: number;
     timeout?: number;
+    signal?: AbortSignal;
 }
 export { RetryOptions }
 export { RetryOptions as RetryOptions_alias_1 }
@@ -730,7 +737,7 @@ export declare interface UnifiedExtradataOptions {
 
 export declare function unsetInterceptor(window: BrowserWindow): void;
 
-declare function useRetry<Args extends any[], Ret>({ fn, maxAttempts, timeout }: RetryOptions<Args, Ret>): (...args: Args) => Promise<Ret>;
+declare function useRetry<Args extends any[], Ret>({ fn, maxAttempts, timeout, signal }: RetryOptions<Args, Ret>): (...args: Args) => Promise<Ret>;
 export { useRetry }
 export { useRetry as useRetry_alias_1 }
 
@@ -817,6 +824,8 @@ export declare interface WindowOptions {
     onCreated?: WindowCreatedCallback;
     signal?: AbortSignal;
 }
+
+export declare function withRerender<T>(action: () => Promise<T>): Promise<T>;
 
 declare function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T>;
 export { withTimeout }

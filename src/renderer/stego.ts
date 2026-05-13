@@ -3,6 +3,7 @@
 import { type Debugger, type Size, type WebContents } from "electron";
 import { advanceVirtualTime, evalIn } from "../base/cdp";
 import { withTimeout } from "../base/timing";
+import { RerenderError } from "./rerender";
 
 export const FRAME_SYNC_MARKER_WIDTH = 32;
 export const FRAME_SYNC_MARKER_HEIGHT = 1;
@@ -26,20 +27,40 @@ export function buildStegoHTML(targetURL: string, size: Size): string {
       border: none; 
       display: block;
     }
-    #stego { 
-      position: absolute; 
-      top: ${height}px; 
-      left: 0; 
-      width: ${width}px; 
-      height: 1px; 
+    #stego {
+      position: absolute;
+      top: ${height}px;
+      left: 0;
+      width: ${width}px;
+      height: 1px;
       display: block;
       image-rendering: pixelated;
+    }
+    /* Heartbeat: invisible always-on tick. Forces Chromium compositor to issue BeginFrame each
+       virtual tick on otherwise-static pages so canvas#stego putImageData updates land in the
+       captured paint event. Without this, a static iframe + paused virtual time leaves the
+       compositor's last frame cached even after canvas dirties; invalidate() only re-emits the
+       cached frame. */
+    @keyframes pup_heartbeat {
+      0% { opacity: 0.5; }
+      100% { opacity: 1; }
+    }
+    #heartbeat {
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      width: 1px;
+      height: 1px;
+      background: #000;
+      animation: pup_heartbeat 1s linear infinite;
+      pointer-events: none;
     }
   </style>
 </head>
 <body>
   <iframe id="target" src="${targetURL}"></iframe>
   <canvas id="stego" width="${width}" height="1"></canvas>
+  <div id="heartbeat"></div>
   <script>
     (function() {
       const { ipcRenderer } = require('electron');
@@ -144,5 +165,9 @@ export async function swapBuffer(wc: WebContents, expected: number, interval: nu
   const swapped = new Promise((r) => wc.ipc.once(STEGO_TICK_CHANNEL, r));
   await evalIn(wc.debugger, `__pup_draw_stego__(${expected})`);
   await advanceVirtualTime(wc.debugger, interval);
-  await withTimeout(swapped, 5_000, "swapBuffer");
+  try {
+    await withTimeout(swapped, 5_000, "swapBuffer");
+  } catch {
+    throw new RerenderError("swapBuffer timeout");
+  }
 }
