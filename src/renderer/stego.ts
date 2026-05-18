@@ -3,7 +3,6 @@
 import { type Debugger, type Size, type WebContents } from "electron";
 import { advanceVirtualTime, evalIn } from "../base/cdp";
 import { withTimeout } from "../base/timing";
-import { RerenderError } from "./rerender";
 
 export const FRAME_SYNC_MARKER_WIDTH = 32;
 export const FRAME_SYNC_MARKER_HEIGHT = 1;
@@ -165,9 +164,5 @@ export async function swapBuffer(wc: WebContents, expected: number, interval: nu
   const swapped = new Promise((r) => wc.ipc.once(STEGO_TICK_CHANNEL, r));
   await evalIn(wc.debugger, `__pup_draw_stego__(${expected})`);
   await advanceVirtualTime(wc.debugger, interval);
-  try {
-    await withTimeout(swapped, 5_000, "swapBuffer");
-  } catch {
-    throw new RerenderError("swapBuffer timeout");
-  }
+  await withTimeout(swapped, 5_000, "swapBuffer");
 }

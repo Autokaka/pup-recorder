@@ -2,16 +2,9 @@
 
 import { logger } from "../base/logging";
 
-const TAG = "[Error]";
+const TAG = "[Rerender]";
 
 export const MAX_RENDER_ATTEMPTS = 3;
-
-export class RerenderError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "RerenderError";
-  }
-}
 
 export async function withRerender<T>(action: () => Promise<T>): Promise<T> {
   let lastErr: unknown;
@@ -19,7 +12,6 @@ export async function withRerender<T>(action: () => Promise<T>): Promise<T> {
     try {
       return await action();
     } catch (e) {
-      if (!(e instanceof RerenderError)) throw e;
       lastErr = e;
       logger.warn(TAG, `retry ${attempt + 1}/${MAX_RENDER_ATTEMPTS}: ${(e as Error).message}`);
     }

@@ -39,6 +39,16 @@
     "@seydx/node-av-win32-x64-msvc",
     "electron"
   ],
+  "optionalDependencies": {
+    "@seydx/node-av-darwin-arm64": "latest",
+    "@seydx/node-av-darwin-x64": "latest",
+    "@seydx/node-av-linux-arm64": "latest",
+    "@seydx/node-av-linux-x64": "latest",
+    "@seydx/node-av-win32-arm64-mingw": "latest",
+    "@seydx/node-av-win32-arm64-msvc": "latest",
+    "@seydx/node-av-win32-x64-mingw": "latest",
+    "@seydx/node-av-win32-x64-msvc": "latest"
+  },
   "dependencies": {
     "commander": "latest",
     "electron": "latest",

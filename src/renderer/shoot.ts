@@ -13,7 +13,6 @@ import { EncoderPipeline } from "../base/encoder/pipeline";
 import { sizeEquals } from "../base/image";
 import { logger } from "../base/logging";
 import { type IpcDonePayload } from "./ipc";
-import { RerenderError } from "./rerender";
 import type { IPCRenderOptions } from "./schema";
 import { decodeStego, swapBuffer } from "./stego";
 import { tick } from "./tick";
@@ -39,7 +38,7 @@ async function paint({ source, win, size, ms }: PaintOptions): Promise<Buffer> {
     return await new Promise<Buffer>((resolve, reject) => {
       interval = setInterval(() => {
         if (stuck >= 3) {
-          reject(new RerenderError("drawable timeout"));
+          reject(new Error("drawable timeout"));
           return;
         }
         stuck++;

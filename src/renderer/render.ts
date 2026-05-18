@@ -9,7 +9,6 @@ import { sizeEquals } from "../base/image";
 import { logger } from "../base/logging";
 import { attachAudioListeners, type AudioDisposal } from "./audio";
 import type { IpcDonePayload } from "./ipc";
-import { RerenderError } from "./rerender";
 import type { IPCRenderOptions } from "./schema";
 import { decodeStego, startStego } from "./stego";
 import { disposeWindow, loadWindow } from "./window";
@@ -135,7 +134,7 @@ export async function render(options: IPCRenderOptions): Promise<IpcDonePayload>
           return;
         }
         if (stuck >= 3) {
-          rejecter?.(new RerenderError("drawable timeout"));
+          rejecter?.(new Error("drawable timeout"));
           return;
         }
         logger.warn(TAG, `${source} render is extremely slow, written=${written} stuck=${stuck}`);
