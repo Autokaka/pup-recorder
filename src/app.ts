@@ -8,6 +8,7 @@ import { startElectronCrashReporter } from "./base/crash";
 import { logger } from "./base/logging";
 import { makeCLI } from "./common";
 import { IpcMsgType, IpcWriter, type IpcMsg } from "./renderer/ipc";
+import { setupFrameProtocol } from "./renderer/video/protocol";
 import { setupPupProtocol } from "./renderer/protocol";
 import { render } from "./renderer/render";
 import { withRerender } from "./renderer/rerender";
@@ -44,6 +45,7 @@ makeCLI({
     try {
       await app.whenReady();
       setupPupProtocol();
+      setupFrameProtocol();
       printFeatures();
       for (const out of options.outFile.split(",")) {
         await mkdir(dirname(out), { recursive: true });

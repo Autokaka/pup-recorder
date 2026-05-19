@@ -32,9 +32,13 @@ export class FormatMuxer {
 
   async [Symbol.asyncDispose](): Promise<void> {
     if (!this._opened) return;
-    await this._ctx.writeTrailer();
-    await this._ctx.closeOutput();
-    await this._ctx[Symbol.asyncDispose]();
     this._opened = false;
+    try {
+      await this._ctx.writeTrailer();
+    } finally {
+      // A failed/truncated trailer write must not leak the FD + native context.
+      await this._ctx.closeOutput();
+      await this._ctx[Symbol.asyncDispose]();
+    }
   }
 }

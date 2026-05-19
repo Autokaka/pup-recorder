@@ -5,22 +5,25 @@ import { protocol } from "electron";
 import { buildStegoHTML } from "./stego";
 
 const PUP_SCHEME = "pup";
+const FRAME_SCHEME = "pup-frame";
+
+// `protocol.registerSchemesAsPrivileged` honors only the LAST call — register every
+// custom scheme in this one place. New schemes must be added to PRIVILEGED_SCHEMES below.
+const PRIVILEGED_PRIVILEGES = {
+  standard: true,
+  secure: true,
+  bypassCSP: true,
+  allowServiceWorkers: true,
+  supportFetchAPI: true,
+  corsEnabled: true,
+  stream: true,
+  codeCache: true,
+} as const;
 
 // Must be called synchronously before app is ready.
 protocol.registerSchemesAsPrivileged([
-  {
-    scheme: PUP_SCHEME,
-    privileges: {
-      standard: true,
-      secure: true,
-      bypassCSP: true,
-      allowServiceWorkers: true,
-      supportFetchAPI: true,
-      corsEnabled: true,
-      stream: true,
-      codeCache: true,
-    },
-  },
+  { scheme: PUP_SCHEME, privileges: PRIVILEGED_PRIVILEGES },
+  { scheme: FRAME_SCHEME, privileges: PRIVILEGED_PRIVILEGES },
 ]);
 
 // Must be called after app is ready.

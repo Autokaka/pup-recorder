@@ -27,6 +27,8 @@ import z from 'zod';
 /** Insert emulation prevention bytes (00 00 03) for Annex B compliance. */
 export declare function addEmulationPrevention(nal: Buffer): Buffer;
 
+export declare function advanceVideos(frame: WebFrameMain | undefined, timestampMs: number): Promise<void>;
+
 export declare function advanceVirtualTime(cdp: Debugger, budget: number): Promise<void>;
 
 export declare const ANNEX_B_START_CODE: Buffer<ArrayBuffer>;
@@ -182,6 +184,31 @@ export declare function createStegoURL(src: string, size: Size): string;
 
 export declare function debounce<T extends (...args: unknown[]) => void>(fn: T, delay?: number): T;
 
+export declare class DecodeSession {
+    readonly meta: VideoMeta;
+    private readonly src;
+    private readonly frameCount;
+    private ffmpeg;
+    private parser;
+    private ring;
+    private runBaseIdx;
+    private nextFrameIdx;
+    private waiters;
+    private exhausted;
+    constructor(meta: VideoMeta, src: string, frameCount: number);
+    getFrame(idxRaw: number): Promise<Buffer>;
+    close(): void;
+    private needsReseek;
+    private reseek;
+    private waitFrame;
+    private onServe;
+    private refillIfNeeded;
+    private spawn;
+    private onStdout;
+    private killFfmpeg;
+    private rejectAllWaiters;
+}
+
 export declare function decodeStego(bitmap: Buffer, size: Size): number | undefined;
 
 declare const DEFAULT_DURATION = 5;
@@ -216,6 +243,27 @@ export declare interface DoneMsg {
 }
 
 export declare function drainPackets(ctx: CodecContext, pkt: Packet, stream: Stream, muxer: FormatMuxer): Promise<void>;
+
+export declare class DualLayerMux {
+    private _s;
+    private _baseQueue;
+    private _alphaQueue;
+    constructor(s: DualLayerMuxOptions);
+    drain(muxer: FormatMuxer): Promise<void>;
+    desyncAfterEof(): string | undefined;
+    private receiveAll;
+    private snapshot;
+    private writePair;
+}
+
+export declare interface DualLayerMuxOptions {
+    baseCtx: CodecContext;
+    alphaCtx: CodecContext;
+    basePkt: Packet;
+    alphaPkt: Packet;
+    stream: Stream;
+    hevcCfg: NvencHevcConfig;
+}
 
 export declare function electronOpts(disableGpu: boolean): Promise<string[]>;
 
@@ -321,6 +369,17 @@ export declare class FrameDropStats {
     /** Finalize and return the score. */
     finalize(): FrameDropScore;
 }
+
+export declare class FrameServer {
+    private sessions;
+    open(opts: OpenOptions): Promise<VideoMeta>;
+    getFrame(id: string, idx: number): Promise<Buffer>;
+    close(id: string): void;
+    closeAll(): void;
+    private must;
+}
+
+export declare const frameServer: FrameServer;
 
 export declare type HwEncoder = VideoToolboxEncoder | NvencDualLayerEncoder;
 
@@ -482,13 +541,14 @@ export { noerr as noerr_alias_1 }
 
 export declare class NvencDualLayerEncoder implements Disposable {
     private _s;
+    private _mux;
     private _pts;
     private constructor();
     static create(opts: HwVideoEncoderOptions): Promise<NvencDualLayerEncoder>;
     encode(bgraFrame: Frame, muxer: FormatMuxer): Promise<void>;
     flush(muxer: FormatMuxer): Promise<void>;
     [Symbol.dispose](): void;
-    private drainInterleaved;
+    private sendEof;
 }
 
 export declare interface NvencHevcConfig {
@@ -500,6 +560,11 @@ export declare interface NvencHevcConfig {
     saoEnabled: boolean;
     cabacInitPresent: boolean;
     ppsHasLoopFilterAcrossSlicesFlag: boolean;
+}
+
+export declare interface OpenOptions {
+    src: string;
+    fps: number;
 }
 
 export declare function openVideoCtx(opts: VideoCtxOptions, label: string): Promise<CodecContext>;
@@ -552,6 +617,19 @@ export { penv as penv_alias_1 }
 declare function periodical(callback: (count: number) => Promise<void> | void, ms: number): () => void;
 export { periodical }
 export { periodical as periodical_alias_1 }
+
+export declare class PngStreamParser {
+    private buf;
+    feed(chunk: Buffer): Buffer[];
+}
+
+export declare function probe(src: string): Promise<ProbeResult>;
+
+export declare interface ProbeResult {
+    width: number;
+    height: number;
+    duration: number;
+}
 
 declare interface ProcessHandle {
     process: ChildProcess;
@@ -644,10 +722,6 @@ declare const RenderSchema: z.ZodObject<{
 export { RenderSchema }
 export { RenderSchema as RenderSchema_alias_1 }
 
-export declare class RerenderError extends Error {
-    constructor(message: string);
-}
-
 export declare function resizeDrawable(cdp: Debugger, size: Size): Promise<void>;
 
 declare interface RetryOptions<Args extends any[], Ret> {
@@ -687,6 +761,8 @@ export declare interface RunElectronAppOptions {
 export declare function send(cdp: Debugger, method: string, params?: object): Promise<unknown>;
 
 export declare function setInterceptor({ source, window, useInnerProxy }: NetworkOptions): void;
+
+export declare function setupFrameProtocol(): void;
 
 export declare function setupPupProtocol(): void;
 
@@ -741,6 +817,8 @@ declare function useRetry<Args extends any[], Ret>({ fn, maxAttempts, timeout, s
 export { useRetry }
 export { useRetry as useRetry_alias_1 }
 
+export declare const VIDEO_SYMBOL = "__pup_video__";
+
 export declare interface VideoCtxOptions {
     codec: Codec;
     width: number;
@@ -778,6 +856,14 @@ export declare interface VideoEncoderOptions {
     bitrate: number;
     pixelFormat: AVPixelFormat;
     muxer: FormatMuxer;
+}
+
+export declare interface VideoMeta {
+    id: string;
+    width: number;
+    height: number;
+    fps: number;
+    duration: number;
 }
 
 export declare interface VideoSetup {
