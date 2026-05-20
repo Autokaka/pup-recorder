@@ -14,10 +14,9 @@ import { sizeEquals } from "../base/image";
 import { logger } from "../base/logging";
 import { type IpcDonePayload } from "./ipc";
 import type { IPCRenderOptions } from "./schema";
-import { frameServer } from "./video/frame_server";
 import { decodeStego, swapBuffer } from "./stego";
 import { tick } from "./tick";
-import { advanceVideos } from "./video/shim";
+import { frameServer } from "./video/frame_server";
 import { disposeWindow, loadWindow } from "./window";
 
 const TAG = "[Shoot]";
@@ -64,6 +63,8 @@ async function paint({ source, win, size, ms }: PaintOptions): Promise<Buffer> {
         win.webContents.off("paint", handler);
         resolve(Buffer.from(bitmap.buffer, bitmap.byteOffset, size.height * size.width * 4));
         win.webContents.stopPainting();
+        // Compositor cap, NOT output fps. Max it so paint events arrive without inter-frame wall delay.
+        win.webContents.setFrameRate(240);
       };
       win.webContents.on("paint", handler);
       win.webContents.startPainting();
@@ -102,7 +103,6 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
       const frameMs = (frame + 1) * frameInterval;
 
       await tick(iframe, frameMs);
-      await advanceVideos(iframe, frameMs);
       await swapBuffer(win.webContents, frameMs, frameInterval);
       const bitmap = await paint({ source, win, size: { width, height }, ms: frameMs });
       // Kick off encode without awaiting; pipeline limiter serializes internally.

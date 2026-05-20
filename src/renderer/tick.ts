@@ -2,6 +2,7 @@
 
 import type { WebFrameMain } from "electron";
 import { withTimeout } from "../base/timing";
+import { advanceVideos } from "./video/shim";
 
 export const TICK_SYMBOL = "__pup_tick__";
 
@@ -114,6 +115,6 @@ export async function tick(frame: WebFrameMain | undefined, timestampMs: number)
   if (!frame) return;
   // Per-callback errors are swallowed inside HOOK (see safeInvoke). Only CDP/timeout failures
   // surface here — they signal a real fault (renderer hang, IPC broken) and must propagate.
-  const ev = frame.executeJavaScript(`${HOOK} ${TICK_SYMBOL}.process(${timestampMs})`);
-  await withTimeout(ev, 5_000, "tick.executeJavaScript");
+  const tickEv = frame.executeJavaScript(`${HOOK} ${TICK_SYMBOL}.process(${timestampMs})`);
+  await Promise.all([withTimeout(tickEv, 5_000, "tick.executeJavaScript"), advanceVideos(frame, timestampMs)]);
 }

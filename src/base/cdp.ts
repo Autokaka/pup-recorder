@@ -28,7 +28,12 @@ export function advanceVirtualTime(cdp: Debugger, budget: number): Promise<void>
       }
     };
     cdp.on("message", handler);
-    send(cdp, "Emulation.setVirtualTimePolicy", { policy: "advance", budget }).catch((e) => {
+    // Starvation=1 forces budget to expire even if a slow fetch task is pending; default unbounded deadlocks.
+    send(cdp, "Emulation.setVirtualTimePolicy", {
+      policy: "advance",
+      budget,
+      maxVirtualTimeTaskStarvationCount: 1,
+    }).catch((e) => {
       clearTimeout(timeout);
       cdp.off("message", handler);
       reject(e);
