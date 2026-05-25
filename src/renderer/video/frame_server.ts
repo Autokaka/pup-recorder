@@ -1,8 +1,11 @@
 // Created by Lu Ao (luao@bilibili.com) on 2026/05/18.
 
-import { randomUUID } from "crypto";
+import { createHash } from "crypto";
+import { tmpdir } from "os";
+import { join } from "path";
 import { DecodeSession } from "./decode_session";
 import { probe } from "./ffprobe";
+import { localize } from "./src_cache";
 
 export interface VideoMeta {
   id: string;
@@ -17,40 +20,54 @@ export interface OpenOptions {
   fps: number;
 }
 
-// Registry of decode sessions keyed by opaque id; the pup-frame protocol layer is the only caller.
+interface Entry {
+  session: DecodeSession;
+  refs: number;
+}
+
+const FRAMES_ROOT = join(tmpdir(), "pup-video-frames");
+
 export class FrameServer {
-  private sessions = new Map<string, DecodeSession>();
+  private sessions = new Map<string, Entry>();
 
   async open(opts: OpenOptions): Promise<VideoMeta> {
-    const info = await probe(opts.src);
-    const id = randomUUID();
+    const id = key(opts.src, opts.fps);
+    const hit = this.sessions.get(id);
+    if (hit) {
+      hit.refs++;
+      return hit.session.meta;
+    }
+    const localPath = await localize(opts.src);
+    const info = await probe(localPath);
     const meta: VideoMeta = { id, width: info.width, height: info.height, fps: opts.fps, duration: info.duration };
-    const frameCount = Math.max(1, Math.round(info.duration * opts.fps));
-    this.sessions.set(id, new DecodeSession(meta, opts.src, frameCount));
+    const framesDir = join(FRAMES_ROOT, id);
+    this.sessions.set(id, { session: new DecodeSession(meta, localPath, framesDir), refs: 1 });
     return meta;
   }
 
   getFrame(id: string, idx: number): Promise<Buffer> {
-    return this.must(id).getFrame(idx);
+    const e = this.sessions.get(id);
+    if (!e) throw new Error(`frame-server: unknown id=${id}`);
+    return e.session.getFrame(idx);
   }
 
   close(id: string): void {
-    const s = this.sessions.get(id);
-    if (!s) return;
-    s.close();
+    const e = this.sessions.get(id);
+    if (!e) return;
+    if (--e.refs > 0) return;
+    e.session.close();
     this.sessions.delete(id);
   }
 
-  // Render-end / abort safety net: the shim only closes sessions on DOM removal.
   closeAll(): void {
-    for (const id of [...this.sessions.keys()]) this.close(id);
+    for (const [, e] of this.sessions) e.session.close();
+    this.sessions.clear();
   }
 
-  private must(id: string): DecodeSession {
-    const s = this.sessions.get(id);
-    if (!s) throw new Error(`frame-server: unknown session id=${id}`);
-    return s;
-  }
+}
+
+function key(src: string, fps: number): string {
+  return createHash("sha1").update(`${src}|${fps}`).digest("hex");
 }
 
 export const frameServer = new FrameServer();

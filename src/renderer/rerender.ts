@@ -6,12 +6,13 @@ const TAG = "[Rerender]";
 
 export const MAX_RENDER_ATTEMPTS = 3;
 
-export async function withRerender<T>(action: () => Promise<T>): Promise<T> {
+export async function withRerender<T>(signal: AbortSignal, action: () => Promise<T>): Promise<T> {
   let lastErr: unknown;
   for (let attempt = 0; attempt < MAX_RENDER_ATTEMPTS; attempt++) {
     try {
       return await action();
     } catch (e) {
+      if (signal.aborted) throw e;
       lastErr = e;
       logger.warn(TAG, `retry ${attempt + 1}/${MAX_RENDER_ATTEMPTS}: ${(e as Error).message}`);
     }

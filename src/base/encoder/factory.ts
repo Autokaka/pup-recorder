@@ -64,7 +64,7 @@ export async function createHwVideoEncoder(opts: HwVideoFactoryOptions, muxer: F
     fps,
     codecName: FF_ENCODER_LIBX265,
     codecTag: "hvc1",
-    codecOpts: { preset: "medium", "x265-params": "log-level=1:bframes=3:pools=+:frame-threads=0" },
+    codecOpts: { preset: "fast", "x265-params": "log-level=1:bframes=3:pools=+:frame-threads=0" },
     bitrate,
     pixelFormat: AV_PIX_FMT_YUVA420P,
     muxer,

@@ -108,8 +108,6 @@ export declare function buildAlphaChannelInfoSEI(): Buffer;
  */
 export declare function buildAlphaVPS(vpsData: Buffer, width: number, height: number): Buffer;
 
-export declare function buildRust(): Promise<void>;
-
 export declare function buildStegoHTML(targetURL: string, size: Size): string;
 
 export declare function buildUnifiedExtradata(opts: UnifiedExtradataOptions): Buffer;
@@ -187,26 +185,19 @@ export declare function debounce<T extends (...args: unknown[]) => void>(fn: T, 
 export declare class DecodeSession {
     readonly meta: VideoMeta;
     private readonly src;
-    private readonly frameCount;
-    private ffmpeg;
-    private parser;
-    private ring;
-    private runBaseIdx;
-    private nextFrameIdx;
+    private readonly framesDir;
+    private proc;
+    private ready;
+    private done;
     private waiters;
-    private exhausted;
-    constructor(meta: VideoMeta, src: string, frameCount: number);
-    getFrame(idxRaw: number): Promise<Buffer>;
+    private watcher;
+    constructor(meta: VideoMeta, src: string, framesDir: string);
+    getFrame(idx: number): Promise<Buffer>;
     close(): void;
-    private needsReseek;
-    private reseek;
-    private waitFrame;
-    private onServe;
-    private refillIfNeeded;
+    private wait;
     private spawn;
-    private onStdout;
-    private killFfmpeg;
-    private rejectAllWaiters;
+    private poll;
+    private drainWaiters;
 }
 
 export declare function decodeStego(bitmap: Buffer, size: Size): number | undefined;
@@ -314,14 +305,6 @@ export { exec as exec_alias_1 }
 
 export declare function extractAlphaToYuv420pBuffer(bgraFrame: Frame, buf: Buffer): void;
 
-export declare interface FixedBufferWriter {
-    new (path: string, bufferSize: number, queueDepth?: number): FixedBufferWriter;
-    write(buffer: Buffer): void;
-    close(): Promise<void>;
-}
-
-export declare const FixedBufferWriter: FixedBufferWriter;
-
 declare class FormatMuxer {
     private readonly _ctx;
     private _opened;
@@ -376,7 +359,6 @@ export declare class FrameServer {
     getFrame(id: string, idx: number): Promise<Buffer>;
     close(id: string): void;
     closeAll(): void;
-    private must;
 }
 
 export declare const frameServer: FrameServer;
@@ -462,6 +444,8 @@ export { Lazy }
 export { Lazy as Lazy_alias_1 }
 
 export declare function loadWindow({ source, renderer, preload, onCreated, signal, }: WindowOptions): Promise<BrowserWindow>;
+
+export declare function localize(src: string): Promise<string>;
 
 declare class Logger implements LoggerLike {
     private _level;
@@ -617,11 +601,6 @@ export { penv as penv_alias_1 }
 declare function periodical(callback: (count: number) => Promise<void> | void, ms: number): () => void;
 export { periodical }
 export { periodical as periodical_alias_1 }
-
-export declare class PngStreamParser {
-    private buf;
-    feed(chunk: Buffer): Buffer[];
-}
 
 export declare function probe(src: string): Promise<ProbeResult>;
 
@@ -911,7 +890,7 @@ export declare interface WindowOptions {
     signal?: AbortSignal;
 }
 
-export declare function withRerender<T>(action: () => Promise<T>): Promise<T>;
+export declare function withRerender<T>(signal: AbortSignal, action: () => Promise<T>): Promise<T>;
 
 declare function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T>;
 export { withTimeout }

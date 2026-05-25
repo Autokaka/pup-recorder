@@ -1,11 +1,25 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/09.
 
 import { program } from "commander";
+import { realpathSync } from "fs";
+import { resolve } from "path";
 import { logger } from "./base/logging";
 import { noerr } from "./base/noerr";
 import { parseNumber } from "./base/parser";
 import { pargs } from "./base/process";
 import { defaultRenderOptions, RenderSchema, type RenderOptions } from "./renderer/schema";
+
+// Schemed URIs pass through; bare paths get canonicalized and wrapped as file://.
+function normalizeSource(s: string): string {
+  if (s.includes("://") || s.startsWith("data:")) return s;
+  let abs: string;
+  try {
+    abs = realpathSync(s);
+  } catch {
+    abs = resolve(s);
+  }
+  return `file://${abs}`;
+}
 
 export interface CLIOptions {
   name: string;
@@ -17,7 +31,7 @@ export async function makeCLI(options: CLIOptions) {
   const d = defaultRenderOptions;
   program
     .name(options.name)
-    .argument("<source>", "file://, http(s)://, or data: URI")
+    .argument("<source>", "file://, http(s)://, data: URI, or filesystem path")
     .option("-W, --width <number>", shape.width.description, `${d.width}`)
     .option("-H, --height <number>", shape.height.description, `${d.height}`)
     .option("-f, --fps <number>", shape.fps.description, `${d.fps}`)
@@ -31,7 +45,7 @@ export async function makeCLI(options: CLIOptions) {
     .option("--window-tolerant", shape.windowTolerant.description, d.windowTolerant)
     .action(async (source: string, opts) => {
       try {
-        await options.run(source, {
+        await options.run(normalizeSource(source), {
           width: noerr(parseNumber, d.width)(opts.width),
           height: noerr(parseNumber, d.height)(opts.height),
           fps: noerr(parseNumber, d.fps)(opts.fps),

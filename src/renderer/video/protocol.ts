@@ -26,7 +26,7 @@ export function setupFrameProtocol(): void {
         case "open":
           return jsonOk(await frameServer.open({ src: url.searchParams.get("src") ?? "", fps: int(url, "fps", 30) }));
         case "frame":
-          return pngOk(await frameServer.getFrame(url.searchParams.get("id") ?? "", int(url, "idx", 0)));
+          return pngOk(await frameServer.getFrame(url.searchParams.get("id") ?? "", int(url, "idx", 1)));
         case "close":
           frameServer.close(url.searchParams.get("id") ?? "");
           return new Response(null, { status: 204, headers: CORS_HEADERS });
@@ -47,15 +47,11 @@ function jsonOk(meta: VideoMeta): Response {
 }
 
 function pngOk(bytes: Buffer): Response {
-  // Empty buffer is the frame_server "video exhausted" signal → 410 Gone tells the shim to fire `ended`.
   if (bytes.byteLength === 0) return new Response(null, { status: 410, headers: CORS_HEADERS });
-  // Copy into a fresh ArrayBuffer so Blob owns a contiguous, non-shared region; this gives
-  // Chromium a finite-length body it can drain and report as completed promptly.
   const copy = new Uint8Array(bytes.byteLength);
   copy.set(bytes);
-  const blob = new Blob([copy.buffer as ArrayBuffer], { type: "image/png" });
-  return new Response(blob, {
-    headers: { ...CORS_HEADERS, "cache-control": "no-store" },
+  return new Response(copy.buffer as ArrayBuffer, {
+    headers: { ...CORS_HEADERS, "content-type": "image/png", "cache-control": "no-store" },
   });
 }
 

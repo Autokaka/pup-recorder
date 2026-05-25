@@ -52,7 +52,7 @@ makeCLI({
       }
       const action = options.deterministic ? shoot : render;
       ctrl.signal.throwIfAborted();
-      const result = await withRerender(() =>
+      const result = await withRerender(ctrl.signal, () =>
         action({
           source,
           ...options,

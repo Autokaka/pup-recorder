@@ -1,6 +1,6 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/03/21.
 
-import { CodecContext, FFmpegError, FormatContext, Packet } from "node-av";
+import { CodecContext, Dictionary, FFmpegError, FormatContext, Packet } from "node-av";
 
 export class FormatMuxer {
   private readonly _ctx: FormatContext;
@@ -22,7 +22,9 @@ export class FormatMuxer {
   async open(): Promise<void> {
     if (this._opened) return;
     FFmpegError.throwIfError(await this._ctx.openOutput(), "openOutput");
-    FFmpegError.throwIfError(await this._ctx.writeHeader(null), "writeHeader");
+    // +faststart relocates moov to file front on writeTrailer so players can begin playback before full download.
+    using opts = Dictionary.fromObject({ movflags: "+faststart" });
+    FFmpegError.throwIfError(await this._ctx.writeHeader(opts), "writeHeader");
     this._opened = true;
   }
 

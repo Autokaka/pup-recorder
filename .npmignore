@@ -1,7 +1,5 @@
 bun
 node_modules
 out
-rust
 src
-target
 x265
