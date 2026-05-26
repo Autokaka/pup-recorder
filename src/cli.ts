@@ -1,10 +1,9 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/25.
 
+import { barLogger, ProgressBar } from "./base/cli_ui";
 import { logger } from "./base/logging";
 import { makeCLI } from "./common";
 import { pup } from "./pup";
-
-const TAG = "pup";
 
 makeCLI({
   name: "pup",
@@ -14,10 +13,27 @@ makeCLI({
     process.once("SIGTERM", () => ((exitCode = 143), ctrl.abort(new Error("SIGTERM"))));
     process.once("SIGINT", () => ((exitCode = 130), ctrl.abort(new Error("SIGINT"))));
     process.once("exit", (c) => ((exitCode = c), ctrl.abort(new Error("SIGKILL"))));
+
+    const total = Math.ceil(options.fps * options.duration);
+    const bar = new ProgressBar({ total, out: process.stderr, showCount: true });
+    logger.impl = barLogger(bar);
+
+    const outs = options.outFile.split(",").map((s) => s.trim()).filter(Boolean);
+    bar.log(`rendering ${source} → ${outs.join(", ")}`);
+    const t0 = performance.now();
     try {
-      await pup(source, { ...options, signal: ctrl.signal });
+      await pup(source, {
+        ...options,
+        signal: ctrl.signal,
+        onProgress: (p) => bar.updatePercent(p),
+      });
+      const sec = ((performance.now() - t0) / 1000).toFixed(2);
+      bar.update(total);
+      bar.finish(
+        `done: ${outs.join(", ")} (${total} frames, ${options.width}x${options.height} @ ${options.fps}fps) in ${sec}s`,
+      );
     } catch (e) {
-      logger.error(TAG, e);
+      bar.finish(`error: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       process.exit(exitCode);
     }

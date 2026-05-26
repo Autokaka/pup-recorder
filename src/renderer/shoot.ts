@@ -112,7 +112,7 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
       if (encodeError) throw encodeError;
 
       const newProgress = Math.floor((written / total) * 100);
-      if (Math.abs(newProgress - progress) > 10) {
+      if (newProgress !== progress) {
         progress = newProgress;
         onProgress(progress);
       }

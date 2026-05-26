@@ -73,7 +73,6 @@ export async function pup(source: string, options: Partial<PupOptions>): Promise
   const t0 = performance.now();
   let progress = 0;
   const tick = (p: number) => {
-    logger.info(TAG, `${source} progress: ${p}%`);
     progress = p;
     options.onProgress?.(p);
   };
@@ -101,7 +100,7 @@ export async function pup(source: string, options: Partial<PupOptions>): Promise
     tick(0);
     const [summary] = await Promise.all([result, handle.wait]);
     tick(100);
-    logger.info(TAG, `done ${outFile} in ${Math.round(performance.now() - t0)}ms`);
+    logger.debug(TAG, `done ${outFile} in ${Math.round(performance.now() - t0)}ms`);
     return { ...summary, options: renderOpts };
   } catch (e) {
     handle.kill();

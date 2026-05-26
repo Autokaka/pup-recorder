@@ -12,3 +12,4 @@ export const pupLogLevel = penv("PUP_LOG_LEVEL", parseNumber, 2);
 export const pupPkgRoot = dirname(require.resolve("pup-recorder/package.json"));
 export const pupApp = join(pupPkgRoot, "dist", "app.cjs");
 export const pupAudioPreload = join(pupPkgRoot, "dist", "audio_preload.cjs");
+export const pupIframePreload = join(pupPkgRoot, "dist", "iframe_preload.cjs");

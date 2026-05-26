@@ -1,0 +1,148 @@
+declare global {
+  interface Window {
+    __pup_tick__?: { process: (ms: number) => void };
+  }
+}
+
+interface Timer {
+  type: "timeout" | "interval";
+  cb: TimerHandler;
+  delay: number;
+  next: number;
+}
+
+interface RafEntry {
+  id: number;
+  cb: FrameRequestCallback;
+}
+
+interface AnimEntry {
+  startMs: number;
+  pausedAccum: number;
+  pausedAt: number;
+}
+
+export function installTickHook(): void {
+  if (window.__pup_tick__) return;
+
+  const RealDate = Date;
+  const dateOrigin = RealDate.now();
+  let currMs = 0;
+  let timeOffset = 0;
+  let rafQueue: RafEntry[] = [];
+  const timers: Record<number, Timer | undefined> = {};
+  let nextId = 1;
+
+  function FakeDate(this: unknown, ...args: unknown[]): Date | string {
+    if (!(this instanceof FakeDate)) {
+      return new RealDate(dateOrigin + currMs).toString();
+    }
+    return args.length
+      ? new (Function.prototype.bind.apply(RealDate, [null, ...args]))()
+      : new RealDate(dateOrigin + currMs + (timeOffset += 0.01));
+  }
+  FakeDate.prototype = RealDate.prototype;
+  FakeDate.now = () => dateOrigin + currMs + (timeOffset += 0.01);
+  FakeDate.parse = RealDate.parse;
+  FakeDate.UTC = RealDate.UTC;
+  (window as unknown as { Date: unknown }).Date = FakeDate;
+  performance.now = () => currMs + (timeOffset += 0.01);
+
+  window.requestAnimationFrame = (cb) => {
+    const id = nextId++;
+    rafQueue.push({ id, cb });
+    return id;
+  };
+  window.cancelAnimationFrame = (id) => {
+    rafQueue = rafQueue.filter((r) => r.id !== id);
+  };
+  (window as unknown as { setTimeout: unknown }).setTimeout = (cb: TimerHandler, delay?: number) => {
+    const id = nextId++;
+    timers[id] = { type: "timeout", cb, delay: delay || 0, next: currMs + (delay || 0) };
+    return id;
+  };
+  window.clearTimeout = (id) => {
+    if (typeof id === "number") delete timers[id];
+  };
+  (window as unknown as { setInterval: unknown }).setInterval = (cb: TimerHandler, delay?: number) => {
+    const id = nextId++;
+    const d = Math.max(delay || 0, 1);
+    timers[id] = { type: "interval", cb, delay: d, next: currMs + d };
+    return id;
+  };
+  window.clearInterval = (id) => {
+    if (typeof id === "number") delete timers[id];
+  };
+
+  function safeInvokeTimer(fn: TimerHandler) {
+    try {
+      if (typeof fn === "string") eval(fn);
+      else fn();
+    } catch (e) {
+      console.error("[Tick] error:", (e instanceof Error && e.stack) || e);
+    }
+  }
+  function safeInvokeRaf(cb: FrameRequestCallback, ts: number) {
+    try {
+      cb(ts);
+    } catch (e) {
+      console.error("[Tick] error:", (e instanceof Error && e.stack) || e);
+    }
+  }
+
+  const animState = new WeakMap<Animation, AnimEntry>();
+  function syncAnimations(ms: number) {
+    let anims: Animation[];
+    try {
+      anims = document.getAnimations();
+    } catch {
+      return;
+    }
+    for (const a of anims) {
+      const state = a.playState;
+      if (state === "idle" || state === "finished") {
+        animState.delete(a);
+        continue;
+      }
+      const rate = typeof a.playbackRate === "number" ? a.playbackRate : 1;
+      if (rate === 0) continue;
+      let s = animState.get(a);
+      if (!s) {
+        const ct0 = typeof a.currentTime === "number" ? a.currentTime : 0;
+        s = { startMs: ms - ct0 / rate, pausedAccum: 0, pausedAt: -1 };
+        animState.set(a, s);
+      }
+      if (state === "paused") {
+        if (s.pausedAt < 0) s.pausedAt = ms;
+        continue;
+      }
+      if (s.pausedAt >= 0) {
+        s.pausedAccum += ms - s.pausedAt;
+        s.pausedAt = -1;
+      }
+      a.currentTime = (ms - s.startMs - s.pausedAccum) * rate;
+    }
+  }
+
+  function process(timestampMs: number) {
+    currMs = timestampMs;
+    timeOffset = 0;
+    for (const id of Object.keys(timers)) {
+      const t = timers[Number(id)];
+      if (!t) continue;
+      while (t.next <= currMs) {
+        safeInvokeTimer(t.cb);
+        if (t.type === "timeout") {
+          delete timers[Number(id)];
+          break;
+        }
+        t.next += t.delay;
+      }
+    }
+    const rafs = rafQueue.splice(0);
+    for (const r of rafs) safeInvokeRaf(r.cb, currMs);
+    syncAnimations(currMs);
+  }
+
+  window.__pup_tick__ = { process };
+}

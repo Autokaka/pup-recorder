@@ -1,7 +1,10 @@
+export { barLogger } from './_tsup-dts-rollup.js';
+export { ProgressBar } from './_tsup-dts-rollup.js';
 export { pupLogLevel } from './_tsup-dts-rollup.js';
 export { pupPkgRoot } from './_tsup-dts-rollup.js';
 export { pupApp } from './_tsup-dts-rollup.js';
 export { pupAudioPreload } from './_tsup-dts-rollup.js';
+export { pupIframePreload } from './_tsup-dts-rollup.js';
 export { penv } from './_tsup-dts-rollup.js';
 export { EnvParser } from './_tsup-dts-rollup.js';
 export { Lazy } from './_tsup-dts-rollup.js';

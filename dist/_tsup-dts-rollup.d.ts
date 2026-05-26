@@ -81,6 +81,16 @@ export declare interface AudioListenerOptions {
     onError: (error: Error) => void;
 }
 
+declare function barLogger(bar: ProgressBar): LoggerLike;
+export { barLogger }
+export { barLogger as barLogger_alias_1 }
+
+declare interface BarOptions {
+    total: number;
+    out: NodeJS.WriteStream;
+    showCount?: boolean;
+}
+
 export declare class BitReader {
     private _bits;
     pos: number;
@@ -383,6 +393,10 @@ export declare interface HwVideoFactoryOptions {
     sharedHw?: HardwareContext;
 }
 
+export declare function installTickHook(): void;
+
+export declare function installVideoHook(): void;
+
 export declare function interleaveAccessUnits(baseNals: NalUnit[], alphaNals: NalUnit[], cfg: NvencHevcConfig): Buffer;
 
 export declare interface IpcDonePayload {
@@ -443,7 +457,7 @@ declare class Lazy<T> {
 export { Lazy }
 export { Lazy as Lazy_alias_1 }
 
-export declare function loadWindow({ source, renderer, preload, onCreated, signal, }: WindowOptions): Promise<BrowserWindow>;
+export declare function loadWindow({ source, renderer, onCreated, signal }: WindowOptions): Promise<BrowserWindow>;
 
 export declare function localize(src: string): Promise<string>;
 
@@ -619,6 +633,26 @@ declare interface ProcessHandle {
 export { ProcessHandle }
 export { ProcessHandle as ProcessHandle_alias_1 }
 
+declare class ProgressBar {
+    private _written;
+    private _shown;
+    private readonly _total;
+    private readonly _out;
+    private readonly _tty;
+    private readonly _showCount;
+    constructor(opts: BarOptions);
+    get total(): number;
+    update(written: number): void;
+    updatePercent(pct: number): void;
+    clear(): void;
+    redraw(): void;
+    log(line: string): void;
+    finish(line: string): void;
+    private render;
+}
+export { ProgressBar }
+export { ProgressBar as ProgressBar_alias_1 }
+
 declare type ProgressCallback = (progress: number) => void;
 export { ProgressCallback }
 export { ProgressCallback as ProgressCallback_alias_1 }
@@ -645,6 +679,10 @@ export { pupApp as pupApp_alias_1 }
 declare const pupAudioPreload: string;
 export { pupAudioPreload }
 export { pupAudioPreload as pupAudioPreload_alias_1 }
+
+declare const pupIframePreload: string;
+export { pupIframePreload }
+export { pupIframePreload as pupIframePreload_alias_1 }
 
 declare const pupLogLevel: number;
 export { pupLogLevel }
@@ -885,7 +923,6 @@ export declare interface WindowOptions {
     source: string;
     renderer: IPCRenderOptions;
     tolerant?: boolean;
-    preload?: string;
     onCreated?: WindowCreatedCallback;
     signal?: AbortSignal;
 }

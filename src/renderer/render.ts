@@ -2,7 +2,6 @@
 
 import { type NativeImage, type Size } from "electron";
 import { resizeDrawable } from "../base/cdp";
-import { pupAudioPreload } from "../base/constants";
 import { EncoderPipeline } from "../base/encoder/pipeline";
 import { FrameDropStats } from "../base/frame_drop";
 import { sizeEquals } from "../base/image";
@@ -86,7 +85,7 @@ export async function render(options: IPCRenderOptions): Promise<IpcDonePayload>
     lastWrittenTime = currentTime;
 
     const newProgress = Math.floor((written / total) * 100);
-    if (Math.abs(newProgress - progress) > 10) {
+    if (newProgress !== progress) {
       progress = newProgress;
       onProgress(progress);
     }
@@ -101,7 +100,6 @@ export async function render(options: IPCRenderOptions): Promise<IpcDonePayload>
     source,
     renderer: options,
     signal,
-    preload: withAudio ? pupAudioPreload : undefined,
     onCreated: (win) => {
       if (withAudio) {
         disposeAudio = attachAudioListeners({

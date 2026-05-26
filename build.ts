@@ -40,7 +40,8 @@ await build({
 
 await build({
   ...common,
-  entry: ["src/audio_preload.ts"],
+  entry: ["src/audio_preload.ts", "src/iframe_preload.ts"],
   format: "cjs",
   outDir: "dist",
 });
+

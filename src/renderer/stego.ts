@@ -40,6 +40,11 @@ export function buildStegoHTML(targetURL: string, size: Size): string {
        captured paint event. Without this, a static iframe + paused virtual time leaves the
        compositor's last frame cached even after canvas dirties; invalidate() only re-emits the
        cached frame. */
+    /* Heartbeat: invisible always-on tick. Forces Chromium compositor to issue BeginFrame each
+       virtual tick on otherwise-static pages so canvas#stego putImageData updates land in the
+       captured paint event. Without this, a static iframe + paused virtual time leaves the
+       compositor's last frame cached even after canvas dirties; invalidate() only re-emits the
+       cached frame. */
     @keyframes pup_heartbeat {
       0% { opacity: 0.5; }
       100% { opacity: 1; }

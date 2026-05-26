@@ -1,6 +1,7 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/27.
 
 import { BrowserWindow } from "electron";
+import { pupAudioPreload, pupIframePreload } from "../base/constants";
 import { logger } from "../base/logging";
 import { useRetry } from "../base/retry";
 import { sleep } from "../base/timing";
@@ -76,19 +77,17 @@ export interface WindowOptions {
   source: string;
   renderer: IPCRenderOptions;
   tolerant?: boolean;
-  preload?: string;
   onCreated?: WindowCreatedCallback;
   signal?: AbortSignal;
 }
 
-async function openWindow({
-  source,
-  renderer,
-  tolerant,
-  preload,
-  signal,
-  onCreated,
-}: WindowOptions): Promise<BrowserWindow> {
+function pickPreload(renderer: IPCRenderOptions): string | undefined {
+  if (renderer.deterministic) return pupIframePreload;
+  if (renderer.withAudio) return pupAudioPreload;
+  return undefined;
+}
+
+async function openWindow({ source, renderer, tolerant, signal, onCreated }: WindowOptions): Promise<BrowserWindow> {
   const { width, height, useInnerProxy } = renderer;
   const src = useInnerProxy ? proxiedUrl(source) : source;
 
@@ -116,7 +115,7 @@ async function openWindow({
       webSecurity: false,
       allowRunningInsecureContent: true,
       experimentalFeatures: true,
-      preload,
+      preload: pickPreload(renderer),
     },
   });
   setInterceptor({ source, window: win, useInnerProxy });
@@ -143,13 +142,7 @@ async function openWindow({
 
 const openWindowWithRetry = useRetry({ fn: openWindow, maxAttempts: 2 });
 
-export async function loadWindow({
-  source,
-  renderer,
-  preload,
-  onCreated,
-  signal,
-}: WindowOptions): Promise<BrowserWindow> {
+export async function loadWindow({ source, renderer, onCreated, signal }: WindowOptions): Promise<BrowserWindow> {
   checkHTML(source);
 
   signal?.throwIfAborted();
@@ -161,7 +154,7 @@ export async function loadWindow({
     error = e;
   }
 
-  const open = () => openWindow({ source, renderer, preload, onCreated, signal, tolerant: renderer.windowTolerant });
+  const open = () => openWindow({ source, renderer, onCreated, signal, tolerant: renderer.windowTolerant });
 
   if (renderer.windowTolerant && error === TIMEOUT_ERROR) {
     logger.warn(TAG, `warmup timeout: ${source}, falling back to dom-ready`);
