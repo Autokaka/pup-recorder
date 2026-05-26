@@ -25,7 +25,10 @@ const common: Options = {
 
 await build({
   ...common,
-  entry: ["src/index.ts", "src/cli.ts"],
+  entry: [
+    "src/index.ts", //
+    "src/cli.ts",
+  ],
   format: "esm",
   outDir: "dist",
   experimentalDts: true,
@@ -33,15 +36,11 @@ await build({
 
 await build({
   ...common,
-  entry: ["src/app.ts"],
+  entry: [
+    "src/app.ts", //
+    "src/audio_preload.ts",
+    "src/iframe_preload.ts",
+  ],
   format: "cjs",
   outDir: "dist",
 });
-
-await build({
-  ...common,
-  entry: ["src/audio_preload.ts", "src/iframe_preload.ts"],
-  format: "cjs",
-  outDir: "dist",
-});
-
