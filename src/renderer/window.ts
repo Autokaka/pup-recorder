@@ -118,7 +118,7 @@ async function openWindow({ source, renderer, tolerant, signal, onCreated }: Win
       preload: pickPreload(renderer),
     },
   });
-  setInterceptor({ source, window: win, useInnerProxy });
+  setInterceptor({ source, window: win, useInnerProxy, cancelMedia: renderer.deterministic });
   win.webContents.debugger.attach("1.3");
   await onCreated?.(win);
 

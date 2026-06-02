@@ -1,6 +1,6 @@
 {
   "name": "pup-recorder",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Record web pages as video",
   "repository": {
     "type": "git",
@@ -25,7 +25,7 @@
   },
   "engines": {
     "bun": ">= 1",
-    "node": ">= 20"
+    "node": ">= 22"
   },
   "engineStrict": true,
   "trustedDependencies": [
@@ -62,7 +62,7 @@
   "devDependencies": {
     "@microsoft/api-extractor": "latest",
     "@types/bun": "latest",
-    "@types/node": "^20.0.0",
+    "@types/node": "^22.0.0",
     "@typescript/native-preview": "latest",
     "tsup": "latest"
   },

@@ -2,7 +2,7 @@
 
 import type { WebFrameMain } from "electron";
 import { withTimeout } from "../base/timing";
-import { advanceVideos } from "./video/shim";
+import { advanceVideos } from "./video/advance";
 
 export const TICK_SYMBOL = "__pup_tick__";
 

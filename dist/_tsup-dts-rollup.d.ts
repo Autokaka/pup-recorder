@@ -27,11 +27,23 @@ import z from 'zod';
 /** Insert emulation prevention bytes (00 00 03) for Annex B compliance. */
 export declare function addEmulationPrevention(nal: Buffer): Buffer;
 
+export declare function advance(hook: VideoHook, timestampMs: number): Promise<unknown>;
+
 export declare function advanceVideos(frame: WebFrameMain | undefined, timestampMs: number): Promise<void>;
 
 export declare function advanceVirtualTime(cdp: Debugger, budget: number): Promise<void>;
 
+export declare const AHEAD = 10;
+
 export declare const ANNEX_B_START_CODE: Buffer<ArrayBuffer>;
+
+export declare interface AttachArgs {
+    video: HTMLVideoElement;
+    state: VideoState;
+    src: string;
+    birthMs: number;
+    native: boolean;
+}
 
 export declare function attachAudioListeners({ wc, encoder, getVideoTimeMs, onError }: AudioListenerOptions): AudioDisposal;
 
@@ -195,18 +207,27 @@ export declare function debounce<T extends (...args: unknown[]) => void>(fn: T, 
 export declare class DecodeSession {
     readonly meta: VideoMeta;
     private readonly src;
-    private readonly framesDir;
-    private proc;
+    private buf;
     private ready;
+    private want;
     private done;
+    private closed;
+    private gen;
+    private ctrl;
     private waiters;
-    private watcher;
-    constructor(meta: VideoMeta, src: string, framesDir: string);
+    private resume;
+    private restart;
+    constructor(meta: VideoMeta, src: string);
     getFrame(idx: number): Promise<Buffer>;
     close(): void;
     private wait;
-    private spawn;
-    private poll;
+    private wake;
+    private requestRestart;
+    private pump;
+    private decodePass;
+    private pause;
+    private untilRestart;
+    private evict;
     private drainWaiters;
 }
 
@@ -315,6 +336,10 @@ export { exec as exec_alias_1 }
 
 export declare function extractAlphaToYuv420pBuffer(bgraFrame: Frame, buf: Buffer): void;
 
+export declare function fire(el: EventTarget, type: string): void;
+
+export declare function fitRect(srcW: number, srcH: number, dstW: number, dstH: number, fit: string): Vec4;
+
 declare class FormatMuxer {
     private readonly _ctx;
     private _opened;
@@ -330,6 +355,17 @@ export { FormatMuxer as FormatMuxer_alias_1 }
 export declare const FRAME_SYNC_MARKER_HEIGHT = 1;
 
 export declare const FRAME_SYNC_MARKER_WIDTH = 32;
+
+export declare class FrameCache {
+    private caches;
+    cacheOf(id: string): VideoCache;
+    fetch(state: VideoState, idx: number): Promise<ImageBitmap | null>;
+    prefetch(state: VideoState, fromIdx: number, count: number): void;
+    evict(c: VideoCache): void;
+    release(id: string, state: VideoState): void;
+}
+
+export declare type FrameCb = (now: number, meta: VideoFrameMeta) => void;
 
 /**
  * Frame drop quality score (0 = perfect, 1 = worst).
@@ -365,13 +401,23 @@ export declare class FrameDropStats {
 
 export declare class FrameServer {
     private sessions;
+    private srcs;
+    private inFlightOpens;
+    private closed;
     open(opts: OpenOptions): Promise<VideoMeta>;
+    private openInner;
     getFrame(id: string, idx: number): Promise<Buffer>;
     close(id: string): void;
-    closeAll(): void;
+    closeAll(): Promise<void>;
 }
 
 export declare const frameServer: FrameServer;
+
+export declare const HAVE_ENOUGH_DATA = 4;
+
+export declare const HAVE_METADATA = 1;
+
+export declare const HAVE_NOTHING = 0;
 
 export declare type HwEncoder = VideoToolboxEncoder | NvencDualLayerEncoder;
 
@@ -392,6 +438,8 @@ export declare interface HwVideoFactoryOptions {
     disableHwCodec?: boolean;
     sharedHw?: HardwareContext;
 }
+
+export declare function installMediaShim(hook: VideoHook): void;
 
 export declare function installTickHook(): void;
 
@@ -459,8 +507,6 @@ export { Lazy as Lazy_alias_1 }
 
 export declare function loadWindow({ source, renderer, onCreated, signal }: WindowOptions): Promise<BrowserWindow>;
 
-export declare function localize(src: string): Promise<string>;
-
 declare class Logger implements LoggerLike {
     private _level;
     private _impl?;
@@ -501,6 +547,15 @@ export declare function makePacket(): Packet;
 
 export declare const MAX_RENDER_ATTEMPTS = 3;
 
+export declare const MEDIA_ERR_DECODE = 3;
+
+export declare const MEDIA_ERR_NETWORK = 2;
+
+export declare interface MediaErrorLike {
+    code: number;
+    message: string;
+}
+
 export declare const NAL_BLA_W_LP = 16;
 
 export declare const NAL_HEADER_SIZE = 2;
@@ -527,11 +582,22 @@ export declare interface NalUnit {
     data: Buffer;
 }
 
+export declare const NETWORK_EMPTY = 0;
+
+export declare const NETWORK_IDLE = 1;
+
+export declare const NETWORK_LOADING = 2;
+
+export declare const NETWORK_NO_SOURCE = 3;
+
 export declare interface NetworkOptions {
     source: string;
     window: BrowserWindow;
     useInnerProxy?: boolean;
+    cancelMedia?: boolean;
 }
+
+export declare function newVideoState(video: HTMLVideoElement, cv: HTMLCanvasElement): VideoState;
 
 declare function noerr<Fn extends (...args: any[]) => any, D>(fn: Fn, defaultValue: D): (...args: Parameters<Fn>) => ReturnType<Fn> | D;
 export { noerr }
@@ -563,7 +629,14 @@ export declare interface NvencHevcConfig {
 export declare interface OpenOptions {
     src: string;
     fps: number;
+    /** Display-box pixels (canvas backing store); decode is downscaled to cover this, never upscaled. */
+    dstW?: number;
+    dstH?: number;
+    /** objectFit; "none" needs 1:1 native pixels so it skips downscale. */
+    fit?: string;
 }
+
+export declare function openSession(hook: VideoHook, args: AttachArgs): Promise<VideoState | null>;
 
 export declare function openVideoCtx(opts: VideoCtxOptions, label: string): Promise<CodecContext>;
 
@@ -775,9 +848,13 @@ export declare interface RunElectronAppOptions {
     args: unknown[];
 }
 
+export declare const SCHEME = "pup-frame://";
+
 export declare function send(cdp: Debugger, method: string, params?: object): Promise<unknown>;
 
-export declare function setInterceptor({ source, window, useInnerProxy }: NetworkOptions): void;
+export declare function setInterceptor({ source, window, useInnerProxy, cancelMedia }: NetworkOptions): void;
+
+export declare function setupCanvas(video: HTMLVideoElement, snap: OffscreenCanvas | undefined): HTMLCanvasElement;
 
 export declare function setupFrameProtocol(): void;
 
@@ -807,6 +884,15 @@ export { sleep as sleep_alias_1 }
 /** Split Annex B bitstream into NAL units. */
 export declare function splitNalUnits(bitstream: Buffer): NalUnit[];
 
+export declare class SrcCache {
+    private inFlight;
+    private ctrl;
+    localize(src: string): Promise<string>;
+    abort(): void;
+    clear(): Promise<void>;
+    private download;
+}
+
 export declare function startElectronCrashReporter(): void;
 
 export declare function startStego(cdp: Debugger): Promise<unknown>;
@@ -817,9 +903,21 @@ export declare function stopStego(cdp: Debugger): Promise<unknown>;
 
 export declare function swapBuffer(wc: WebContents, expected: number, interval: number): Promise<void>;
 
+export declare function syncOverlay(video: HTMLVideoElement, cv: HTMLCanvasElement): void;
+
+export declare const TAG = "[VideoHook]";
+
 export declare function tick(frame: WebFrameMain | undefined, timestampMs: number): Promise<void>;
 
 export declare const TICK_SYMBOL = "__pup_tick__";
+
+export declare function timeRanges(end: number): TimeRangesLike;
+
+export declare interface TimeRangesLike {
+    length: number;
+    start(i: number): number;
+    end(i: number): number;
+}
 
 export declare interface UnifiedExtradataOptions {
     baseExtradata: Buffer;
@@ -834,7 +932,13 @@ declare function useRetry<Args extends any[], Ret>({ fn, maxAttempts, timeout, s
 export { useRetry }
 export { useRetry as useRetry_alias_1 }
 
-export declare const VIDEO_SYMBOL = "__pup_video__";
+declare type Vec4 = [number, number, number, number];
+
+export declare interface VideoCache {
+    bitmaps: Map<number, ImageBitmap>;
+    inFlight: Map<number, Promise<ImageBitmap | null>>;
+    readers: Map<VideoState, number>;
+}
 
 export declare interface VideoCtxOptions {
     codec: Codec;
@@ -875,12 +979,51 @@ export declare interface VideoEncoderOptions {
     muxer: FormatMuxer;
 }
 
+export declare interface VideoFrameMeta {
+    presentationTime: number;
+    expectedDisplayTime: number;
+    width: number;
+    height: number;
+    mediaTime: number;
+    presentedFrames: number;
+}
+
+export declare class VideoHook {
+    readonly sessions: WeakMap<HTMLVideoElement, VideoState>;
+    readonly attaching: WeakMap<HTMLVideoElement, Promise<VideoState | null>>;
+    readonly cache: FrameCache;
+    rvfcSeq: number;
+    currMs: number;
+    private lastSnapshot;
+    install(): void;
+    attach(video: HTMLVideoElement, native?: boolean): Promise<VideoState | null>;
+    resume(video: HTMLVideoElement, state: VideoState): void;
+    detach(video: HTMLVideoElement): void;
+    onSrcChange(video: HTMLVideoElement): void;
+    reattach(video: HTMLVideoElement, state: VideoState): void;
+    private scan;
+}
+
 export declare interface VideoMeta {
+    id: string;
+    /** Intrinsic source dimensions (reported as videoWidth/videoHeight). */
+    width: number;
+    height: number;
+    /** Decoded+scaled frame dimensions actually served (≤ source; capped to the display box). */
+    frameWidth: number;
+    frameHeight: number;
+    fps: number;
+    duration: number;
+}
+
+export declare interface VideoMeta_alias_1 {
     id: string;
     width: number;
     height: number;
-    fps: number;
+    frameWidth: number;
+    frameHeight: number;
     duration: number;
+    fps: number;
 }
 
 export declare interface VideoSetup {
@@ -889,6 +1032,26 @@ export declare interface VideoSetup {
     codec?: CodecState_2;
     hw?: HardwareContext;
     ownsHw: boolean;
+}
+
+export declare interface VideoState {
+    meta: VideoMeta_alias_1 | null;
+    cv: HTMLCanvasElement;
+    ctx: CanvasRenderingContext2D;
+    paused: boolean;
+    currentTime: number;
+    ended: boolean;
+    lastDrawnIdx: number;
+    dead: boolean;
+    objectFit: string;
+    readyState: number;
+    networkState: number;
+    seeking: boolean;
+    waiting: boolean;
+    error: MediaErrorLike | undefined;
+    presentedFrames: number;
+    maxReached: number;
+    rvfc: Map<number, FrameCb>;
 }
 
 export declare class VideoToolboxEncoder implements Disposable {

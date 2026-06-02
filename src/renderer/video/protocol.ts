@@ -1,4 +1,4 @@
-// Created by Lu Ao (luao@bilibili.com) on 2026/05/18.
+// Created by Autokaka (qq1909698494@gmail.com) on 2026/05/18.
 
 import { protocol } from "electron";
 import { logger } from "../../base/logging";
@@ -24,9 +24,17 @@ export function setupFrameProtocol(): void {
     try {
       switch (url.hostname) {
         case "open":
-          return jsonOk(await frameServer.open({ src: url.searchParams.get("src") ?? "", fps: int(url, "fps", 30) }));
+          return jsonOk(
+            await frameServer.open({
+              src: url.searchParams.get("src") ?? "",
+              fps: int(url, "fps", 30),
+              dstW: int(url, "w", 0),
+              dstH: int(url, "h", 0),
+              fit: url.searchParams.get("fit") ?? undefined,
+            }),
+          );
         case "frame":
-          return pngOk(await frameServer.getFrame(url.searchParams.get("id") ?? "", int(url, "idx", 1)));
+          return rgbaOk(await frameServer.getFrame(url.searchParams.get("id") ?? "", int(url, "idx", 1)));
         case "close":
           frameServer.close(url.searchParams.get("id") ?? "");
           return new Response(null, { status: 204, headers: CORS_HEADERS });
@@ -46,12 +54,13 @@ function jsonOk(meta: VideoMeta): Response {
   });
 }
 
-function pngOk(bytes: Buffer): Response {
+// Raw RGBA pixels; the page wraps them in ImageData using meta.width/height it got from `open`.
+function rgbaOk(bytes: Buffer): Response {
   if (bytes.byteLength === 0) return new Response(null, { status: 410, headers: CORS_HEADERS });
   const copy = new Uint8Array(bytes.byteLength);
   copy.set(bytes);
   return new Response(copy.buffer as ArrayBuffer, {
-    headers: { ...CORS_HEADERS, "content-type": "image/png", "cache-control": "no-store" },
+    headers: { ...CORS_HEADERS, "content-type": "application/octet-stream", "cache-control": "no-store" },
   });
 }
 

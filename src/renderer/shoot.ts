@@ -118,7 +118,7 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
       }
     }
   } finally {
-    frameServer.closeAll();
+    await frameServer.closeAll();
     await disposeWindow(win);
     await pipeline.finish();
   }

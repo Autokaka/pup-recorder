@@ -1,4 +1,4 @@
-// Created by Lu Ao (luao@bilibili.com) on 2026/05/18.
+// Created by Autokaka (qq1909698494@gmail.com) on 2026/05/18.
 
 import { Demuxer } from "node-av/api";
 import { AVMEDIA_TYPE_VIDEO } from "node-av/constants";

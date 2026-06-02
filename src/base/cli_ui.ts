@@ -1,4 +1,4 @@
-// Created by Lu Ao (luao@bilibili.com) on 2026/05/26.
+// Created by Autokaka (qq1909698494@gmail.com) on 2026/05/26.
 
 import type { LoggerLike } from "./logging";
 

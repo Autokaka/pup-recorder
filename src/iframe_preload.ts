@@ -1,7 +1,7 @@
-// Created by Lu Ao (luao@bilibili.com) on 2026/05/26.
+// Created by Autokaka (qq1909698494@gmail.com) on 2026/05/26.
 
 import { installTickHook } from "./runtime/iframe_hook";
-import { installVideoHook } from "./runtime/iframe_video_hook";
+import { installVideoHook } from "./runtime/video/hook";
 
 if (window.self !== window.top) {
   installTickHook();

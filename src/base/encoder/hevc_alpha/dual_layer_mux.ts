@@ -1,4 +1,4 @@
-// Created by Lu Ao (luao@bilibili.com) on 2026/05/18.
+// Created by Autokaka (qq1909698494@gmail.com) on 2026/05/18.
 
 import { type CodecContext, FFmpegError, type Packet, type Stream } from "node-av";
 import { AVERROR_EAGAIN, AVERROR_EOF, type AVPacketFlag } from "node-av/constants";

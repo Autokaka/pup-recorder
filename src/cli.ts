@@ -18,7 +18,10 @@ makeCLI({
     const bar = new ProgressBar({ total, out: process.stderr, showCount: true });
     logger.impl = barLogger(bar);
 
-    const outs = options.outFile.split(",").map((s) => s.trim()).filter(Boolean);
+    const outs = options.outFile
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
     bar.log(`rendering ${source} → ${outs.join(", ")}`);
     const t0 = performance.now();
     try {

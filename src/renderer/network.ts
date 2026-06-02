@@ -13,6 +13,13 @@ const map = new Map([
   [`boss.hdslb.com`, `shjd-boss.bilibili.co`],
 ]);
 
+const LOCAL_SCHEMES = ["pup:", "pup-frame:", "file:", "data:", "blob:", "chrome-extension:", "devtools:"];
+
+function isLocalScheme(url: string): boolean {
+  for (const s of LOCAL_SCHEMES) if (url.startsWith(s)) return true;
+  return false;
+}
+
 export function proxiedUrl(url: string) {
   if (!url.startsWith("http")) {
     return url;
@@ -31,9 +38,10 @@ export interface NetworkOptions {
   source: string;
   window: BrowserWindow;
   useInnerProxy?: boolean;
+  cancelMedia?: boolean;
 }
 
-export function setInterceptor({ source, window, useInnerProxy }: NetworkOptions) {
+export function setInterceptor({ source, window, useInnerProxy, cancelMedia }: NetworkOptions) {
   const req = window.webContents.session.webRequest;
   const limiter = new ConcurrencyLimiter(256);
   const events = new Map<string, WaitableEvent>();
@@ -50,6 +58,10 @@ export function setInterceptor({ source, window, useInnerProxy }: NetworkOptions
 
   req.onBeforeRequest((details, callback) => {
     const url = details.url;
+    if (cancelMedia && details.resourceType === "media") {
+      callback({ cancel: true });
+      return;
+    }
     const proxied = useInnerProxy ? proxiedUrl(url) : url;
     limiter.schedule(() => {
       const key = `${window.id}_${details.id}`;
@@ -66,6 +78,7 @@ export function setInterceptor({ source, window, useInnerProxy }: NetworkOptions
       } else {
         callback({ cancel: false, redirectURL: proxied });
       }
+      if (isLocalScheme(url)) return Promise.resolve();
       return wait(key, () => {
         logger.warn(TAG, `maybe timeout:`, {
           key,
@@ -101,11 +114,15 @@ export function setInterceptor({ source, window, useInnerProxy }: NetworkOptions
   req.onErrorOccurred((details) => {
     const key = `${window.id}_${details.id}`;
     signal(key);
+    if (cancelMedia && details.resourceType === "media" && details.error === "net::ERR_BLOCKED_BY_CLIENT") {
+      return;
+    }
     logger.error(TAG, `error:`, {
       key,
       url: details.url,
       method: details.method,
       error: details.error,
+      resourceType: details.resourceType,
       source,
     });
   });
