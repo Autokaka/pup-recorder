@@ -28,11 +28,10 @@ export function advanceVirtualTime(cdp: Debugger, budget: number): Promise<void>
       }
     };
     cdp.on("message", handler);
-    // Starvation=1 forces budget to expire even if a slow fetch task is pending; default unbounded deadlocks.
+    // No starvation cap (would skip pending work non-deterministically); capture starts post did-stop-loading, and CDP_TIMEOUT_MS turns a real stall into a failed render.
     send(cdp, "Emulation.setVirtualTimePolicy", {
       policy: "advance",
       budget,
-      maxVirtualTimeTaskStarvationCount: 1,
     }).catch((e) => {
       clearTimeout(timeout);
       cdp.off("message", handler);

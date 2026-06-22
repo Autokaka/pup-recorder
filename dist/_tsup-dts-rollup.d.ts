@@ -170,7 +170,7 @@ declare class CodecState_2 implements Disposable {
 }
 export { CodecState_2 as CodecState }
 
-declare class ConcurrencyLimiter {
+export declare class ConcurrencyLimiter {
     readonly maxConcurrency: number;
     private _active;
     private _queue;
@@ -185,12 +185,8 @@ declare class ConcurrencyLimiter {
     private flush;
     private next;
 }
-export { ConcurrencyLimiter }
-export { ConcurrencyLimiter as ConcurrencyLimiter_alias_1 }
 
-declare type ConsoleCallback = (level: string, message: string) => void;
-export { ConsoleCallback }
-export { ConsoleCallback as ConsoleCallback_alias_1 }
+export declare type ConsoleCallback = (level: string, message: string) => void;
 
 export declare interface ConsoleMsg {
     type: IpcMsgType.CONSOLE;
@@ -245,17 +241,13 @@ declare const DEFAULT_HEIGHT = 1080;
 export { DEFAULT_HEIGHT }
 export { DEFAULT_HEIGHT as DEFAULT_HEIGHT_alias_1 }
 
-declare const DEFAULT_OUT_FILE = "out/html.mp4,out/html.webm";
-export { DEFAULT_OUT_FILE }
-export { DEFAULT_OUT_FILE as DEFAULT_OUT_FILE_alias_1 }
+export declare const DEFAULT_OUT_FILE = "out/html.mp4,out/html.webm";
 
 declare const DEFAULT_WIDTH = 1920;
 export { DEFAULT_WIDTH }
 export { DEFAULT_WIDTH as DEFAULT_WIDTH_alias_1 }
 
-declare const defaultRenderOptions: RenderOptions;
-export { defaultRenderOptions }
-export { defaultRenderOptions as defaultRenderOptions_alias_1 }
+export declare const defaultRenderOptions: RenderOptions;
 
 export declare function disposeWindow(win: BrowserWindow): Promise<void>;
 
@@ -291,7 +283,7 @@ export declare function electronOpts(disableGpu: boolean): Promise<string[]>;
 
 export declare function encodeNalHeader(type: number, layerId: number, temporalId: number): [number, number];
 
-declare class EncoderPipeline {
+export declare class EncoderPipeline {
     private _s;
     private _disposed;
     private constructor();
@@ -305,10 +297,8 @@ declare class EncoderPipeline {
     private free;
     private bgraFrame;
 }
-export { EncoderPipeline }
-export { EncoderPipeline as EncoderPipeline_alias_1 }
 
-declare interface EncoderPipelineOptions {
+export declare interface EncoderPipelineOptions {
     width: number;
     height: number;
     fps: number;
@@ -316,12 +306,8 @@ declare interface EncoderPipelineOptions {
     withAudio?: boolean;
     disableHwCodec?: boolean;
 }
-export { EncoderPipelineOptions }
-export { EncoderPipelineOptions as EncoderPipelineOptions_alias_1 }
 
-declare type EnvParser<T> = (value: unknown) => T;
-export { EnvParser }
-export { EnvParser as EnvParser_alias_1 }
+export declare type EnvParser<T> = (value: unknown) => T;
 
 export declare interface ErrorMsg {
     type: IpcMsgType.ERROR;
@@ -330,9 +316,7 @@ export declare interface ErrorMsg {
 
 export declare function evalIn(cdp: Debugger, expression: string): Promise<unknown>;
 
-declare function exec(cmd: string, options?: SpawnOptions): ProcessHandle;
-export { exec }
-export { exec as exec_alias_1 }
+export declare function exec(cmd: string, options?: SpawnOptions): ProcessHandle;
 
 export declare function extractAlphaToYuv420pBuffer(bgraFrame: Frame, buf: Buffer): void;
 
@@ -340,7 +324,7 @@ export declare function fire(el: EventTarget, type: string): void;
 
 export declare function fitRect(srcW: number, srcH: number, dstW: number, dstH: number, fit: string): Vec4;
 
-declare class FormatMuxer {
+export declare class FormatMuxer {
     private readonly _ctx;
     private _opened;
     constructor(outPath: string, formatName?: string);
@@ -349,8 +333,6 @@ declare class FormatMuxer {
     writePacket(pkt: Packet): Promise<void>;
     [Symbol.asyncDispose](): Promise<void>;
 }
-export { FormatMuxer }
-export { FormatMuxer as FormatMuxer_alias_1 }
 
 export declare const FRAME_SYNC_MARKER_HEIGHT = 1;
 
@@ -475,14 +457,12 @@ export declare class IpcReader extends EventEmitter<IpcEvents> {
     constructor(child: ChildProcess);
 }
 
-declare interface IPCRenderOptions extends RenderOptions {
+export declare interface IPCRenderOptions extends RenderOptions {
     source: string;
     signal: AbortSignal;
     onProgress: ProgressCallback;
     onConsole: ConsoleCallback;
 }
-export { IPCRenderOptions }
-export { IPCRenderOptions as IPCRenderOptions_alias_1 }
 
 export declare class IpcWriter {
     writeConsole(level: string, message: string): void;
@@ -660,9 +640,7 @@ export declare class OutputSink implements AsyncDisposable {
 
 export declare function packBits(bits: number[]): Buffer;
 
-declare function pargs(): string[];
-export { pargs }
-export { pargs as pargs_alias_1 }
+export declare function pargs(): string[];
 
 declare function parseNumber(x: unknown): number;
 export { parseNumber }
@@ -670,9 +648,7 @@ export { parseNumber as parseNumber_alias_1 }
 
 export declare function parseNvencHevcConfig(extradata: Buffer): NvencHevcConfig;
 
-declare function parseString(x: unknown): string;
-export { parseString }
-export { parseString as parseString_alias_1 }
+export declare function parseString(x: unknown): string;
 
 /** Patch every VPS/SPS NAL in an Annex B bitstream so PTL matches Apple/x265. */
 export declare function patchHevcAlphaPtl(bitstream: Buffer): Buffer;
@@ -697,14 +673,12 @@ export declare interface ProbeResult {
     duration: number;
 }
 
-declare interface ProcessHandle {
+export declare interface ProcessHandle {
     process: ChildProcess;
     wait: Promise<void>;
     get killed(): boolean;
     kill(): void;
 }
-export { ProcessHandle }
-export { ProcessHandle as ProcessHandle_alias_1 }
 
 declare class ProgressBar {
     private _written;
@@ -741,25 +715,15 @@ declare function pup(source: string, options: Partial<PupOptions>): Promise<PupR
 export { pup }
 export { pup as pup_alias_1 }
 
-declare const PUP_ARGS_KEY = "--pup-priv-args";
-export { PUP_ARGS_KEY }
-export { PUP_ARGS_KEY as PUP_ARGS_KEY_alias_1 }
+export declare const PUP_ARGS_KEY = "--pup-priv-args";
 
-declare const pupApp: string;
-export { pupApp }
-export { pupApp as pupApp_alias_1 }
+export declare const pupApp: string;
 
-declare const pupAudioPreload: string;
-export { pupAudioPreload }
-export { pupAudioPreload as pupAudioPreload_alias_1 }
+export declare const pupAudioPreload: string;
 
-declare const pupIframePreload: string;
-export { pupIframePreload }
-export { pupIframePreload as pupIframePreload_alias_1 }
+export declare const pupIframePreload: string;
 
-declare const pupLogLevel: number;
-export { pupLogLevel }
-export { pupLogLevel as pupLogLevel_alias_1 }
+export declare const pupLogLevel: number;
 
 declare interface PupOptions extends Partial<RenderOptions> {
     signal?: AbortSignal;
@@ -769,9 +733,7 @@ declare interface PupOptions extends Partial<RenderOptions> {
 export { PupOptions }
 export { PupOptions as PupOptions_alias_1 }
 
-declare const pupPkgRoot: string;
-export { pupPkgRoot }
-export { pupPkgRoot as pupPkgRoot_alias_1 }
+export declare const pupPkgRoot: string;
 
 declare interface PupResult extends RenderResult {
 }
@@ -796,7 +758,7 @@ declare interface RenderResult {
 export { RenderResult }
 export { RenderResult as RenderResult_alias_1 }
 
-declare const RenderSchema: z.ZodObject<{
+export declare const RenderSchema: z.ZodObject<{
     duration: z.ZodNumber;
     width: z.ZodNumber;
     height: z.ZodNumber;
@@ -809,8 +771,6 @@ declare const RenderSchema: z.ZodObject<{
     disableHwCodec: z.ZodBoolean;
     windowTolerant: z.ZodBoolean;
 }, z.core.$strip>;
-export { RenderSchema }
-export { RenderSchema as RenderSchema_alias_1 }
 
 export declare function resizeDrawable(cdp: Debugger, size: Size): Promise<void>;
 
@@ -1092,8 +1052,6 @@ export declare interface WindowOptions {
 
 export declare function withRerender<T>(signal: AbortSignal, action: () => Promise<T>): Promise<T>;
 
-declare function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T>;
-export { withTimeout }
-export { withTimeout as withTimeout_alias_1 }
+export declare function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T>;
 
 export { }

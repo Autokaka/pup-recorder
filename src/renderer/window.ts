@@ -23,7 +23,9 @@ interface FinishOptions {
 
 function waitForFinish({ source, win, action, tolerant, signal }: FinishOptions) {
   return new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(() => done(TIMEOUT_ERROR), 10_000);
+    let domReady = false;
+    // Tolerant proceeds on a partial DOM only as a timeout fallback — starting on bare dom-ready leaves the load pending and wedges virtual time.
+    const timeout = setTimeout(() => done(tolerant && domReady ? undefined : TIMEOUT_ERROR), 10_000);
     const done = (err?: unknown) => {
       clearTimeout(timeout);
       if (err) reject(err);
@@ -33,7 +35,7 @@ function waitForFinish({ source, win, action, tolerant, signal }: FinishOptions)
     signal?.addEventListener("abort", () => done(signal.reason), { once: true });
     win.webContents.once("dom-ready", () => {
       logger.debug(TAG, "dom-ready:", { source });
-      if (tolerant) done();
+      domReady = true;
     });
     win.webContents.once("did-stop-loading", () => {
       logger.debug(TAG, "did-stop-loading:", { source });

@@ -18,6 +18,8 @@ export async function chromiumOptions(disableGpu: boolean) {
     "mute-audio",
     "autoplay-policy=no-user-gesture-required",
     "disable-extensions",
+    "deny-permission-prompts",
+    "use-mock-keychain",
     // 渲染
     "force-device-scale-factor=1",
     "force-color-profile=srgb",

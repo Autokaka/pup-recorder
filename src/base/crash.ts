@@ -8,7 +8,8 @@ import { logger } from "./logging";
 const TAG = "[Crash]";
 
 export function startElectronCrashReporter() {
-  const dumpDir = join(app.getPath("userData"), "crashes");
+  // appData (not the per-run user-data-dir) so every pup app's dumps accumulate in one shared, persistent dir.
+  const dumpDir = join(app.getPath("appData"), "pup-recorder", "crashes");
   mkdirSync(dumpDir, { recursive: true });
   app.setPath("crashDumps", dumpDir);
   crashReporter.start({
