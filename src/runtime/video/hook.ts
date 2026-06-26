@@ -9,7 +9,7 @@ import { fire, type VideoState } from "./types";
 
 declare global {
   interface Window {
-    __pup_video__?: { advance: (ms: number) => Promise<unknown> };
+    __pup_video__?: { advance: (ms: number) => Promise<unknown>; ready: () => Promise<void> };
   }
   interface HTMLVideoElement {
     __pupLastSrc?: string;
@@ -19,10 +19,12 @@ declare global {
 export class VideoHook {
   readonly sessions = new WeakMap<HTMLVideoElement, VideoState>();
   readonly attaching = new WeakMap<HTMLVideoElement, Promise<VideoState | null>>();
+  // Enumerable mirror of in-flight opens (WeakMap isn't iterable) so ready() can await them.
+  readonly opening = new Set<Promise<unknown>>();
   readonly cache = new FrameCache();
   rvfcSeq = 0;
   currMs = 0;
-  private lastSnapshot = new WeakMap<HTMLVideoElement, OffscreenCanvas>();
+  private _lastSnapshot = new WeakMap<HTMLVideoElement, OffscreenCanvas>();
 
   install(): void {
     installMediaShim(this);
@@ -34,36 +36,57 @@ export class VideoHook {
           continue;
         }
         m.addedNodes.forEach((n) => {
-          if (n instanceof Element) this.scan(n);
+          if (n instanceof Element) {
+            this.scan(n);
+          }
         });
         m.removedNodes.forEach((n) => {
-          if (n instanceof HTMLVideoElement) this.detach(n);
+          if (n instanceof HTMLVideoElement) {
+            this.detach(n);
+          }
         });
       }
     }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ["src"] });
-    window.__pup_video__ = { advance: (ms) => advance(this, ms) };
+    window.__pup_video__ = { advance: (ms) => advance(this, ms), ready: () => this.ready() };
   }
 
   attach(video: HTMLVideoElement, native = false): Promise<VideoState | null> {
     const existing = this.sessions.get(video);
-    if (existing) return Promise.resolve(existing);
+    if (existing) {
+      return Promise.resolve(existing);
+    }
     const pending = this.attaching.get(video);
-    if (pending) return pending;
+    if (pending) {
+      return pending;
+    }
     const src = video.src || video.currentSrc;
-    if (!src) return Promise.resolve(null);
-    if (/^(blob:|data:|mediastream:)/i.test(src)) return Promise.resolve(null);
-    const cv = setupCanvas(video, this.lastSnapshot.get(video));
+    if (!src) {
+      return Promise.resolve(null);
+    }
+    if (/^(blob:|data:|mediastream:)/i.test(src)) {
+      return Promise.resolve(null);
+    }
+    const cv = setupCanvas(video, this._lastSnapshot.get(video));
     const state = newVideoState(video, cv);
     this.sessions.set(video, state);
     const p = openSession(this, { video, state, src, birthMs: this.currMs, native }).finally(() => {
       this.attaching.delete(video);
+      this.opening.delete(p);
     });
     this.attaching.set(video, p);
+    this.opening.add(p);
     return p;
   }
 
+  // Await only the opens in flight right now — never chase newly-spawned ones, or a retrying page loops forever.
+  async ready(): Promise<void> {
+    await Promise.allSettled([...this.opening]);
+  }
+
   resume(video: HTMLVideoElement, state: VideoState): void {
-    if (!state.paused && !state.ended) return;
+    if (!state.paused && !state.ended) {
+      return;
+    }
     state.paused = false;
     state.ended = false;
     fire(video, "play");
@@ -72,13 +95,19 @@ export class VideoHook {
 
   detach(video: HTMLVideoElement): void {
     const state = this.sessions.get(video);
-    if (!state) return;
+    if (!state) {
+      return;
+    }
     if (state.meta) {
       if (state.lastDrawnIdx >= 0) {
         try {
           const snap = new OffscreenCanvas(state.cv.width, state.cv.height);
-          snap.getContext("2d")!.drawImage(state.cv, 0, 0);
-          this.lastSnapshot.set(video, snap);
+          const sctx = snap.getContext("2d");
+          if (!sctx) {
+            throw new Error("no 2d context");
+          }
+          sctx.drawImage(state.cv, 0, 0);
+          this._lastSnapshot.set(video, snap);
         } catch {}
       }
       this.cache.release(state.meta.id, state);
@@ -90,9 +119,13 @@ export class VideoHook {
 
   onSrcChange(video: HTMLVideoElement): void {
     const src = video.src || video.currentSrc || "";
-    if (video.__pupLastSrc === src) return;
+    if (video.__pupLastSrc === src) {
+      return;
+    }
     video.__pupLastSrc = src;
-    if (this.sessions.has(video)) this.detach(video);
+    if (this.sessions.has(video)) {
+      this.detach(video);
+    }
     this.attach(video);
   }
 
@@ -103,7 +136,9 @@ export class VideoHook {
     const ended = state.ended;
     this.detach(video);
     void this.attach(video, true).then((ns) => {
-      if (!ns) return;
+      if (!ns) {
+        return;
+      }
       ns.currentTime = t;
       ns.paused = paused;
       ns.ended = ended;
@@ -111,13 +146,23 @@ export class VideoHook {
   }
 
   private scan(root: Element | null): void {
-    if (!root) return;
-    if (root.tagName === "VIDEO") this.attach(root as HTMLVideoElement);
-    if (root.querySelectorAll) root.querySelectorAll("video").forEach((v) => this.attach(v));
+    if (!root) {
+      return;
+    }
+    if (root.tagName === "VIDEO") {
+      this.attach(root as HTMLVideoElement);
+    }
+    if (root.querySelectorAll) {
+      root.querySelectorAll("video").forEach((v) => {
+        this.attach(v);
+      });
+    }
   }
 }
 
 export function installVideoHook(): void {
-  if (window.__pup_video__) return;
+  if (window.__pup_video__) {
+    return;
+  }
   new VideoHook().install();
 }

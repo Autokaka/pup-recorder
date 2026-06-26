@@ -5,7 +5,7 @@ import {
   CodecContext,
   FFmpegError,
   Filter,
-  FilterContext,
+  type FilterContext,
   FilterGraph,
   FilterInOut,
   Frame,
@@ -22,8 +22,8 @@ import {
   AVERROR_EOF,
   type FFAudioEncoder,
 } from "node-av/constants";
-import type { FormatMuxer } from "./muxer";
 import { drainPackets, makePacket } from "./misc";
+import type { FormatMuxer } from "./muxer";
 
 const SAMPLE_FMT_NAME: Partial<Record<number, string>> = { [AV_SAMPLE_FMT_FLT]: "flt", [AV_SAMPLE_FMT_FLTP]: "fltp" };
 
@@ -63,7 +63,9 @@ export class AudioEncoder implements Disposable {
 
   static async create(opts: AudioEncoderOptions): Promise<AudioEncoder> {
     const codec = Codec.findEncoderByName(opts.codecName);
-    if (!codec) throw new Error(`Audio encoder not found: ${opts.codecName}`);
+    if (!codec) {
+      throw new Error(`Audio encoder not found: ${opts.codecName}`);
+    }
     const ctx = new CodecContext();
     ctx.allocContext3(codec);
     ctx.codecId = codec.id;
@@ -72,7 +74,9 @@ export class AudioEncoder implements Disposable {
     ctx.channelLayout = AV_CHANNEL_LAYOUT_STEREO;
     ctx.timeBase = new Rational(1, opts.outSampleRate);
     ctx.bitRate = BigInt(opts.bitrate);
-    if (opts.globalHeader) ctx.setFlags(AV_CODEC_FLAG_GLOBAL_HEADER);
+    if (opts.globalHeader) {
+      ctx.setFlags(AV_CODEC_FLAG_GLOBAL_HEADER);
+    }
     FFmpegError.throwIfError(await ctx.open2(codec, null), "audioCtx.open2");
     const stream = opts.muxer.addStream(ctx);
     return new AudioEncoder(ctx, stream, opts.outSampleFmt);
@@ -89,10 +93,14 @@ export class AudioEncoder implements Disposable {
       "src",
       `sample_rate=${inSampleRate}:sample_fmt=flt:channel_layout=stereo:time_base=1/${inSampleRate}`,
     );
-    if (!bufSrc) throw new Error("Failed to create abuffer");
+    if (!bufSrc) {
+      throw new Error("Failed to create abuffer");
+    }
     const abuffersink = Filter.getByName("abuffersink")!;
     const bufSink = graph.createFilter(abuffersink, "sink");
-    if (!bufSink) throw new Error("Failed to create abuffersink");
+    if (!bufSink) {
+      throw new Error("Failed to create abuffersink");
+    }
     const fmtName = SAMPLE_FMT_NAME[this._outFmt] ?? "flt";
     const filterDesc = `aformat=sample_fmts=${fmtName}:sample_rates=${this._outRate}:channel_layouts=stereo,asetnsamples=n=${this._frameSize}:p=1`;
     const outputs = FilterInOut.createList([{ name: "in", filterCtx: bufSrc, padIdx: 0 }]);
@@ -105,9 +113,15 @@ export class AudioEncoder implements Disposable {
   }
 
   async encode(pcm: Buffer, muxer: FormatMuxer): Promise<void> {
-    if (!this._bufSrc || !this._inRate) return;
+    if (!this._bufSrc || !this._inRate) {
+      return;
+    }
     const src = new Float32Array(pcm.buffer, pcm.byteOffset, pcm.byteLength / 4);
-    for (let i = 0; i < src.length; i++) if (!isFinite(src[i]!)) src[i] = 0;
+    for (let i = 0; i < src.length; i++) {
+      if (!Number.isFinite(src[i]!)) {
+        src[i] = 0;
+      }
+    }
     const nSamples = src.length >> 1;
     using frame = Frame.fromAudioBuffer(Buffer.from(src.buffer, src.byteOffset, src.byteLength), {
       nbSamples: nSamples,
@@ -141,7 +155,9 @@ export class AudioEncoder implements Disposable {
   private async drain(muxer: FormatMuxer): Promise<void> {
     while (true) {
       const r = await this._bufSink!.buffersinkGetFrame(this._filterFrame);
-      if (r === AVERROR_EAGAIN || r === AVERROR_EOF) break;
+      if (r === AVERROR_EAGAIN || r === AVERROR_EOF) {
+        break;
+      }
       FFmpegError.throwIfError(r, "buffersinkGetFrame");
       FFmpegError.throwIfError(await this._ctx.sendFrame(this._filterFrame), "audioCtx.sendFrame");
       this._filterFrame.unref();

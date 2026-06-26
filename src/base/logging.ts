@@ -1,6 +1,6 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/06.
 
-import type { ChildProcess } from "child_process";
+import type { ChildProcess } from "node:child_process";
 import { Log } from "node-av";
 import { AV_LOG_ERROR, AV_LOG_WARNING } from "node-av/constants";
 import { pupLogLevel } from "./constants";
@@ -21,7 +21,7 @@ const WARN = "<pup@warn>";
 const ERROR = "<pup@error>";
 const FATAL = "<pup@fatal>";
 
-function stackHook(target: Function, _context: ClassMethodDecoratorContext) {
+function stackHook(target: (...messages: unknown[]) => unknown, _context: ClassMethodDecoratorContext) {
   return function (this: Logger, ...messages: unknown[]) {
     const processed = messages.map((msg) => {
       return msg instanceof Error ? (msg.stack ?? String(msg)) : msg;
@@ -149,9 +149,14 @@ const logger = new Logger();
 // Route ffmpeg native logs through pup's logger.
 Log.setCallback((level, message) => {
   const msg = message.trimEnd();
-  if (!msg) return;
-  if (level <= AV_LOG_ERROR) logger.error(msg);
-  else if (level <= AV_LOG_WARNING) logger.warn(msg);
+  if (!msg) {
+    return;
+  }
+  if (level <= AV_LOG_ERROR) {
+    logger.error(msg);
+  } else if (level <= AV_LOG_WARNING) {
+    logger.warn(msg);
+  }
 });
 
 export { logger };

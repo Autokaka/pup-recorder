@@ -1,8 +1,8 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/04/21.
 
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { app, crashReporter } from "electron";
-import { mkdirSync } from "fs";
-import { join } from "path";
 import { logger } from "./logging";
 
 const TAG = "[Crash]";

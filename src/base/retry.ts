@@ -1,9 +1,9 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/05.
 
-import { setTimeout } from "timers/promises";
+import { setTimeout } from "node:timers/promises";
 import { sleep } from "./timing";
 
-export interface RetryOptions<Args extends any[], Ret> {
+export interface RetryOptions<Args extends unknown[], Ret> {
   fn: (...args: Args) => Promise<Ret>;
   maxAttempts?: number;
   timeout?: number;
@@ -12,9 +12,14 @@ export interface RetryOptions<Args extends any[], Ret> {
   signal?: AbortSignal;
 }
 
-export function useRetry<Args extends any[], Ret>({ fn, maxAttempts = 3, timeout, signal }: RetryOptions<Args, Ret>) {
+export function useRetry<Args extends unknown[], Ret>({
+  fn,
+  maxAttempts = 3,
+  timeout,
+  signal,
+}: RetryOptions<Args, Ret>) {
   const timeoutError = new Error(`timeout over ${timeout}ms`);
-  return async function (...args: Args) {
+  return async (...args: Args) => {
     let attempt = 0;
     while (true) {
       signal?.throwIfAborted();
@@ -34,7 +39,7 @@ export function useRetry<Args extends any[], Ret>({ fn, maxAttempts = 3, timeout
         if (attempt >= maxAttempts) {
           throw e;
         }
-        await sleep(Math.pow(2, attempt) * 100 + Math.random() * 100);
+        await sleep(2 ** attempt * 100 + Math.random() * 100);
       }
     }
   };

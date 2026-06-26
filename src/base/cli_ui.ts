@@ -39,7 +39,9 @@ export class ProgressBar {
   }
 
   clear(): void {
-    if (this._tty && this._shown) this._out.write("\r\x1b[2K");
+    if (this._tty && this._shown) {
+      this._out.write("\r\x1b[2K");
+    }
   }
 
   redraw(): void {
@@ -48,19 +50,23 @@ export class ProgressBar {
 
   log(line: string): void {
     this.clear();
-    this._out.write(line + "\n");
+    this._out.write(`${line}\n`);
     this.redraw();
   }
 
   finish(line: string): void {
     this.clear();
-    this._out.write(line + "\n");
+    this._out.write(`${line}\n`);
     this._shown = false;
   }
 
   private render(): void {
-    if (!this._tty) return;
-    if (this._written === 0 && !this._shown) return;
+    if (!this._tty) {
+      return;
+    }
+    if (this._written === 0 && !this._shown) {
+      return;
+    }
     const ratio = this._total > 0 ? this._written / this._total : 0;
     const filled = Math.round(ratio * BAR_WIDTH);
     const bar = "#".repeat(filled) + "-".repeat(BAR_WIDTH - filled);

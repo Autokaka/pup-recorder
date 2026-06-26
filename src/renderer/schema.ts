@@ -8,7 +8,7 @@ export const DEFAULT_FPS = 30;
 export const DEFAULT_DURATION = 5;
 export const DEFAULT_OUT_FILE = "out/html.mp4,out/html.webm";
 
-export const RenderSchema = z.object({
+export const renderSchema = z.object({
   duration: z.number().describe("Duration in seconds"),
   width: z.number().describe("Video width"),
   height: z.number().describe("Video height"),
@@ -22,7 +22,7 @@ export const RenderSchema = z.object({
   windowTolerant: z.boolean().describe("Fall back to dom-ready if warmup load times out"),
 });
 
-export type RenderOptions = z.infer<typeof RenderSchema>;
+export type RenderOptions = z.infer<typeof renderSchema>;
 
 export type ConsoleCallback = (level: string, message: string) => void;
 

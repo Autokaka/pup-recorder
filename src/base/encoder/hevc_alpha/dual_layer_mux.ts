@@ -48,7 +48,9 @@ export class DualLayerMux {
 
   // Unpaired leftovers after EOF = true base/alpha desync; returns a description, else undefined.
   desyncAfterEof(): string | undefined {
-    if (!this._baseQueue.length && !this._alphaQueue.length) return undefined;
+    if (!this._baseQueue.length && !this._alphaQueue.length) {
+      return undefined;
+    }
     return `base=${this._baseQueue.length}, alpha=${this._alphaQueue.length} unpaired`;
   }
 
@@ -62,7 +64,9 @@ export class DualLayerMux {
         pkt.unref();
         continue;
       }
-      if (ret === AVERROR_EAGAIN || ret === AVERROR_EOF) return out;
+      if (ret === AVERROR_EAGAIN || ret === AVERROR_EOF) {
+        return out;
+      }
       FFmpegError.throwIfError(ret, `nvenc.${tag}.receivePacket`);
     }
   }

@@ -1,17 +1,19 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/09.
 
+import { realpathSync } from "node:fs";
+import { resolve } from "node:path";
 import { program } from "commander";
-import { realpathSync } from "fs";
-import { resolve } from "path";
 import { logger } from "./base/logging";
 import { noerr } from "./base/noerr";
 import { parseNumber } from "./base/parser";
 import { pargs } from "./base/process";
-import { defaultRenderOptions, RenderSchema, type RenderOptions } from "./renderer/schema";
+import { defaultRenderOptions, type RenderOptions, renderSchema } from "./renderer/schema";
 
 // Schemed URIs pass through; bare paths get canonicalized and wrapped as file://.
 function normalizeSource(s: string): string {
-  if (s.includes("://") || s.startsWith("data:")) return s;
+  if (s.includes("://") || s.startsWith("data:")) {
+    return s;
+  }
   let abs: string;
   try {
     abs = realpathSync(s);
@@ -27,7 +29,7 @@ export interface CLIOptions {
 }
 
 export async function makeCLI(options: CLIOptions) {
-  const shape = RenderSchema.shape;
+  const shape = renderSchema.shape;
   const d = defaultRenderOptions;
   program
     .name(options.name)

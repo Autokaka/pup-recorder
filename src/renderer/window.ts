@@ -28,8 +28,11 @@ function waitForFinish({ source, win, action, tolerant, signal }: FinishOptions)
     const timeout = setTimeout(() => done(tolerant && domReady ? undefined : TIMEOUT_ERROR), 10_000);
     const done = (err?: unknown) => {
       clearTimeout(timeout);
-      if (err) reject(err);
-      else resolve();
+      if (err) {
+        reject(err);
+      } else {
+        resolve();
+      }
     };
     signal?.throwIfAborted();
     signal?.addEventListener("abort", () => done(signal.reason), { once: true });
@@ -65,7 +68,10 @@ export function disposeWindow(win: BrowserWindow) {
       } catch {}
       done();
     }, 1000);
-    const done = () => (clearTimeout(timer), resolve());
+    const done = () => {
+      clearTimeout(timer);
+      resolve();
+    };
     win.webContents.stopPainting();
     win.webContents.debugger.detach();
     win.once("closed", done);
@@ -84,8 +90,12 @@ export interface WindowOptions {
 }
 
 function pickPreload(renderer: IPCRenderOptions): string | undefined {
-  if (renderer.deterministic) return pupIframePreload;
-  if (renderer.withAudio) return pupAudioPreload;
+  if (renderer.deterministic) {
+    return pupIframePreload;
+  }
+  if (renderer.withAudio) {
+    return pupAudioPreload;
+  }
   return undefined;
 }
 
@@ -127,7 +137,9 @@ async function openWindow({ source, renderer, tolerant, signal, onCreated }: Win
   win.webContents.on("console-message", ({ level, message, lineNumber, sourceId }) => {
     const msgs = [TAG, "console:", { message, lineNumber, sourceId, source }];
     level === "error" ? logger.error(...msgs) : logger.debug(...msgs);
-    if (level === "warning" && message.startsWith(`%cElectron Security Warning`)) return;
+    if (level === "warning" && message.startsWith(`%cElectron Security Warning`)) {
+      return;
+    }
     renderer.onConsole(level, message);
   });
 

@@ -12,6 +12,8 @@ export function parseNumber(x: unknown): number {
 }
 
 export function parseString(x: unknown): string {
-  if (typeof x === "string") return x;
+  if (typeof x === "string") {
+    return x;
+  }
   return String(x);
 }

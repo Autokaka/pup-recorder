@@ -1,9 +1,9 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/25.
 
-import { rmSync } from "fs";
-import { mkdtemp } from "fs/promises";
-import { tmpdir } from "os";
-import { join } from "path";
+import { rmSync } from "node:fs";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { chromiumOptions } from "../base/chromium";
 import { pupApp } from "../base/constants";
 import { logger } from "../base/logging";

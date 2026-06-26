@@ -1,9 +1,8 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/05/18.
 
-import { createHash } from "crypto";
+import { createHash } from "node:crypto";
 import { DecodeSession } from "./decode_session";
 import { probe } from "./probe";
-import { SrcCache } from "./src_cache";
 
 export interface VideoMeta {
   id: string;
@@ -15,6 +14,8 @@ export interface VideoMeta {
   frameHeight: number;
   fps: number;
   duration: number;
+  /** Seconds of corrupt/empty leading content held on the first decodable frame. */
+  leadGap: number;
 }
 
 export interface OpenOptions {
@@ -33,34 +34,24 @@ interface Entry {
 }
 
 export class FrameServer {
-  private sessions = new Map<string, Entry>();
-  private srcs = new SrcCache();
-  private inFlightOpens = new Set<Promise<unknown>>();
-  private closed = false;
+  private _sessions = new Map<string, Entry>();
+  private _closed = false;
 
+  // closed-checked after probe so closeAll() can't race a slow open into a leaked session.
   async open(opts: OpenOptions): Promise<VideoMeta> {
-    const p = this.openInner(opts);
-    this.inFlightOpens.add(p);
-    try {
-      return await p;
-    } finally {
-      this.inFlightOpens.delete(p);
+    if (this._closed) {
+      throw new Error("frame-server: closed");
     }
-  }
-
-  // closed-checked after every await so closeAll() can't race srcs.clear() against localize/probe.
-  private async openInner(opts: OpenOptions): Promise<VideoMeta> {
-    if (this.closed) throw new Error("frame-server: closed");
     const id = key(opts);
-    const hit = this.sessions.get(id);
+    const hit = this._sessions.get(id);
     if (hit) {
       hit.refs++;
       return hit.session.meta;
     }
-    const localPath = await this.srcs.localize(opts.src);
-    if (this.closed) throw new Error("frame-server: closed");
-    const info = await probe(localPath);
-    if (this.closed) throw new Error("frame-server: closed");
+    const info = await probe(opts.src);
+    if (this._closed) {
+      throw new Error("frame-server: closed");
+    }
     let frameWidth = info.width;
     let frameHeight = info.height;
     // Downscale to cover the display box (never upscale); objectFit "none" needs 1:1 native pixels.
@@ -77,33 +68,38 @@ export class FrameServer {
       frameHeight,
       fps: opts.fps,
       duration: info.duration,
+      leadGap: info.leadGap,
     };
-    this.sessions.set(id, { session: new DecodeSession(meta, localPath), refs: 1 });
+    this._sessions.set(id, { session: new DecodeSession(meta, opts.src), refs: 1 });
     return meta;
   }
 
   getFrame(id: string, idx: number): Promise<Buffer> {
-    const e = this.sessions.get(id);
-    if (!e) return Promise.resolve(Buffer.alloc(0));
+    const e = this._sessions.get(id);
+    if (!e) {
+      return Promise.resolve(Buffer.alloc(0));
+    }
     return e.session.getFrame(idx);
   }
 
   close(id: string): void {
-    const e = this.sessions.get(id);
-    if (!e) return;
-    if (--e.refs > 0) return;
+    const e = this._sessions.get(id);
+    if (!e) {
+      return;
+    }
+    if (--e.refs > 0) {
+      return;
+    }
     e.session.close();
-    this.sessions.delete(id);
+    this._sessions.delete(id);
   }
 
-  async closeAll(): Promise<void> {
-    // abort in-flight fetches first so allSettled doesn't hang on a slow CDN.
-    this.closed = true;
-    this.srcs.abort();
-    await Promise.allSettled([...this.inFlightOpens]);
-    for (const [, e] of this.sessions) e.session.close();
-    this.sessions.clear();
-    await this.srcs.clear();
+  closeAll(): void {
+    this._closed = true;
+    for (const [, e] of this._sessions) {
+      e.session.close();
+    }
+    this._sessions.clear();
   }
 }
 

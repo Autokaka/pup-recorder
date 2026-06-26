@@ -1,7 +1,7 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/06/02.
 
 import type { VideoHook } from "./hook";
-import { fire, timeRanges, type FrameCb, type VideoState } from "./types";
+import { type FrameCb, fire, timeRanges, type VideoState } from "./types";
 
 // Override the HTMLMediaElement surface for hooked <video>; unhooked elements fall through to native.
 export function installMediaShim(hook: VideoHook): void {
@@ -20,12 +20,15 @@ export function installMediaShim(hook: VideoHook): void {
 
   // Session-backed read-only property with native fallback when the element isn't hooked.
   const def = (prop: string, pick: (s: VideoState) => unknown) => {
-    const native = mdesc(prop);
+    const nativeGet = mdesc(prop)?.get;
+    if (!nativeGet) {
+      throw new Error(`media_shim: no native getter for ${prop}`);
+    }
     Object.defineProperty(HVE, prop, {
       configurable: true,
       get(this: HTMLVideoElement) {
         const s = sessions.get(this);
-        return s ? pick(s) : native!.get!.call(this);
+        return s ? pick(s) : nativeGet.call(this);
       },
     });
   };
@@ -41,10 +44,13 @@ export function installMediaShim(hook: VideoHook): void {
 
   HVE.play = function (this: HTMLVideoElement) {
     const s = sessions.get(this);
-    if (!s)
+    if (!s) {
       return hook.attach(this).then((ns) => {
-        if (ns) hook.resume(this, ns);
+        if (ns) {
+          hook.resume(this, ns);
+        }
       });
+    }
     hook.resume(this, s);
     return Promise.resolve();
   };
@@ -59,23 +65,27 @@ export function installMediaShim(hook: VideoHook): void {
       fire(this, "pause");
     }
   };
-  if (ctDesc) {
+  if (ctDesc?.get && ctDesc.set) {
+    const ctGet = ctDesc.get;
+    const ctSet = ctDesc.set;
     Object.defineProperty(HVE, "currentTime", {
       configurable: true,
       get(this: HTMLVideoElement) {
         const s = sessions.get(this);
-        return s ? s.currentTime : ctDesc.get!.call(this);
+        return s ? s.currentTime : ctGet.call(this);
       },
       set(this: HTMLVideoElement, t: number) {
         const s = sessions.get(this);
         if (!s) {
-          ctDesc.set!.call(this, t);
+          ctSet.call(this, t);
           return;
         }
         const dur = s.meta ? s.meta.duration : t;
         s.currentTime = Math.max(0, Math.min(t, dur));
         s.maxReached = Math.max(s.maxReached, s.currentTime);
-        if (s.currentTime < dur) s.ended = false;
+        if (s.currentTime < dur) {
+          s.ended = false;
+        }
         s.seeking = true;
         fire(this, "seeking");
         s.seeking = false;
@@ -84,31 +94,41 @@ export function installMediaShim(hook: VideoHook): void {
       },
     });
   }
-  if (rateDesc && rateDesc.set) {
+  if (rateDesc?.set) {
+    const rateSet = rateDesc.set;
     Object.defineProperty(HVE, "playbackRate", {
       configurable: true,
       get: rateDesc.get,
       set(this: HTMLVideoElement, r: number) {
-        rateDesc.set!.call(this, r);
-        if (sessions.has(this)) fire(this, "ratechange");
+        rateSet.call(this, r);
+        if (sessions.has(this)) {
+          fire(this, "ratechange");
+        }
       },
     });
   }
   HVE.requestVideoFrameCallback = function (this: HTMLVideoElement, cb): number {
     const s = sessions.get(this);
-    if (!s) return origRVFC.call(this, cb);
+    if (!s) {
+      return origRVFC.call(this, cb);
+    }
     const id = ++hook.rvfcSeq;
     s.rvfc.set(id, cb as FrameCb);
     return id;
   };
   HVE.cancelVideoFrameCallback = function (this: HTMLVideoElement, id: number): void {
     const s = sessions.get(this);
-    if (!s) return origCancelRVFC.call(this, id);
+    if (!s) {
+      origCancelRVFC.call(this, id);
+      return;
+    }
     s.rvfc.delete(id);
   };
   HVE.getVideoPlaybackQuality = function (this: HTMLVideoElement) {
     const s = sessions.get(this);
-    if (!s) return origQuality.call(this);
+    if (!s) {
+      return origQuality.call(this);
+    }
     return {
       creationTime: performance.now(),
       totalVideoFrames: s.presentedFrames,
@@ -117,18 +137,21 @@ export function installMediaShim(hook: VideoHook): void {
     } as VideoPlaybackQuality;
   };
   HVE.load = function (this: HTMLVideoElement) {
-    if (!sessions.has(this)) return origLoad.call(this);
+    if (!sessions.has(this)) {
+      return origLoad.call(this);
+    }
     hook.detach(this);
     fire(this, "emptied");
     this.__pupLastSrc = undefined;
     hook.attach(this);
   };
-  if (srcDesc && srcDesc.set) {
+  if (srcDesc?.set) {
+    const srcSet = srcDesc.set;
     Object.defineProperty(HVE, "src", {
       configurable: true,
       get: srcDesc.get,
       set(this: HTMLVideoElement, v: string) {
-        srcDesc.set!.call(this, v);
+        srcSet.call(this, v);
         hook.onSrcChange(this);
       },
     });

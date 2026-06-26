@@ -1,18 +1,18 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/01/30.
 
-import { ok } from "assert";
+import { ok } from "node:assert";
+import { mkdir } from "node:fs/promises";
+import { dirname } from "node:path";
 import { app, Menu } from "electron";
-import { mkdir } from "fs/promises";
-import { dirname } from "path";
 import { startElectronCrashReporter } from "./base/crash";
 import { logger } from "./base/logging";
 import { makeCLI } from "./common";
-import { IpcMsgType, IpcWriter, type IpcMsg } from "./renderer/ipc";
-import { setupFrameProtocol } from "./renderer/video/protocol";
+import { type IpcMsg, IpcMsgType, IpcWriter } from "./renderer/ipc";
 import { setupPupProtocol } from "./renderer/protocol";
 import { render } from "./renderer/render";
 import { withRerender } from "./renderer/rerender";
 import { shoot } from "./renderer/shoot";
+import { setupFrameProtocol } from "./renderer/video/protocol";
 
 const TAG = "[App]";
 
@@ -35,7 +35,9 @@ ok(process.send, "ipc channel missing — spawn with stdio[3]='ipc'");
 process.once("disconnect", () => ctrl.abort("disconnect"));
 process.on("message", (raw) => {
   const msg = raw as IpcMsg;
-  if (msg.type === IpcMsgType.CANCEL) ctrl.abort(msg.reason);
+  if (msg.type === IpcMsgType.Cancel) {
+    ctrl.abort(msg.reason);
+  }
 });
 
 makeCLI({

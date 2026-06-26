@@ -5,7 +5,9 @@ import { fitRect, syncOverlay } from "./overlay";
 import { AHEAD, fire, type VideoFrameMeta, type VideoState } from "./types";
 
 function fireFrameCallbacks(state: VideoState): void {
-  if (state.rvfc.size === 0) return;
+  if (state.rvfc.size === 0) {
+    return;
+  }
   const cbs = [...state.rvfc.values()];
   state.rvfc.clear();
   const now = performance.now();
@@ -17,7 +19,9 @@ function fireFrameCallbacks(state: VideoState): void {
     mediaTime: state.currentTime,
     presentedFrames: state.presentedFrames,
   };
-  for (const cb of cbs) cb(now, meta);
+  for (const cb of cbs) {
+    cb(now, meta);
+  }
 }
 
 async function paint(hook: VideoHook, video: HTMLVideoElement, state: VideoState, idx: number): Promise<void> {
@@ -27,7 +31,9 @@ async function paint(hook: VideoHook, video: HTMLVideoElement, state: VideoState
   if (!bm) {
     hook.cache.prefetch(state, idx + 1, AHEAD - 1);
     const fetched = await hook.cache.fetch(state, idx);
-    if (hook.sessions.get(video) !== state) return;
+    if (hook.sessions.get(video) !== state) {
+      return;
+    }
     if (!fetched) {
       if (!state.paused && !state.waiting) {
         state.waiting = true;
@@ -39,7 +45,9 @@ async function paint(hook: VideoHook, video: HTMLVideoElement, state: VideoState
   }
   if (state.waiting) {
     state.waiting = false;
-    if (!state.paused) fire(video, "playing");
+    if (!state.paused) {
+      fire(video, "playing");
+    }
   }
   const cv = state.cv;
   const r = fitRect(bm.width, bm.height, cv.width, cv.height, state.objectFit);
@@ -60,9 +68,13 @@ export function advance(hook: VideoHook, timestampMs: number): Promise<unknown> 
   document.querySelectorAll("video").forEach((el) => {
     const video = el as HTMLVideoElement;
     const state = hook.sessions.get(video);
-    if (!state || state.dead) return;
+    if (!state || state.dead) {
+      return;
+    }
     syncOverlay(video, state.cv);
-    if (!state.meta) return;
+    if (!state.meta) {
+      return;
+    }
     // Element grew past the decoded (downscaled) res → re-decode at native, one-shot (covers zoom).
     if (
       state.meta.frameWidth < state.meta.width &&
@@ -89,7 +101,9 @@ export function advance(hook: VideoHook, timestampMs: number): Promise<unknown> 
       }
     }
     const idx = Math.max(1, Math.round(state.currentTime * state.meta.fps));
-    if (idx === state.lastDrawnIdx) return;
+    if (idx === state.lastDrawnIdx) {
+      return;
+    }
     ps.push(paint(hook, video, state, idx));
   });
   return Promise.all(ps);

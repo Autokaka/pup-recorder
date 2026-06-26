@@ -11,12 +11,26 @@ export function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promis
   });
 }
 
+// Reject as soon as `signal` aborts, else settle with `p`; no-op passthrough when no signal.
+export function abortable<T>(p: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) {
+    return p;
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+    p.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}
+
 export function periodical(callback: (count: number) => Promise<void> | void, ms: number) {
   let token: NodeJS.Timeout;
   let closed = false;
   async function tick(count: number) {
     await callback(count);
-    if (closed) return;
+    if (closed) {
+      return;
+    }
     token = setTimeout(() => tick(count + 1), ms);
   }
   token = setTimeout(() => tick(0), ms);

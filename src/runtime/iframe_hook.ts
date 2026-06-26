@@ -23,30 +23,36 @@ interface AnimEntry {
 }
 
 export function installTickHook(): void {
-  if (window.__pup_tick__) return;
+  if (window.__pup_tick__) {
+    return;
+  }
 
-  const RealDate = Date;
-  const dateOrigin = RealDate.now();
+  const REAL_DATE = Date;
+  const dateOrigin = REAL_DATE.now();
   let currMs = 0;
   let timeOffset = 0;
   let rafQueue: RafEntry[] = [];
   const timers: Record<number, Timer | undefined> = {};
   let nextId = 1;
+  const tick = () => {
+    timeOffset += 0.01;
+    return timeOffset;
+  };
 
   function FakeDate(this: unknown, ...args: unknown[]): Date | string {
     if (!(this instanceof FakeDate)) {
-      return new RealDate(dateOrigin + currMs).toString();
+      return new REAL_DATE(dateOrigin + currMs).toString();
     }
     return args.length
-      ? new (Function.prototype.bind.apply(RealDate, [null, ...args]))()
-      : new RealDate(dateOrigin + currMs + (timeOffset += 0.01));
+      ? new (Function.prototype.bind.apply(REAL_DATE, [null, ...args]))()
+      : new REAL_DATE(dateOrigin + currMs + tick());
   }
-  FakeDate.prototype = RealDate.prototype;
-  FakeDate.now = () => dateOrigin + currMs + (timeOffset += 0.01);
-  FakeDate.parse = RealDate.parse;
-  FakeDate.UTC = RealDate.UTC;
+  FakeDate.prototype = REAL_DATE.prototype;
+  FakeDate.now = () => dateOrigin + currMs + tick();
+  FakeDate.parse = REAL_DATE.parse;
+  FakeDate.UTC = REAL_DATE.UTC;
   (window as unknown as { Date: unknown }).Date = FakeDate;
-  performance.now = () => currMs + (timeOffset += 0.01);
+  performance.now = () => currMs + tick();
 
   window.requestAnimationFrame = (cb) => {
     const id = nextId++;
@@ -62,7 +68,9 @@ export function installTickHook(): void {
     return id;
   };
   window.clearTimeout = (id) => {
-    if (typeof id === "number") delete timers[id];
+    if (typeof id === "number") {
+      delete timers[id];
+    }
   };
   (window as unknown as { setInterval: unknown }).setInterval = (cb: TimerHandler, delay?: number) => {
     const id = nextId++;
@@ -71,13 +79,19 @@ export function installTickHook(): void {
     return id;
   };
   window.clearInterval = (id) => {
-    if (typeof id === "number") delete timers[id];
+    if (typeof id === "number") {
+      delete timers[id];
+    }
   };
 
   function safeInvokeTimer(fn: TimerHandler) {
     try {
-      if (typeof fn === "string") eval(fn);
-      else fn();
+      if (typeof fn === "string") {
+        // String timer handler runs as page script in global scope (HTML spec); Function ctor matches that, avoids eval.
+        new Function(fn)();
+      } else {
+        fn();
+      }
     } catch (e) {
       console.error("[Tick] error:", (e instanceof Error && e.stack) || e);
     }
@@ -105,7 +119,9 @@ export function installTickHook(): void {
         continue;
       }
       const rate = typeof a.playbackRate === "number" ? a.playbackRate : 1;
-      if (rate === 0) continue;
+      if (rate === 0) {
+        continue;
+      }
       let s = animState.get(a);
       if (!s) {
         const ct0 = typeof a.currentTime === "number" ? a.currentTime : 0;
@@ -113,7 +129,9 @@ export function installTickHook(): void {
         animState.set(a, s);
       }
       if (state === "paused") {
-        if (s.pausedAt < 0) s.pausedAt = ms;
+        if (s.pausedAt < 0) {
+          s.pausedAt = ms;
+        }
         continue;
       }
       if (s.pausedAt >= 0) {
@@ -129,7 +147,9 @@ export function installTickHook(): void {
     timeOffset = 0;
     for (const id of Object.keys(timers)) {
       const t = timers[Number(id)];
-      if (!t) continue;
+      if (!t) {
+        continue;
+      }
       while (t.next <= currMs) {
         safeInvokeTimer(t.cb);
         if (t.type === "timeout") {
@@ -140,7 +160,9 @@ export function installTickHook(): void {
       }
     }
     const rafs = rafQueue.splice(0);
-    for (const r of rafs) safeInvokeRaf(r.cb, currMs);
+    for (const r of rafs) {
+      safeInvokeRaf(r.cb, currMs);
+    }
     syncAnimations(currMs);
   }
 

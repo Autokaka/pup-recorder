@@ -1,6 +1,6 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/04/24.
 
-import { ok } from "assert";
+import { ok } from "node:assert";
 import { FFmpegError, type Frame } from "node-av";
 import type { HardwareContext } from "node-av/api";
 import {
@@ -54,15 +54,20 @@ export class OutputSink implements AsyncDisposable {
 
   static kindFromPath(path: string): SinkKind {
     const lower = path.toLowerCase();
-    if (lower.endsWith(".webm")) return "webm";
-    if (lower.endsWith(".mp4") || lower.endsWith(".mov")) return "mp4";
+    if (lower.endsWith(".webm")) {
+      return "webm";
+    }
+    if (lower.endsWith(".mp4") || lower.endsWith(".mov")) {
+      return "mp4";
+    }
     throw new Error(`Unsupported output extension: ${path}`);
   }
 
   static async create(opts: SinkOptions): Promise<OutputSink> {
     const muxer = new FormatMuxer(opts.outFile);
-    const video = opts.kind === "mp4" ? await this.mp4Video(opts, muxer) : await this.webmVideo(opts, muxer);
-    const audio = opts.withAudio ? await this.audioFor(opts, muxer) : undefined;
+    const video =
+      opts.kind === "mp4" ? await OutputSink.mp4Video(opts, muxer) : await OutputSink.webmVideo(opts, muxer);
+    const audio = opts.withAudio ? await OutputSink.audioFor(opts, muxer) : undefined;
     await muxer.open();
     return new OutputSink({ muxer, ...video, audio, opts });
   }
@@ -102,13 +107,17 @@ export class OutputSink implements AsyncDisposable {
 
   async encodeBGRA(bgraFrame: Frame): Promise<void> {
     const { hwVideo, muxer } = this._s;
-    if (hwVideo) return hwVideo.encode(bgraFrame, muxer);
+    if (hwVideo) {
+      return hwVideo.encode(bgraFrame, muxer);
+    }
     return this.swEncode(bgraFrame);
   }
 
   async encodeDecodedFrame(src: Frame): Promise<void> {
     const { hwVideo, muxer } = this._s;
-    if (hwVideo) return hwVideo.encode(src, muxer);
+    if (hwVideo) {
+      return hwVideo.encode(src, muxer);
+    }
     return this.swEncode(src);
   }
 
@@ -119,12 +128,17 @@ export class OutputSink implements AsyncDisposable {
   async flush(): Promise<void> {
     const { hwVideo, video, audio, muxer } = this._s;
     await audio?.flush(muxer);
-    if (hwVideo) await hwVideo.flush(muxer);
-    else await video!.flush(muxer);
+    if (hwVideo) {
+      await hwVideo.flush(muxer);
+    } else {
+      await video!.flush(muxer);
+    }
   }
 
   async [Symbol.asyncDispose](): Promise<void> {
-    if (this._disposed) return;
+    if (this._disposed) {
+      return;
+    }
     this._disposed = true;
     const { muxer, video, hwVideo, audio, codec, hw, ownsHw } = this._s;
     video?.[Symbol.dispose]();
@@ -132,7 +146,9 @@ export class OutputSink implements AsyncDisposable {
     audio?.[Symbol.dispose]();
     codec?.[Symbol.dispose]();
     await muxer[Symbol.asyncDispose]();
-    if (ownsHw) hw?.dispose();
+    if (ownsHw) {
+      hw?.dispose();
+    }
   }
 
   private async swEncode(src: Frame): Promise<void> {

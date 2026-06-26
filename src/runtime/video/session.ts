@@ -9,13 +9,13 @@ import {
   HAVE_NOTHING,
   MEDIA_ERR_DECODE,
   MEDIA_ERR_NETWORK,
+  type MediaErrorLike,
   NETWORK_EMPTY,
   NETWORK_IDLE,
   NETWORK_LOADING,
   NETWORK_NO_SOURCE,
   SCHEME,
   TAG,
-  type MediaErrorLike,
   type VideoMeta,
   type VideoState,
 } from "./types";
@@ -54,7 +54,7 @@ function failOpen(video: HTMLVideoElement, state: VideoState, error: MediaErrorL
   state.dead = true;
   state.error = error;
   state.networkState = NETWORK_NO_SOURCE;
-  console.warn(TAG, error.message + " src=" + (video.src || video.currentSrc));
+  console.warn(TAG, `${error.message} src=${video.src || video.currentSrc}`);
   fire(video, "error");
   return null;
 }
@@ -67,25 +67,27 @@ export async function openSession(hook: VideoHook, args: AttachArgs): Promise<Vi
   fire(video, "loadstart");
   let res: Response;
   try {
-    const q = native
-      ? ""
-      : "&w=" + state.cv.width + "&h=" + state.cv.height + "&fit=" + encodeURIComponent(state.objectFit);
-    res = await fetch(SCHEME + "open?src=" + encodeURIComponent(src) + "&fps=" + fps + q);
+    const q = native ? "" : `&w=${state.cv.width}&h=${state.cv.height}&fit=${encodeURIComponent(state.objectFit)}`;
+    res = await fetch(`${SCHEME}open?src=${encodeURIComponent(src)}&fps=${fps}${q}`);
   } catch (e) {
     return failOpen(video, state, {
       code: MEDIA_ERR_NETWORK,
-      message: "open failed: " + (e instanceof Error ? e.message : String(e)),
+      message: `open failed: ${e instanceof Error ? e.message : String(e)}`,
     });
   }
-  if (hook.sessions.get(video) !== state) return null;
+  if (hook.sessions.get(video) !== state) {
+    return null;
+  }
   if (!res.ok) {
     return failOpen(video, state, {
       code: MEDIA_ERR_DECODE,
-      message: "open " + res.status + ": " + (await res.text()),
+      message: `open ${res.status}: ${await res.text()}`,
     });
   }
   const meta = (await res.json()) as VideoMeta;
-  if (hook.sessions.get(video) !== state) return null;
+  if (hook.sessions.get(video) !== state) {
+    return null;
+  }
   state.meta = meta;
   state.currentTime = state.paused ? 0 : Math.max(0, (hook.currMs - birthMs) / 1000);
   Object.defineProperty(video, "videoWidth", { value: meta.width, configurable: true });

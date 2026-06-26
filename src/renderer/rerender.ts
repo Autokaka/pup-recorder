@@ -12,7 +12,9 @@ export async function withRerender<T>(signal: AbortSignal, action: () => Promise
     try {
       return await action();
     } catch (e) {
-      if (signal.aborted) throw e;
+      if (signal.aborted) {
+        throw e;
+      }
       lastErr = e;
       logger.warn(TAG, `retry ${attempt + 1}/${MAX_RENDER_ATTEMPTS}: ${(e as Error).message}`);
     }

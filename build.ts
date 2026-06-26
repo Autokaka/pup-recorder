@@ -8,8 +8,11 @@ import { dependencies } from "./package.json";
 const require = createRequire(import.meta.url);
 const tsPath = require.resolve("@typescript/native-preview/package.json");
 const tsgo = join(tsPath, "..", "bin", "tsgo.js");
+const biomePath = require.resolve("@biomejs/biome/package.json");
+const biome = join(biomePath, "..", "bin", "biome");
 
 await $`${tsgo}`;
+await $`${biome} check --write src`;
 await rm("dist", { recursive: true, force: true });
 
 const common: Options = {
@@ -38,8 +41,8 @@ await build({
   ...common,
   entry: [
     "src/app.ts", //
-    "src/audio_preload.ts",
-    "src/iframe_preload.ts",
+    "src/runtime/audio_preload.ts",
+    "src/runtime/iframe_preload.ts",
   ],
   format: "cjs",
   outDir: "dist",

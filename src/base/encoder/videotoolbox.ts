@@ -1,6 +1,6 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/04/12.
 
-import { type CodecContext, FFmpegError, Frame, type Packet, type Stream } from "node-av";
+import { type CodecContext, FFmpegError, type Frame, type Packet, type Stream } from "node-av";
 import type { HardwareContext } from "node-av/api";
 import { AV_PIX_FMT_BGRA, AVCOL_RANGE_JPEG } from "node-av/constants";
 import { drainPackets, makePacket, openVideoCtx } from "./misc";
@@ -31,7 +31,9 @@ export class VideoToolboxEncoder implements Disposable {
     const { width, height, fps, hw, bitrate, muxer } = opts;
 
     const codec = hw.getEncoderCodec("hevc");
-    if (!codec) throw new Error("hevc_videotoolbox encoder not found");
+    if (!codec) {
+      throw new Error("hevc_videotoolbox encoder not found");
+    }
 
     const ctx = await openVideoCtx(
       {

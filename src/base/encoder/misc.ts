@@ -1,11 +1,20 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/04/12.
 
-import { Codec, CodecContext, FFmpegError, Frame, HardwareFramesContext, Packet, Rational, type Stream } from "node-av";
+import {
+  type Codec,
+  CodecContext,
+  FFmpegError,
+  Frame,
+  type HardwareFramesContext,
+  Packet,
+  Rational,
+  type Stream,
+} from "node-av";
 import {
   AV_CODEC_FLAG_GLOBAL_HEADER,
+  type AVColorRange,
   AVERROR_EAGAIN,
   AVERROR_EOF,
-  type AVColorRange,
   type AVPixelFormat,
 } from "node-av/constants";
 import type { FormatMuxer } from "./muxer";
@@ -35,10 +44,18 @@ export async function openVideoCtx(opts: VideoCtxOptions, label: string): Promis
   ctx.gopSize = opts.fps * 2;
   ctx.bitRate = BigInt(opts.bitrate);
   ctx.setFlags(AV_CODEC_FLAG_GLOBAL_HEADER);
-  if (opts.codecTag) ctx.codecTag = opts.codecTag;
-  if (opts.colorRange !== undefined) ctx.colorRange = opts.colorRange;
-  if (opts.hwFramesCtx) ctx.hwFramesCtx = opts.hwFramesCtx;
-  for (const [k, v] of Object.entries(opts.options ?? {})) ctx.setOption(k, v);
+  if (opts.codecTag) {
+    ctx.codecTag = opts.codecTag;
+  }
+  if (opts.colorRange !== undefined) {
+    ctx.colorRange = opts.colorRange;
+  }
+  if (opts.hwFramesCtx) {
+    ctx.hwFramesCtx = opts.hwFramesCtx;
+  }
+  for (const [k, v] of Object.entries(opts.options ?? {})) {
+    ctx.setOption(k, v);
+  }
   FFmpegError.throwIfError(await ctx.open2(opts.codec, null), label);
   return ctx;
 }
@@ -62,10 +79,14 @@ export function makePacket(): Packet {
 export async function drainPackets(ctx: CodecContext, pkt: Packet, stream: Stream, muxer: FormatMuxer): Promise<void> {
   while (true) {
     const r = await ctx.receivePacket(pkt);
-    if (r === AVERROR_EAGAIN || r === AVERROR_EOF) break;
+    if (r === AVERROR_EAGAIN || r === AVERROR_EOF) {
+      break;
+    }
     FFmpegError.throwIfError(r, "receivePacket");
     pkt.streamIndex = stream.index;
-    if (pkt.duration === 0n) pkt.duration = 1n;
+    if (pkt.duration === 0n) {
+      pkt.duration = 1n;
+    }
     pkt.rescaleTs(ctx.timeBase, stream.timeBase);
     await muxer.writePacket(pkt);
     pkt.unref();

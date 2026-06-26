@@ -1,6 +1,6 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/03/21.
 
-import { CodecContext, Dictionary, FFmpegError, FormatContext, Packet } from "node-av";
+import { type CodecContext, Dictionary, FFmpegError, FormatContext, type Packet } from "node-av";
 
 export class FormatMuxer {
   private readonly _ctx: FormatContext;
@@ -15,12 +15,16 @@ export class FormatMuxer {
     const stream = this._ctx.newStream(null);
     stream.timeBase = codecCtx.timeBase;
     FFmpegError.throwIfError(stream.codecpar.fromContext(codecCtx), "codecpar.fromContext");
-    if (codecTag) stream.codecpar.codecTag = codecTag;
+    if (codecTag) {
+      stream.codecpar.codecTag = codecTag;
+    }
     return stream;
   }
 
   async open(): Promise<void> {
-    if (this._opened) return;
+    if (this._opened) {
+      return;
+    }
     FFmpegError.throwIfError(await this._ctx.openOutput(), "openOutput");
     // +faststart relocates moov to file front on writeTrailer so players can begin playback before full download.
     using opts = Dictionary.fromObject({ movflags: "+faststart" });
@@ -33,7 +37,9 @@ export class FormatMuxer {
   }
 
   async [Symbol.asyncDispose](): Promise<void> {
-    if (!this._opened) return;
+    if (!this._opened) {
+      return;
+    }
     this._opened = false;
     try {
       await this._ctx.writeTrailer();

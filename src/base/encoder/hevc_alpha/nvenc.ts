@@ -1,6 +1,6 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/04/12.
 
-import { Codec, type CodecContext, FFmpegError, Frame, type Packet, type Stream } from "node-av";
+import { Codec, type CodecContext, FFmpegError, type Frame, type Packet, type Stream } from "node-av";
 import {
   AV_PIX_FMT_BGRA,
   AV_PIX_FMT_YUV420P,
@@ -48,7 +48,9 @@ export class NvencDualLayerEncoder implements Disposable {
     const { width, height, fps, bitrate, muxer } = opts;
 
     const codec = Codec.findEncoderByName(FF_ENCODER_HEVC_NVENC);
-    if (!codec) throw new Error("hevc_nvenc encoder not found");
+    if (!codec) {
+      throw new Error("hevc_nvenc encoder not found");
+    }
 
     // tier=main matches Apple VideoToolbox; macOS Chrome requires Main tier for HEVC alpha decode.
     const nvencOpts = { preset: "p4", bf: "0", tier: "main" };
@@ -63,7 +65,9 @@ export class NvencDualLayerEncoder implements Disposable {
     try {
       alphaCtx = await openVideoCtx({ ...common, pixelFormat: AV_PIX_FMT_YUV420P }, "nvenc.alpha.open2");
 
-      if (!baseCtx.extraData || !alphaCtx.extraData) throw new Error("nvenc: codec extradata missing");
+      if (!baseCtx.extraData || !alphaCtx.extraData) {
+        throw new Error("nvenc: codec extradata missing");
+      }
       const hevcCfg = parseNvencHevcConfig(baseCtx.extraData);
 
       const stream = muxer.addStream(baseCtx, "hvc1");
@@ -131,7 +135,9 @@ export class NvencDualLayerEncoder implements Disposable {
     await this.sendEof(this._s.alphaCtx, "alpha");
     await this._mux.drain(muxer);
     const desync = this._mux.desyncAfterEof();
-    if (desync) throw new Error(`NVENC desync: ${desync}`);
+    if (desync) {
+      throw new Error(`NVENC desync: ${desync}`);
+    }
   }
 
   [Symbol.dispose](): void {

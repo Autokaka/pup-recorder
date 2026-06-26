@@ -8,7 +8,7 @@ export function checkHTML(source: string): void {
     return;
   }
 
-  const protocol = source.split(":")[0] + ":";
+  const protocol = `${source.split(":")[0]}:`;
   const message = SUPPORTED_PROTOCOLS.includes(protocol)
     ? `unsupported protocol: ${protocol}, expected ${SUPPORTED_PROTOCOLS.join(", ")}`
     : `invalid source format, expected ${SUPPORTED_PROTOCOLS.join(", ")}`;

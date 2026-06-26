@@ -1,6 +1,6 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/04/03.
 
-import { platform } from "os";
+import { platform } from "node:os";
 import { pupLogLevel } from "./constants";
 import { canIUseGPU } from "./hwaccel";
 

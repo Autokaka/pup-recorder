@@ -1,7 +1,7 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/09.
 
-import { BrowserWindow } from "electron";
-import { URL } from "url";
+import { URL } from "node:url";
+import type { BrowserWindow } from "electron";
 import { ConcurrencyLimiter } from "../base/limiter";
 import { logger } from "../base/logging";
 import { WaitableEvent } from "../base/waitable_event";
@@ -16,7 +16,11 @@ const map = new Map([
 const LOCAL_SCHEMES = ["pup:", "pup-frame:", "file:", "data:", "blob:", "chrome-extension:", "devtools:"];
 
 function isLocalScheme(url: string): boolean {
-  for (const s of LOCAL_SCHEMES) if (url.startsWith(s)) return true;
+  for (const s of LOCAL_SCHEMES) {
+    if (url.startsWith(s)) {
+      return true;
+    }
+  }
   return false;
 }
 
@@ -78,7 +82,9 @@ export function setInterceptor({ source, window, useInnerProxy, cancelMedia }: N
       } else {
         callback({ cancel: false, redirectURL: proxied });
       }
-      if (isLocalScheme(url)) return Promise.resolve();
+      if (isLocalScheme(url)) {
+        return Promise.resolve();
+      }
       return wait(key, () => {
         logger.warn(TAG, `maybe timeout:`, {
           key,

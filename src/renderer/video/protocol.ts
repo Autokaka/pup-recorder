@@ -18,7 +18,9 @@ const CORS_HEADERS: Record<string, string> = {
 // Must be called after app is ready.
 export function setupFrameProtocol(): void {
   protocol.handle(SCHEME, async (req) => {
-    if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
+    if (req.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: CORS_HEADERS });
+    }
     const url = new URL(req.url);
     logger.debug(TAG, `${req.method} ${url.hostname}${url.search}`);
     try {
@@ -56,7 +58,9 @@ function jsonOk(meta: VideoMeta): Response {
 
 // Raw RGBA pixels; the page wraps them in ImageData using meta.width/height it got from `open`.
 function rgbaOk(bytes: Buffer): Response {
-  if (bytes.byteLength === 0) return new Response(null, { status: 410, headers: CORS_HEADERS });
+  if (bytes.byteLength === 0) {
+    return new Response(null, { status: 410, headers: CORS_HEADERS });
+  }
   const copy = new Uint8Array(bytes.byteLength);
   copy.set(bytes);
   return new Response(copy.buffer as ArrayBuffer, {

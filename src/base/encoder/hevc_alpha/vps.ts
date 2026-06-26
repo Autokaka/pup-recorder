@@ -15,13 +15,17 @@ function extractPTL(vpsData: Buffer): ParsedPTL | undefined {
   br.read(16); // NAL header
   br.read(4); // vps_id
   br.read(2); // base_layer_internal + available
-  if (br.read(6) > 0) return undefined; // already multi-layer
+  if (br.read(6) > 0) {
+    return undefined; // already multi-layer
+  }
   const maxSubLayersMinus1 = br.read(3);
   br.read(1 + 16); // temporal_nesting + reserved
 
   const ptlStart = br.pos;
   br.read(96); // general PTL (profile_space + tier + idc + compat + constraints + level)
-  if (maxSubLayersMinus1 > 0) br.read(maxSubLayersMinus1 * 2 + (8 - maxSubLayersMinus1) * 2);
+  if (maxSubLayersMinus1 > 0) {
+    br.read(maxSubLayersMinus1 * 2 + (8 - maxSubLayersMinus1) * 2);
+  }
   return { ptlStart, ptlEnd: br.pos, ptlBits: br.bits, maxSubLayersMinus1 };
 }
 
@@ -59,12 +63,18 @@ function writeVPSExtension(bw: BitWriter, ptl: ParsedPTL, width: number, height:
   // Extension PTL: level_idc only (profilePresentFlag=0)
   bw.copy(ptl.ptlBits, ptl.ptlEnd - 8, 8);
   if (ptl.maxSubLayersMinus1 > 0) {
-    for (let i = 0; i < ptl.maxSubLayersMinus1; i++) bw.w(0, 2);
-    for (let i = ptl.maxSubLayersMinus1; i < 8; i++) bw.w(0, 2);
+    for (let i = 0; i < ptl.maxSubLayersMinus1; i++) {
+      bw.w(0, 2);
+    }
+    for (let i = ptl.maxSubLayersMinus1; i < 8; i++) {
+      bw.w(0, 2);
+    }
   }
 
   bw.flag(0); // splitting_flag
-  for (let i = 0; i < 16; i++) bw.flag(i === 2 || i === 3); // scalability: spatial + aux
+  for (let i = 0; i < 16; i++) {
+    bw.flag(i === 2 || i === 3); // scalability: spatial + aux
+  }
   bw.w(0, 3); // dimension_id_len[0] = 1
   bw.w(0, 3); // dimension_id_len[1] = 1
   bw.flag(1); // nuh_layer_id_present
@@ -123,7 +133,9 @@ function writeVPSExtension(bw: BitWriter, ptl: ParsedPTL, width: number, height:
  */
 export function buildAlphaVPS(vpsData: Buffer, width: number, height: number): Buffer {
   const ptl = extractPTL(vpsData);
-  if (!ptl) return vpsData;
+  if (!ptl) {
+    return vpsData;
+  }
 
   const bw = new BitWriter();
   writeBaseVPS(bw, ptl);

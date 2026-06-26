@@ -6,9 +6,9 @@ import { packBits } from "./bit";
 import {
   ANNEX_B_START_CODE,
   encodeNalHeader,
+  NAL_PPS,
   NAL_SEI_PREFIX,
   NAL_SPS,
-  NAL_PPS,
   NAL_VPS,
   type NalUnit,
   rewriteNalLayerId,
@@ -22,18 +22,24 @@ import { buildAlphaVPS } from "./vps";
 export function extractAlphaToYuv420pBuffer(bgraFrame: Frame, buf: Buffer): void {
   const src = bgraFrame.data?.[0];
   const srcLs = bgraFrame.linesize?.[0];
-  if (!src || !srcLs) throw new Error("extractAlpha: missing BGRA data");
+  if (!src || !srcLs) {
+    throw new Error("extractAlpha: missing BGRA data");
+  }
   const w = bgraFrame.width;
   const h = bgraFrame.height;
   const ySize = w * h;
   if (src.byteOffset % 4 === 0 && srcLs === w * 4) {
     const src32 = new Uint32Array(src.buffer, src.byteOffset, ySize);
-    for (let i = 0; i < ySize; i++) buf[i] = src32[i]! >>> 24;
+    for (let i = 0; i < ySize; i++) {
+      buf[i] = src32[i]! >>> 24;
+    }
   } else {
     for (let y = 0; y < h; y++) {
       const rowBase = y * srcLs + 3;
       const dstBase = y * w;
-      for (let x = 0; x < w; x++) buf[dstBase + x] = src[rowBase + x * 4]!;
+      for (let x = 0; x < w; x++) {
+        buf[dstBase + x] = src[rowBase + x * 4]!;
+      }
     }
   }
 }
@@ -47,8 +53,12 @@ export interface UnifiedExtradataOptions {
 
 // Apple HEVC Alpha Profile: alpha SPS sps_seq_parameter_set_id=1, alpha PPS pic+seq id=1.
 function rewriteAlphaParamSet(type: number, data: Buffer): Buffer {
-  if (type === NAL_SPS) return rewriteAlphaSps(data);
-  if (type === NAL_PPS) return rewriteAlphaPps(data);
+  if (type === NAL_SPS) {
+    return rewriteAlphaSps(data);
+  }
+  if (type === NAL_PPS) {
+    return rewriteAlphaPps(data);
+  }
   return data;
 }
 
@@ -59,7 +69,9 @@ export function buildUnifiedExtradata(opts: UnifiedExtradataOptions): Buffer {
 
   const alphaByType = new Map<number, NalUnit[]>();
   for (const nal of alphaNals) {
-    if (nal.type === NAL_VPS) continue;
+    if (nal.type === NAL_VPS) {
+      continue;
+    }
     const arr = alphaByType.get(nal.type) ?? [];
     arr.push(nal);
     alphaByType.set(nal.type, arr);
@@ -90,7 +102,9 @@ export function buildAlphaChannelInfoSEI(): Buffer {
 
   const bits: number[] = [];
   const writeBits = (val: number, n: number) => {
-    for (let i = n - 1; i >= 0; i--) bits.push((val >> i) & 1);
+    for (let i = n - 1; i >= 0; i--) {
+      bits.push((val >> i) & 1);
+    }
   };
 
   writeBits(0, 1); // alpha_channel_cancel_flag
@@ -101,7 +115,9 @@ export function buildAlphaChannelInfoSEI(): Buffer {
   writeBits(0, 1); // alpha_channel_incr_flag
   writeBits(0, 1); // alpha_channel_clip_flag
   writeBits(1, 1); // byte alignment
-  while (bits.length % 8 !== 0) writeBits(0, 1);
+  while (bits.length % 8 !== 0) {
+    writeBits(0, 1);
+  }
 
   return Buffer.concat([
     ANNEX_B_START_CODE,

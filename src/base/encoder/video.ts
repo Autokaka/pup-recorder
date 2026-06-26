@@ -1,7 +1,7 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/03/21.
 
-import { Codec, type CodecContext, FFmpegError, Frame, type Packet, type Stream } from "node-av";
-import { type AVPixelFormat, type FFVideoEncoder } from "node-av/constants";
+import { Codec, type CodecContext, FFmpegError, type Frame, type Packet, type Stream } from "node-av";
+import type { AVPixelFormat, FFVideoEncoder } from "node-av/constants";
 import { drainPackets, makePacket, openVideoCtx } from "./misc";
 import type { FormatMuxer } from "./muxer";
 
@@ -33,7 +33,9 @@ export class VideoEncoder implements Disposable {
     const { codecName, codecTag, codecOpts, muxer, ...rest } = opts;
 
     const codec = Codec.findEncoderByName(codecName);
-    if (!codec) throw new Error(`Video encoder not found: ${codecName}`);
+    if (!codec) {
+      throw new Error(`Video encoder not found: ${codecName}`);
+    }
 
     const ctx = await openVideoCtx({ codec, ...rest, codecTag, options: codecOpts }, "videoCtx.open2");
     const stream = muxer.addStream(ctx, codecTag);

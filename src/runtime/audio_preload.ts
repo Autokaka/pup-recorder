@@ -1,7 +1,7 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/04/28.
 
 import { ipcRenderer } from "electron";
-import { AUDIO_CHUNK_CHANNEL, AUDIO_META_CHANNEL } from "./renderer/audio";
+import { AUDIO_CHUNK_CHANNEL, AUDIO_META_CHANNEL } from "../renderer/audio";
 
 declare global {
   interface Window {
@@ -19,8 +19,8 @@ declare global {
 if (!window.__pup_audio_capturing__) {
   window.__pup_audio_capturing__ = true;
 
-  const OrigAC = window.AudioContext || window.webkitAudioContext;
-  if (OrigAC) {
+  const ORIG_AC = window.AudioContext || window.webkitAudioContext;
+  if (ORIG_AC) {
     const capturedContexts = new WeakSet<AudioContext>();
     const sourcedElements = new WeakSet<HTMLMediaElement>();
 
@@ -28,16 +28,18 @@ if (!window.__pup_audio_capturing__) {
     let masterProcessor: ScriptProcessorNode | undefined;
 
     const ensureMaster = (): { ctx: AudioContext; processor: ScriptProcessorNode } => {
-      if (masterCtx && masterProcessor) return { ctx: masterCtx, processor: masterProcessor };
-      const ctx = new OrigAC();
+      if (masterCtx && masterProcessor) {
+        return { ctx: masterCtx, processor: masterProcessor };
+      }
+      const ctx = new ORIG_AC();
       const processor = ctx.createScriptProcessor(4096, 2, 2);
       processor.onaudioprocess = (e: AudioProcessingEvent) => {
         const L = e.inputBuffer.getChannelData(0);
         const R = e.inputBuffer.getChannelData(1);
         const out = new Float32Array(L.length * 2);
         for (let i = 0; i < L.length; i++) {
-          out[i * 2] = L[i]!;
-          out[i * 2 + 1] = R[i]!;
+          out[i * 2] = L[i] ?? 0;
+          out[i * 2 + 1] = R[i] ?? 0;
         }
         ipcRenderer.send(AUDIO_CHUNK_CHANNEL, Buffer.from(out.buffer));
       };
@@ -71,7 +73,7 @@ if (!window.__pup_audio_capturing__) {
     } as typeof AudioNode.prototype.connect;
 
     function PatchedAC(this: AudioContext, ...args: unknown[]) {
-      const ctx = new (OrigAC as { new (...a: unknown[]): AudioContext })(...args);
+      const ctx = new (ORIG_AC as { new (...a: unknown[]): AudioContext })(...args);
       if (!capturedContexts.has(ctx)) {
         capturedContexts.add(ctx);
         const master = ensureMaster();
@@ -81,8 +83,8 @@ if (!window.__pup_audio_capturing__) {
       }
       return ctx;
     }
-    PatchedAC.prototype = OrigAC.prototype;
-    Object.setPrototypeOf(PatchedAC, OrigAC);
+    PatchedAC.prototype = ORIG_AC.prototype;
+    Object.setPrototypeOf(PatchedAC, ORIG_AC);
     window.AudioContext = PatchedAC as unknown as typeof AudioContext;
     if ("webkitAudioContext" in window) {
       window.webkitAudioContext = PatchedAC as unknown as typeof AudioContext;
@@ -92,11 +94,11 @@ if (!window.__pup_audio_capturing__) {
     HTMLMediaElement.prototype.play = function () {
       if (!this.__pup_captured__) {
         this.__pup_captured__ = true;
-        const el = this;
+
         Promise.resolve().then(() => {
-          if (!sourcedElements.has(el)) {
+          if (!sourcedElements.has(this)) {
             const ctx = new (PatchedAC as unknown as typeof AudioContext)();
-            ctx.createMediaElementSource(el).connect(ctx.destination);
+            ctx.createMediaElementSource(this).connect(ctx.destination);
           }
         });
       }

@@ -1,6 +1,6 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/04/01.
 
-import { FFmpegError, Frame } from "node-av";
+import { FFmpegError, type Frame } from "node-av";
 import { HardwareContext } from "node-av/api";
 import { AV_PIX_FMT_BGRA, FF_HWDEVICE_TYPE_CUDA, FF_HWDEVICE_TYPE_VIDEOTOOLBOX } from "node-av/constants";
 
@@ -41,7 +41,9 @@ export class EncoderPipeline {
       .split(",")
       .map((p) => p.trim())
       .filter(Boolean);
-    if (outFiles.length === 0) throw new Error("outFile must contain at least one path");
+    if (outFiles.length === 0) {
+      throw new Error("outFile must contain at least one path");
+    }
 
     const kinds = outFiles.map((p) => OutputSink.kindFromPath(p));
     const needsMp4Hw = !disableHwCodec && kinds.includes("mp4");
@@ -68,7 +70,9 @@ export class EncoderPipeline {
   }
 
   setupAudio(sampleRate: number): void {
-    for (const sink of this._s.sinks) sink.setInputRate(sampleRate);
+    for (const sink of this._s.sinks) {
+      sink.setInputRate(sampleRate);
+    }
   }
 
   async encodeBGRA(input: Buffer): Promise<void> {
@@ -83,20 +87,26 @@ export class EncoderPipeline {
       const { width, height } = this._s.opts;
       this._s.pngCodec ??= await CodecState.create(width, height);
       const src = await this._s.pngCodec.decodePNG(pngData);
-      for (const sink of this._s.sinks) await sink.encodeDecodedFrame(src);
+      for (const sink of this._s.sinks) {
+        await sink.encodeDecodedFrame(src);
+      }
     });
   }
 
   async encodeAudio(pcm: Buffer): Promise<void> {
     await this._s.limiter.schedule(async () => {
-      for (const sink of this._s.sinks) await sink.encodeAudio(pcm);
+      for (const sink of this._s.sinks) {
+        await sink.encodeAudio(pcm);
+      }
     });
   }
 
   async finish(): Promise<string[]> {
     try {
       await this._s.limiter.drain();
-      for (const sink of this._s.sinks) await sink.flush();
+      for (const sink of this._s.sinks) {
+        await sink.flush();
+      }
     } finally {
       await this.free();
     }
@@ -104,15 +114,21 @@ export class EncoderPipeline {
   }
 
   async [Symbol.asyncDispose](): Promise<void> {
-    if (this._disposed) return;
+    if (this._disposed) {
+      return;
+    }
     await this._s.limiter.drain();
     await this.free();
   }
 
   private async free(): Promise<void> {
-    if (this._disposed) return;
+    if (this._disposed) {
+      return;
+    }
     this._disposed = true;
-    for (const sink of this._s.sinks) await sink[Symbol.asyncDispose]();
+    for (const sink of this._s.sinks) {
+      await sink[Symbol.asyncDispose]();
+    }
     this._s.pngCodec?.[Symbol.dispose]();
     this._s.sharedHw?.dispose();
   }

@@ -1,6 +1,6 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/03/02.
 
-import { type WebContents } from "electron";
+import type { WebContents } from "electron";
 import type { EncoderPipeline } from "../base/encoder/pipeline";
 
 export const AUDIO_META_CHANNEL = "audio-meta";
@@ -21,7 +21,9 @@ export function attachAudioListeners({ wc, encoder, getVideoTimeMs, onError }: A
     const startMs = getVideoTimeMs();
     encoder.setupAudio(sampleRate);
     const silenceSamples = Math.ceil((startMs * sampleRate) / 1000);
-    if (silenceSamples <= 0) return;
+    if (silenceSamples <= 0) {
+      return;
+    }
     try {
       await encoder.encodeAudio(Buffer.alloc(silenceSamples * 2 * 4));
     } catch (error) {

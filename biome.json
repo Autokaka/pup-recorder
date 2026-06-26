@@ -1,0 +1,29 @@
+{
+  "$schema": "https://biomejs.dev/schemas/latest/schema.json",
+  "root": false,
+  "formatter": { "indentStyle": "space", "indentWidth": 2, "lineWidth": 120 },
+  "javascript": { "formatter": { "quoteStyle": "double", "semicolons": "always", "trailingCommas": "all" } },
+  "linter": {
+    "rules": {
+      "complexity": { "useLiteralKeys": "off" },
+      "style": {
+        "noNonNullAssertion": "off",
+        "useBlockStatements": "error",
+        "useNamingConvention": {
+          "level": "error",
+          "options": {
+            "strictCase": false,
+            "conventions": [
+              { "selector": { "kind": "classProperty", "modifiers": ["private"] }, "match": "_(.+)" },
+              { "selector": { "kind": "typeProperty" }, "match": "__.+|[a-z][A-Za-z0-9]*|[a-z][a-z0-9]*(?:_[a-z0-9]+)*|[A-Z][A-Za-z0-9]*|[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*" },
+              { "selector": { "kind": "objectLiteralProperty" }, "formats": ["camelCase", "snake_case", "PascalCase", "CONSTANT_CASE"] },
+              { "selector": { "kind": "variable" }, "formats": ["camelCase", "snake_case", "PascalCase", "CONSTANT_CASE"] },
+              { "selector": { "kind": "enumMember" }, "formats": ["PascalCase", "CONSTANT_CASE"] }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "files": { "includes": ["src/**/*.ts"] }
+}

@@ -1,26 +1,26 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/04/01.
 
-import type { ChildProcess } from "child_process";
-import { EventEmitter } from "events";
+import type { ChildProcess } from "node:child_process";
+import { EventEmitter } from "node:events";
 
-export const enum IpcMsgType {
+export enum IpcMsgType {
   // child → parent
-  CONSOLE = "console",
-  PROGRESS = "progress",
-  DONE = "done",
-  ERROR = "error",
+  Console = "console",
+  Progress = "progress",
+  Done = "done",
+  Error = "error",
   // parent → child
-  CANCEL = "cancel",
+  Cancel = "cancel",
 }
 
 export interface ConsoleMsg {
-  type: IpcMsgType.CONSOLE;
+  type: IpcMsgType.Console;
   level: string;
   message: string;
 }
 
 export interface CancelMsg {
-  type: IpcMsgType.CANCEL;
+  type: IpcMsgType.Cancel;
   reason?: string;
 }
 
@@ -31,17 +31,17 @@ export interface IpcDonePayload {
 }
 
 export interface ProgressMsg {
-  type: IpcMsgType.PROGRESS;
+  type: IpcMsgType.Progress;
   value: number;
 }
 
 export interface DoneMsg {
-  type: IpcMsgType.DONE;
+  type: IpcMsgType.Done;
   payload: IpcDonePayload;
 }
 
 export interface ErrorMsg {
-  type: IpcMsgType.ERROR;
+  type: IpcMsgType.Error;
   error: string;
 }
 
@@ -57,24 +57,26 @@ export interface IpcEvents {
 
 export class IpcWriter {
   writeConsole(level: string, message: string) {
-    this.send({ type: IpcMsgType.CONSOLE, level, message });
+    this.send({ type: IpcMsgType.Console, level, message });
   }
 
   writeProgress(value: number): void {
-    this.send({ type: IpcMsgType.PROGRESS, value });
+    this.send({ type: IpcMsgType.Progress, value });
   }
 
   writeError(error: string): Promise<void> {
-    return this.send({ type: IpcMsgType.ERROR, error });
+    return this.send({ type: IpcMsgType.Error, error });
   }
 
   writeDone(payload: IpcDonePayload): Promise<void> {
-    return this.send({ type: IpcMsgType.DONE, payload });
+    return this.send({ type: IpcMsgType.Done, payload });
   }
 
   private send(msg: IpcMsg): Promise<void> {
     return new Promise((resolve) => {
-      if (!process.send) return resolve();
+      if (!process.send) {
+        return resolve();
+      }
       process.send(msg, () => resolve());
     });
   }
@@ -86,19 +88,19 @@ export class IpcReader extends EventEmitter<IpcEvents> {
     child.on("message", (raw) => {
       const msg = raw as IpcMsg;
       switch (msg.type) {
-        case IpcMsgType.CONSOLE: {
+        case IpcMsgType.Console: {
           this.emit("console", msg.level, msg.message);
           break;
         }
-        case IpcMsgType.PROGRESS: {
+        case IpcMsgType.Progress: {
           this.emit("progress", msg.value);
           break;
         }
-        case IpcMsgType.DONE: {
+        case IpcMsgType.Done: {
           this.emit("done", msg.payload);
           break;
         }
-        case IpcMsgType.ERROR: {
+        case IpcMsgType.Error: {
           this.emit("error", new Error(msg.error));
           break;
         }

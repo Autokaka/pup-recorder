@@ -1,7 +1,8 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/05/18.
 
-import { Demuxer } from "node-av/api";
+import { Decoder } from "node-av/api";
 import { AVMEDIA_TYPE_VIDEO } from "node-av/constants";
+import { openInput } from "./open";
 
 const PROBE_TIMEOUT_MS = 5_000;
 
@@ -9,13 +10,34 @@ export interface ProbeResult {
   width: number;
   height: number;
   duration: number;
+  /** PTS (s) of the first decodable frame; a corrupt/empty leading run is held on it, like Chrome. */
+  leadGap: number;
 }
 
 export async function probe(src: string): Promise<ProbeResult> {
   const signal = AbortSignal.timeout(PROBE_TIMEOUT_MS);
-  await using d = await Demuxer.open(src, { signal });
+  await using d = await openInput(src, signal);
   const stream = d.streams?.find((s) => s.codecpar.codecType === AVMEDIA_TYPE_VIDEO);
-  if (!stream) throw new Error(`probe: no video stream in ${src}`);
+  if (!stream) {
+    throw new Error("probe: no video stream");
+  }
   const duration = d.duration > 0 ? d.duration : 0;
-  return { width: stream.codecpar.width, height: stream.codecpar.height, duration };
+  const tb = stream.timeBase.num / stream.timeBase.den;
+  using dec = await Decoder.create(stream, { threadCount: 1, signal });
+  let leadGap = 0;
+  // First clean frame's PTS = where content begins; skip corrupt frames like a browser.
+  outer: for await (using pkt of d.packets(stream.index)) {
+    try {
+      for await (using frame of dec.frames(pkt)) {
+        if (frame?.decodeErrorFlags !== 0) {
+          continue;
+        }
+        leadGap = Math.max(0, Number(frame.pts) * tb);
+        break outer;
+      }
+    } catch {
+      // corrupt packet — skip to the next
+    }
+  }
+  return { width: stream.codecpar.width, height: stream.codecpar.height, duration, leadGap };
 }

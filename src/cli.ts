@@ -10,9 +10,18 @@ makeCLI({
   run: async (source, options) => {
     const ctrl = new AbortController();
     let exitCode = 0;
-    process.once("SIGTERM", () => ((exitCode = 143), ctrl.abort(new Error("SIGTERM"))));
-    process.once("SIGINT", () => ((exitCode = 130), ctrl.abort(new Error("SIGINT"))));
-    process.once("exit", (c) => ((exitCode = c), ctrl.abort(new Error("SIGKILL"))));
+    process.once("SIGTERM", () => {
+      exitCode = 143;
+      ctrl.abort(new Error("SIGTERM"));
+    });
+    process.once("SIGINT", () => {
+      exitCode = 130;
+      ctrl.abort(new Error("SIGINT"));
+    });
+    process.once("exit", (c) => {
+      exitCode = c;
+      ctrl.abort(new Error("SIGKILL"));
+    });
 
     const total = Math.ceil(options.fps * options.duration);
     const bar = new ProgressBar({ total, out: process.stderr, showCount: true });

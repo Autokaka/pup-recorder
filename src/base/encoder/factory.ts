@@ -10,8 +10,8 @@ import {
 
 import { logger } from "../logging";
 import { CodecState } from "./codec";
-import type { FormatMuxer } from "./muxer";
 import { NvencDualLayerEncoder } from "./hevc_alpha/nvenc";
+import type { FormatMuxer } from "./muxer";
 import { VideoEncoder } from "./video";
 import { VideoToolboxEncoder } from "./videotoolbox";
 
@@ -54,7 +54,9 @@ export async function createHwVideoEncoder(opts: HwVideoFactoryOptions, muxer: F
     }
   } catch (e) {
     logger.warn(TAG, "Hardware codec session limits reached, use software encoder", e);
-    if (ownsHw) hw?.dispose();
+    if (ownsHw) {
+      hw?.dispose();
+    }
   }
 
   logger.debug(TAG, "using software libx265 HEVC alpha encoder");

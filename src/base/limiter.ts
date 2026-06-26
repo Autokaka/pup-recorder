@@ -63,7 +63,9 @@ export class ConcurrencyLimiter {
   }
 
   async drain(): Promise<void> {
-    if (this._active === 0 && this.pending === 0) return;
+    if (this._active === 0 && this.pending === 0) {
+      return;
+    }
     return new Promise((r) => (this._resolve = r));
   }
 

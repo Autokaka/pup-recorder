@@ -1,6 +1,6 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/01/30.
 
-import { spawn, type ChildProcess, type SpawnOptions } from "child_process";
+import { type ChildProcess, type SpawnOptions, spawn } from "node:child_process";
 import treeKill from "tree-kill";
 import { logger } from "./logging";
 
@@ -30,7 +30,9 @@ export interface ProcessHandle {
 export function exec(cmd: string, options?: SpawnOptions): ProcessHandle {
   const parts = cmd.split(" ").filter((s) => s.length);
   const [command, ...args] = parts;
-  if (!command) throw new Error("empty command");
+  if (!command) {
+    throw new Error("empty command");
+  }
   const proc = spawn(command, args, {
     stdio: "inherit",
     ...options,
@@ -43,11 +45,16 @@ export function exec(cmd: string, options?: SpawnOptions): ProcessHandle {
       return killed;
     },
     kill() {
-      if (killed) return;
+      if (killed) {
+        return;
+      }
       killed = true;
       const pid = proc.pid;
-      if (pid) treeKill(pid, "SIGKILL");
-      else proc.kill("SIGKILL");
+      if (pid) {
+        treeKill(pid, "SIGKILL");
+      } else {
+        proc.kill("SIGKILL");
+      }
     },
   };
 }

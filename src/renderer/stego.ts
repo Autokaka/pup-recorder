@@ -1,6 +1,6 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/09.
 
-import { type Debugger, type Size, type WebContents } from "electron";
+import type { Debugger, Size, WebContents } from "electron";
 import { advanceVirtualTime, evalIn } from "../base/cdp";
 import { withTimeout } from "../base/timing";
 

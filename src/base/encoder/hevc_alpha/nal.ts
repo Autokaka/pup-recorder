@@ -58,7 +58,9 @@ export function splitNalUnits(bitstream: Buffer): NalUnit[] {
     }
 
     const nalStart = i + scLen;
-    if (nalStart + NAL_HEADER_SIZE > bitstream.length) break;
+    if (nalStart + NAL_HEADER_SIZE > bitstream.length) {
+      break;
+    }
 
     let nalEnd = bitstream.length;
     for (let j = nalStart + NAL_HEADER_SIZE; j < bitstream.length - 2; j++) {
@@ -124,8 +126,11 @@ export function addEmulationPrevention(nal: Buffer): Buffer {
       out.push(3);
       zeros = 0;
     }
-    if (nal[i] === 0) zeros++;
-    else zeros = 0;
+    if (nal[i] === 0) {
+      zeros++;
+    } else {
+      zeros = 0;
+    }
     out.push(nal[i]!);
   }
   return Buffer.from(out);

@@ -1,18 +1,11 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/03/13.
 
-import {
-  type BrowserWindow,
-  type Event,
-  type NativeImage,
-  type Rectangle,
-  type Size,
-  type WebContentsPaintEventParams,
-} from "electron";
+import type { BrowserWindow, Event, NativeImage, Rectangle, Size, WebContentsPaintEventParams } from "electron";
 import { pauseVirtualTime, resizeDrawable } from "../base/cdp";
 import { EncoderPipeline } from "../base/encoder/pipeline";
 import { sizeEquals } from "../base/image";
 import { logger } from "../base/logging";
-import { type IpcDonePayload } from "./ipc";
+import type { IpcDonePayload } from "./ipc";
 import type { IPCRenderOptions } from "./schema";
 import { decodeStego, swapBuffer } from "./stego";
 import { tick } from "./tick";
@@ -30,7 +23,6 @@ interface PaintOptions {
 
 async function paint({ source, win, size, ms }: PaintOptions): Promise<Buffer> {
   let lastTs: number | undefined;
-  let laggy = 0;
   let stuck = 0;
   let interval: NodeJS.Timeout | undefined;
   const cdp = win.webContents.debugger;
@@ -57,7 +49,6 @@ async function paint({ source, win, size, ms }: PaintOptions): Promise<Buffer> {
         const ts = decodeStego(bitmap, imageSize);
         if (ts === undefined || Math.abs(ts - ms) > 1) {
           lastTs = ts;
-          laggy++;
           return;
         }
         win.webContents.off("paint", handler);
@@ -76,7 +67,9 @@ async function paint({ source, win, size, ms }: PaintOptions): Promise<Buffer> {
 
 export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> {
   const { source, fps, width, height, duration, withAudio, outFile, disableHwCodec, signal, onProgress } = options;
-  if (withAudio) logger.warn(TAG, "audio will be ignored on this mode");
+  if (withAudio) {
+    logger.warn(TAG, "audio will be ignored on this mode");
+  }
 
   const tInit = performance.now();
   const winP = loadWindow({ source, renderer: options, signal });
@@ -102,14 +95,15 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
       signal?.throwIfAborted();
       const frameMs = (frame + 1) * frameInterval;
 
-      await tick(iframe, frameMs);
+      await tick({ frame: iframe, timestampMs: frameMs, signal });
       await swapBuffer(win.webContents, frameMs, frameInterval);
       const bitmap = await paint({ source, win, size: { width, height }, ms: frameMs });
-      // Kick off encode without awaiting; pipeline limiter serializes internally.
-      // Encode runs concurrent with next frame's CDP/paint setup.
+      // Encode without awaiting (limiter serializes), so it overlaps the next frame's CDP/paint setup.
       pipeline.encodeBGRA(bitmap).catch((e) => (encodeError ??= e));
       written++;
-      if (encodeError) throw encodeError;
+      if (encodeError) {
+        throw encodeError;
+      }
 
       const newProgress = Math.floor((written / total) * 100);
       if (newProgress !== progress) {
@@ -118,12 +112,14 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
       }
     }
   } finally {
-    await frameServer.closeAll();
+    frameServer.closeAll();
     await disposeWindow(win);
     await pipeline.finish();
   }
 
-  if (encodeError) throw encodeError;
+  if (encodeError) {
+    throw encodeError;
+  }
   if (written === 0) {
     throw new Error("no frames captured");
   } else {

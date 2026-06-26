@@ -25,30 +25,38 @@ const MIRROR_PROPS = [
 ] as const;
 
 function cssCase(s: string): string {
-  return s.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase());
+  return s.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
 }
 
 // Track the overlay canvas to the video element's live box (position, size×dpr, mirrored visual styles).
 export function syncOverlay(video: HTMLVideoElement, cv: HTMLCanvasElement): void {
   const cs = window.getComputedStyle(video);
-  const offsetParent = (video.offsetParent as HTMLElement | null) || document.body;
-  const vr = video.getBoundingClientRect();
-  const pr = offsetParent.getBoundingClientRect();
   cv.style.position = "absolute";
-  cv.style.left = vr.left - pr.left + "px";
-  cv.style.top = vr.top - pr.top + "px";
-  cv.style.width = vr.width + "px";
-  cv.style.height = vr.height + "px";
+  // offset* are pre-transform coords from offsetParent's padding edge = the abs containing-block origin; map direct.
+  cv.style.left = `${video.offsetLeft}px`;
+  cv.style.top = `${video.offsetTop}px`;
+  cv.style.width = `${video.offsetWidth}px`;
+  cv.style.height = `${video.offsetHeight}px`;
   for (const p of MIRROR_PROPS) {
-    if (p === "position" || p === "left" || p === "top" || p === "right" || p === "bottom") continue;
+    if (p === "position" || p === "left" || p === "top" || p === "right" || p === "bottom") {
+      continue;
+    }
     const v = cs.getPropertyValue(cssCase(p));
-    if (v) cv.style.setProperty(cssCase(p), v);
+    if (v) {
+      cv.style.setProperty(cssCase(p), v);
+    }
   }
+  // Backing store at on-screen pixel size (post-transform) so decode resolution matches displayed pixels.
+  const vr = video.getBoundingClientRect();
   const dpr = window.devicePixelRatio || 1;
   const w = Math.max(1, Math.round(vr.width * dpr));
   const h = Math.max(1, Math.round(vr.height * dpr));
-  if (cv.width !== w) cv.width = w;
-  if (cv.height !== h) cv.height = h;
+  if (cv.width !== w) {
+    cv.width = w;
+  }
+  if (cv.height !== h) {
+    cv.height = h;
+  }
 }
 
 export function setupCanvas(video: HTMLVideoElement, snap: OffscreenCanvas | undefined): HTMLCanvasElement {
@@ -70,7 +78,9 @@ export function setupCanvas(video: HTMLVideoElement, snap: OffscreenCanvas | und
 
 // Draw rect for the bitmap within the canvas per objectFit.
 export function fitRect(srcW: number, srcH: number, dstW: number, dstH: number, fit: string): Vec4 {
-  if (fit === "none") return [(dstW - srcW) / 2, (dstH - srcH) / 2, srcW, srcH];
+  if (fit === "none") {
+    return [(dstW - srcW) / 2, (dstH - srcH) / 2, srcW, srcH];
+  }
   if (fit === "contain" || fit === "scale-down") {
     const sc = Math.min(dstW / srcW, dstH / srcH);
     const k = fit === "scale-down" ? Math.min(1, sc) : sc;

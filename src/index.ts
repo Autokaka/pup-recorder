@@ -3,13 +3,13 @@
 export { barLogger, ProgressBar } from "./base/cli_ui";
 export { penv } from "./base/env";
 export { Lazy } from "./base/lazy";
-export { logger, Logger, type LoggerLike } from "./base/logging";
+export { Logger, type LoggerLike, logger } from "./base/logging";
 export { noerr } from "./base/noerr";
 export { parseNumber } from "./base/parser";
-export { useRetry, type RetryOptions } from "./base/retry";
+export { type RetryOptions, useRetry } from "./base/retry";
 export { periodical, sleep } from "./base/timing";
 
-export { pup, type PupOptions, type PupResult } from "./pup";
+export { type PupOptions, type PupResult, pup } from "./pup";
 export {
   DEFAULT_DURATION,
   DEFAULT_FPS,

@@ -4,7 +4,9 @@ import type { NativeImage, Size } from "electron";
 
 export function isEmpty(image: NativeImage) {
   const size = image.getSize();
-  if (size.width === 0 || size.height === 0) return true;
+  if (size.width === 0 || size.height === 0) {
+    return true;
+  }
   return image.isEmpty();
 }
 

@@ -3,33 +3,42 @@ import { AV_SAMPLE_FMT_FLTP } from 'node-av/constants';
 import { AVColorRange } from 'node-av/constants';
 import { AVPixelFormat } from 'node-av/constants';
 import { BrowserWindow } from 'electron';
-import { ChildProcess } from 'child_process';
+import { ChildProcess } from 'node:child_process';
 import { Codec } from 'node-av';
 import { CodecContext } from 'node-av';
-import { Debugger } from 'electron';
-import { EventEmitter } from 'events';
+import type { Debugger } from 'electron';
+import { Demuxer } from 'node-av/api';
+import { EventEmitter } from 'node:events';
 import { FFAudioEncoder } from 'node-av/constants';
-import { FFVideoEncoder } from 'node-av/constants';
+import type { FFVideoEncoder } from 'node-av/constants';
 import { FormatContext } from 'node-av';
 import { Frame } from 'node-av';
 import { HardwareContext } from 'node-av/api';
 import { HardwareFramesContext } from 'node-av';
 import type { NativeImage } from 'electron';
 import { Packet } from 'node-av';
-import { Size } from 'electron';
+import type { Size } from 'electron';
 import { SoftwareScaleContext } from 'node-av';
-import { SpawnOptions } from 'child_process';
+import { SpawnOptions } from 'node:child_process';
 import { Stream } from 'node-av';
-import { WebContents } from 'electron';
+import type { WebContents } from 'electron';
 import type { WebFrameMain } from 'electron';
 import z from 'zod';
+
+export declare function abortable<T>(p: Promise<T>, signal?: AbortSignal): Promise<T>;
 
 /** Insert emulation prevention bytes (00 00 03) for Annex B compliance. */
 export declare function addEmulationPrevention(nal: Buffer): Buffer;
 
 export declare function advance(hook: VideoHook, timestampMs: number): Promise<unknown>;
 
-export declare function advanceVideos(frame: WebFrameMain | undefined, timestampMs: number): Promise<void>;
+export declare interface AdvanceOptions {
+    frame: WebFrameMain | undefined;
+    timestampMs: number;
+    signal?: AbortSignal;
+}
+
+export declare function advanceVideos({ frame, timestampMs, signal }: AdvanceOptions): Promise<void>;
 
 export declare function advanceVirtualTime(cdp: Debugger, budget: number): Promise<void>;
 
@@ -135,7 +144,7 @@ export declare function buildStegoHTML(targetURL: string, size: Size): string;
 export declare function buildUnifiedExtradata(opts: UnifiedExtradataOptions): Buffer;
 
 export declare interface CancelMsg {
-    type: IpcMsgType.CANCEL;
+    type: IpcMsgType.Cancel;
     reason?: string;
 }
 
@@ -189,7 +198,7 @@ export declare class ConcurrencyLimiter {
 export declare type ConsoleCallback = (level: string, message: string) => void;
 
 export declare interface ConsoleMsg {
-    type: IpcMsgType.CONSOLE;
+    type: IpcMsgType.Console;
     level: string;
     message: string;
 }
@@ -200,20 +209,29 @@ export declare function createStegoURL(src: string, size: Size): string;
 
 export declare function debounce<T extends (...args: unknown[]) => void>(fn: T, delay?: number): T;
 
+export declare interface DecodedFrame {
+    idx: number;
+    buf: Buffer;
+}
+
+export declare function decodeFrames(src: string, meta: VideoMeta, signal: AbortSignal): AsyncGenerator<DecodedFrame>;
+
 export declare class DecodeSession {
     readonly meta: VideoMeta;
-    private readonly src;
-    private buf;
-    private ready;
-    private want;
-    private done;
-    private closed;
-    private gen;
-    private ctrl;
-    private waiters;
-    private resume;
-    private restart;
-    constructor(meta: VideoMeta, src: string);
+    private readonly _src;
+    private _buf;
+    private _ready;
+    private _want;
+    private _done;
+    private _closed;
+    private _gen;
+    private _ctrl;
+    private _waiters;
+    private _resume;
+    private _restart;
+    private readonly _leadFrames;
+    private readonly _keepCount;
+    constructor(meta: VideoMeta, _src: string);
     getFrame(idx: number): Promise<Buffer>;
     close(): void;
     private wait;
@@ -252,7 +270,7 @@ export declare const defaultRenderOptions: RenderOptions;
 export declare function disposeWindow(win: BrowserWindow): Promise<void>;
 
 export declare interface DoneMsg {
-    type: IpcMsgType.DONE;
+    type: IpcMsgType.Done;
     payload: IpcDonePayload;
 }
 
@@ -310,7 +328,7 @@ export declare interface EncoderPipelineOptions {
 export declare type EnvParser<T> = (value: unknown) => T;
 
 export declare interface ErrorMsg {
-    type: IpcMsgType.ERROR;
+    type: IpcMsgType.Error;
     error: string;
 }
 
@@ -339,7 +357,7 @@ export declare const FRAME_SYNC_MARKER_HEIGHT = 1;
 export declare const FRAME_SYNC_MARKER_WIDTH = 32;
 
 export declare class FrameCache {
-    private caches;
+    private _caches;
     cacheOf(id: string): VideoCache;
     fetch(state: VideoState, idx: number): Promise<ImageBitmap | null>;
     prefetch(state: VideoState, fromIdx: number, count: number): void;
@@ -382,15 +400,12 @@ export declare class FrameDropStats {
 }
 
 export declare class FrameServer {
-    private sessions;
-    private srcs;
-    private inFlightOpens;
-    private closed;
+    private _sessions;
+    private _closed;
     open(opts: OpenOptions): Promise<VideoMeta>;
-    private openInner;
     getFrame(id: string, idx: number): Promise<Buffer>;
     close(id: string): void;
-    closeAll(): Promise<void>;
+    closeAll(): void;
 }
 
 export declare const frameServer: FrameServer;
@@ -445,12 +460,12 @@ export declare interface IpcEvents {
 
 export declare type IpcMsg = ConsoleMsg | ProgressMsg | DoneMsg | ErrorMsg | CancelMsg;
 
-export declare const enum IpcMsgType {
-    CONSOLE = "console",
-    PROGRESS = "progress",
-    DONE = "done",
-    ERROR = "error",
-    CANCEL = "cancel"
+export declare enum IpcMsgType {
+    Console = "console",
+    Progress = "progress",
+    Done = "done",
+    Error = "error",
+    Cancel = "cancel"
 }
 
 export declare class IpcReader extends EventEmitter<IpcEvents> {
@@ -579,7 +594,7 @@ export declare interface NetworkOptions {
 
 export declare function newVideoState(video: HTMLVideoElement, cv: HTMLCanvasElement): VideoState;
 
-declare function noerr<Fn extends (...args: any[]) => any, D>(fn: Fn, defaultValue: D): (...args: Parameters<Fn>) => ReturnType<Fn> | D;
+declare function noerr<A extends unknown[], R, D>(fn: (...args: A) => R, defaultValue: D): (...args: A) => R | D;
 export { noerr }
 export { noerr as noerr_alias_1 }
 
@@ -605,6 +620,8 @@ export declare interface NvencHevcConfig {
     cabacInitPresent: boolean;
     ppsHasLoopFilterAcrossSlicesFlag: boolean;
 }
+
+export declare function openInput(src: string, signal?: AbortSignal): Promise<Demuxer>;
 
 export declare interface OpenOptions {
     src: string;
@@ -671,6 +688,8 @@ export declare interface ProbeResult {
     width: number;
     height: number;
     duration: number;
+    /** PTS (s) of the first decodable frame; a corrupt/empty leading run is held on it, like Chrome. */
+    leadGap: number;
 }
 
 export declare interface ProcessHandle {
@@ -705,7 +724,7 @@ export { ProgressCallback }
 export { ProgressCallback as ProgressCallback_alias_1 }
 
 export declare interface ProgressMsg {
-    type: IpcMsgType.PROGRESS;
+    type: IpcMsgType.Progress;
     value: number;
 }
 
@@ -745,7 +764,7 @@ export declare function removeEmulationPrevention(data: Buffer): Buffer;
 
 export declare function render(options: IPCRenderOptions): Promise<IpcDonePayload>;
 
-declare type RenderOptions = z.infer<typeof RenderSchema>;
+declare type RenderOptions = z.infer<typeof renderSchema>;
 export { RenderOptions }
 export { RenderOptions as RenderOptions_alias_1 }
 
@@ -758,7 +777,7 @@ declare interface RenderResult {
 export { RenderResult }
 export { RenderResult as RenderResult_alias_1 }
 
-export declare const RenderSchema: z.ZodObject<{
+export declare const renderSchema: z.ZodObject<{
     duration: z.ZodNumber;
     width: z.ZodNumber;
     height: z.ZodNumber;
@@ -774,7 +793,7 @@ export declare const RenderSchema: z.ZodObject<{
 
 export declare function resizeDrawable(cdp: Debugger, size: Size): Promise<void>;
 
-declare interface RetryOptions<Args extends any[], Ret> {
+declare interface RetryOptions<Args extends unknown[], Ret> {
     fn: (...args: Args) => Promise<Ret>;
     maxAttempts?: number;
     timeout?: number;
@@ -844,15 +863,6 @@ export { sleep as sleep_alias_1 }
 /** Split Annex B bitstream into NAL units. */
 export declare function splitNalUnits(bitstream: Buffer): NalUnit[];
 
-export declare class SrcCache {
-    private inFlight;
-    private ctrl;
-    localize(src: string): Promise<string>;
-    abort(): void;
-    clear(): Promise<void>;
-    private download;
-}
-
 export declare function startElectronCrashReporter(): void;
 
 export declare function startStego(cdp: Debugger): Promise<unknown>;
@@ -867,7 +877,7 @@ export declare function syncOverlay(video: HTMLVideoElement, cv: HTMLCanvasEleme
 
 export declare const TAG = "[VideoHook]";
 
-export declare function tick(frame: WebFrameMain | undefined, timestampMs: number): Promise<void>;
+export declare function tick(args: AdvanceOptions): Promise<void>;
 
 export declare const TICK_SYMBOL = "__pup_tick__";
 
@@ -888,7 +898,7 @@ export declare interface UnifiedExtradataOptions {
 
 export declare function unsetInterceptor(window: BrowserWindow): void;
 
-declare function useRetry<Args extends any[], Ret>({ fn, maxAttempts, timeout, signal }: RetryOptions<Args, Ret>): (...args: Args) => Promise<Ret>;
+declare function useRetry<Args extends unknown[], Ret>({ fn, maxAttempts, timeout, signal, }: RetryOptions<Args, Ret>): (...args: Args) => Promise<Ret>;
 export { useRetry }
 export { useRetry as useRetry_alias_1 }
 
@@ -951,12 +961,14 @@ export declare interface VideoFrameMeta {
 export declare class VideoHook {
     readonly sessions: WeakMap<HTMLVideoElement, VideoState>;
     readonly attaching: WeakMap<HTMLVideoElement, Promise<VideoState | null>>;
+    readonly opening: Set<Promise<unknown>>;
     readonly cache: FrameCache;
     rvfcSeq: number;
     currMs: number;
-    private lastSnapshot;
+    private _lastSnapshot;
     install(): void;
     attach(video: HTMLVideoElement, native?: boolean): Promise<VideoState | null>;
+    ready(): Promise<void>;
     resume(video: HTMLVideoElement, state: VideoState): void;
     detach(video: HTMLVideoElement): void;
     onSrcChange(video: HTMLVideoElement): void;
@@ -974,6 +986,8 @@ export declare interface VideoMeta {
     frameHeight: number;
     fps: number;
     duration: number;
+    /** Seconds of corrupt/empty leading content held on the first decodable frame. */
+    leadGap: number;
 }
 
 export declare interface VideoMeta_alias_1 {

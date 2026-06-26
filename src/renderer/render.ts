@@ -1,12 +1,12 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/09.
 
-import { type NativeImage, type Size } from "electron";
+import type { NativeImage, Size } from "electron";
 import { resizeDrawable } from "../base/cdp";
 import { EncoderPipeline } from "../base/encoder/pipeline";
 import { FrameDropStats } from "../base/frame_drop";
 import { sizeEquals } from "../base/image";
 import { logger } from "../base/logging";
-import { attachAudioListeners, type AudioDisposal } from "./audio";
+import { type AudioDisposal, attachAudioListeners } from "./audio";
 import type { IpcDonePayload } from "./ipc";
 import type { IPCRenderOptions } from "./schema";
 import { decodeStego, startStego } from "./stego";
@@ -61,7 +61,9 @@ export async function render(options: IPCRenderOptions): Promise<IpcDonePayload>
     }
 
     // Skip frames that arrive too soon (< 80% of frame interval)
-    if (lastWrittenTime !== undefined && currentTime - lastWrittenTime < frameInterval * 0.8) return;
+    if (lastWrittenTime !== undefined && currentTime - lastWrittenTime < frameInterval * 0.8) {
+      return;
+    }
 
     const cropped = Buffer.from(bitmap.buffer, bitmap.byteOffset, height * width * 4);
 

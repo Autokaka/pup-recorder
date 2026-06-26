@@ -2,10 +2,10 @@
 
 import { logger } from "./base/logging";
 import { runElectronApp } from "./renderer/electron";
-import { IpcMsgType, IpcReader, type IpcDonePayload } from "./renderer/ipc";
+import { type IpcDonePayload, IpcMsgType, IpcReader } from "./renderer/ipc";
 import {
-  defaultRenderOptions,
   type ConsoleCallback,
+  defaultRenderOptions,
   type ProgressCallback,
   type RenderOptions,
   type RenderResult,
@@ -37,12 +37,24 @@ async function runPupApp(source: string, render: RenderOptions) {
     `--out-file`,
     `${render.outFile}`,
   ];
-  if (render.withAudio) args.push(`--with-audio`);
-  if (render.useInnerProxy) args.push(`--use-inner-proxy`);
-  if (render.deterministic) args.push(`--deterministic`);
-  if (render.disableGpu) args.push(`--disable-gpu`);
-  if (render.disableHwCodec) args.push(`--disable-hw-codec`);
-  if (render.windowTolerant) args.push(`--window-tolerant`);
+  if (render.withAudio) {
+    args.push(`--with-audio`);
+  }
+  if (render.useInnerProxy) {
+    args.push(`--use-inner-proxy`);
+  }
+  if (render.deterministic) {
+    args.push(`--deterministic`);
+  }
+  if (render.disableGpu) {
+    args.push(`--disable-gpu`);
+  }
+  if (render.disableHwCodec) {
+    args.push(`--disable-hw-codec`);
+  }
+  if (render.windowTolerant) {
+    args.push(`--window-tolerant`);
+  }
 
   return runElectronApp({ args });
 }
@@ -80,7 +92,7 @@ export async function pup(source: string, options: Partial<PupOptions>): Promise
   const handle = await runPupApp(source, renderOpts);
 
   const onAbort = () => {
-    handle.process.send?.({ type: IpcMsgType.CANCEL, reason: String(signal?.reason ?? "abort") });
+    handle.process.send?.({ type: IpcMsgType.Cancel, reason: String(signal?.reason ?? "abort") });
     setTimeout(() => handle.kill(), 5_000);
   };
   signal?.addEventListener("abort", onAbort, { once: true });
