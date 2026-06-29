@@ -17,15 +17,16 @@ interface FinishOptions {
   source: string;
   win: BrowserWindow;
   action: () => void;
+  timeoutMs: number;
   tolerant?: boolean;
   signal?: AbortSignal;
 }
 
-function waitForFinish({ source, win, action, tolerant, signal }: FinishOptions) {
+function waitForFinish({ source, win, action, timeoutMs, tolerant, signal }: FinishOptions) {
   return new Promise<void>((resolve, reject) => {
     let domReady = false;
     // Tolerant proceeds on a partial DOM only as a timeout fallback — starting on bare dom-ready leaves the load pending and wedges virtual time.
-    const timeout = setTimeout(() => done(tolerant && domReady ? undefined : TIMEOUT_ERROR), 10_000);
+    const timeout = setTimeout(() => done(tolerant && domReady ? undefined : TIMEOUT_ERROR), timeoutMs);
     const done = (err?: unknown) => {
       clearTimeout(timeout);
       if (err) {
@@ -145,7 +146,14 @@ async function openWindow({ source, renderer, tolerant, signal, onCreated }: Win
 
   try {
     const url = createStegoURL(src, { width, height });
-    await waitForFinish({ source, win, action: () => win.loadURL(url), tolerant, signal });
+    await waitForFinish({
+      source,
+      win,
+      action: () => win.loadURL(url),
+      timeoutMs: renderer.windowTimeout * 1000,
+      tolerant,
+      signal,
+    });
   } catch (e) {
     await disposeWindow(win);
     throw e;

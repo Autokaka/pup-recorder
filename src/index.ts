@@ -15,6 +15,7 @@ export {
   DEFAULT_FPS,
   DEFAULT_HEIGHT,
   DEFAULT_WIDTH,
+  DEFAULT_WINDOW_TIMEOUT,
   type ProgressCallback,
   type RenderOptions,
   type RenderResult,

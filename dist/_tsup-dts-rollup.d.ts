@@ -265,6 +265,10 @@ declare const DEFAULT_WIDTH = 1920;
 export { DEFAULT_WIDTH }
 export { DEFAULT_WIDTH as DEFAULT_WIDTH_alias_1 }
 
+declare const DEFAULT_WINDOW_TIMEOUT = 10;
+export { DEFAULT_WINDOW_TIMEOUT }
+export { DEFAULT_WINDOW_TIMEOUT as DEFAULT_WINDOW_TIMEOUT_alias_1 }
+
 export declare const defaultRenderOptions: RenderOptions;
 
 export declare function disposeWindow(win: BrowserWindow): Promise<void>;
@@ -789,6 +793,7 @@ export declare const renderSchema: z.ZodObject<{
     disableGpu: z.ZodBoolean;
     disableHwCodec: z.ZodBoolean;
     windowTolerant: z.ZodBoolean;
+    windowTimeout: z.ZodNumber;
 }, z.core.$strip>;
 
 export declare function resizeDrawable(cdp: Debugger, size: Size): Promise<void>;

@@ -6,6 +6,7 @@ export const DEFAULT_WIDTH = 1920;
 export const DEFAULT_HEIGHT = 1080;
 export const DEFAULT_FPS = 30;
 export const DEFAULT_DURATION = 5;
+export const DEFAULT_WINDOW_TIMEOUT = 10;
 export const DEFAULT_OUT_FILE = "out/html.mp4,out/html.webm";
 
 export const renderSchema = z.object({
@@ -20,6 +21,7 @@ export const renderSchema = z.object({
   disableGpu: z.boolean().describe("Disable GPU rendering, may reduce performance but increase stability"),
   disableHwCodec: z.boolean().describe("Disable hardware video encoder (NVENC/VideoToolbox), use software x265"),
   windowTolerant: z.boolean().describe("Fall back to dom-ready if warmup load times out"),
+  windowTimeout: z.number().describe("Window load timeout in seconds"),
 });
 
 export type RenderOptions = z.infer<typeof renderSchema>;
@@ -54,4 +56,5 @@ export const defaultRenderOptions: RenderOptions = {
   disableGpu: false,
   disableHwCodec: false,
   windowTolerant: false,
+  windowTimeout: DEFAULT_WINDOW_TIMEOUT,
 };

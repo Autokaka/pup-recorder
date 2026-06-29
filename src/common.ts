@@ -45,6 +45,7 @@ export async function makeCLI(options: CLIOptions) {
     .option("--disable-gpu", shape.disableGpu.description, d.disableGpu)
     .option("--disable-hw-codec", shape.disableHwCodec.description, d.disableHwCodec)
     .option("--window-tolerant", shape.windowTolerant.description, d.windowTolerant)
+    .option("--window-timeout <number>", shape.windowTimeout.description, `${d.windowTimeout}`)
     .action(async (source: string, opts) => {
       try {
         await options.run(normalizeSource(source), {
@@ -59,6 +60,7 @@ export async function makeCLI(options: CLIOptions) {
           disableGpu: opts.disableGpu ?? d.disableGpu,
           disableHwCodec: opts.disableHwCodec ?? d.disableHwCodec,
           windowTolerant: opts.windowTolerant ?? d.windowTolerant,
+          windowTimeout: noerr(parseNumber, d.windowTimeout)(opts.windowTimeout),
         });
       } catch (e) {
         logger.fatal(e);

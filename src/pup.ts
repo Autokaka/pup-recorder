@@ -34,6 +34,8 @@ async function runPupApp(source: string, render: RenderOptions) {
     `${render.fps}`,
     `--duration`,
     `${render.duration}`,
+    `--window-timeout`,
+    `${render.windowTimeout}`,
     `--out-file`,
     `${render.outFile}`,
   ];
@@ -79,6 +81,7 @@ export async function pup(source: string, options: Partial<PupOptions>): Promise
     disableGpu: options.disableGpu ?? d.disableGpu,
     disableHwCodec: options.disableHwCodec ?? d.disableHwCodec,
     windowTolerant: options.windowTolerant ?? d.windowTolerant,
+    windowTimeout: options.windowTimeout ?? d.windowTimeout,
     outFile,
   };
 

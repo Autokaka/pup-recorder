@@ -18,6 +18,7 @@ export { DEFAULT_DURATION } from './_tsup-dts-rollup.js';
 export { DEFAULT_FPS } from './_tsup-dts-rollup.js';
 export { DEFAULT_HEIGHT } from './_tsup-dts-rollup.js';
 export { DEFAULT_WIDTH } from './_tsup-dts-rollup.js';
+export { DEFAULT_WINDOW_TIMEOUT } from './_tsup-dts-rollup.js';
 export { ProgressCallback } from './_tsup-dts-rollup.js';
 export { RenderOptions } from './_tsup-dts-rollup.js';
 export { RenderResult } from './_tsup-dts-rollup.js';
