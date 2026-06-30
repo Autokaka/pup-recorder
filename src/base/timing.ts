@@ -23,15 +23,16 @@ export function abortable<T>(p: Promise<T>, signal?: AbortSignal): Promise<T> {
   });
 }
 
-export function periodical(callback: (count: number) => Promise<void> | void, ms: number) {
+// Callback may return the next interval (ms) to override the default for the following tick.
+export function periodical(callback: (count: number) => Promise<number | undefined> | undefined, ms: number) {
   let token: NodeJS.Timeout;
   let closed = false;
   async function tick(count: number) {
-    await callback(count);
+    const next = await callback(count);
     if (closed) {
       return;
     }
-    token = setTimeout(() => tick(count + 1), ms);
+    token = setTimeout(() => tick(count + 1), next ?? ms);
   }
   token = setTimeout(() => tick(0), ms);
   return () => {

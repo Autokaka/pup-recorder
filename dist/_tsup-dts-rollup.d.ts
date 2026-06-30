@@ -682,7 +682,7 @@ declare function penv<T>(name: string, parser: EnvParser<T>, defaultValue?: T): 
 export { penv }
 export { penv as penv_alias_1 }
 
-declare function periodical(callback: (count: number) => Promise<void> | void, ms: number): () => void;
+declare function periodical(callback: (count: number) => Promise<number | undefined> | undefined, ms: number): () => void;
 export { periodical }
 export { periodical as periodical_alias_1 }
 
