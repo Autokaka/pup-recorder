@@ -15,10 +15,10 @@ export class FrameCache {
     return c;
   }
 
-  fetch(state: VideoState, idx: number): Promise<ImageBitmap | null> {
+  fetch(state: VideoState, idx: number): Promise<ImageBitmap | undefined> {
     const meta = state.meta;
     if (!meta) {
-      return Promise.resolve(null);
+      return Promise.resolve(undefined);
     }
     const c = this.cacheOf(meta.id);
     const existing = c.inFlight.get(idx);
@@ -32,9 +32,11 @@ export class FrameCache {
     const w = meta.frameWidth;
     const h = meta.frameHeight;
     const p = fetch(`${SCHEME}frame?id=${meta.id}&idx=${idx}`)
-      .then((r) => (r.ok ? r.arrayBuffer() : null))
+      .then((r) => (r.ok ? r.arrayBuffer() : undefined))
       .then((buf) =>
-        buf && buf.byteLength === w * h * 4 ? createImageBitmap(new ImageData(new Uint8ClampedArray(buf), w, h)) : null,
+        buf && buf.byteLength === w * h * 4
+          ? createImageBitmap(new ImageData(new Uint8ClampedArray(buf), w, h))
+          : undefined,
       )
       .then((bm) => {
         c.inFlight.delete(idx);
@@ -45,7 +47,7 @@ export class FrameCache {
       })
       .catch(() => {
         c.inFlight.delete(idx);
-        return null;
+        return undefined;
       });
     c.inFlight.set(idx, p);
     return p;

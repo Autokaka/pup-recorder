@@ -11,7 +11,6 @@ import { Demuxer } from 'node-av/api';
 import { EventEmitter } from 'node:events';
 import { FFAudioEncoder } from 'node-av/constants';
 import type { FFVideoEncoder } from 'node-av/constants';
-import { FormatContext } from 'node-av';
 import { Frame } from 'node-av';
 import { HardwareContext } from 'node-av/api';
 import { HardwareFramesContext } from 'node-av';
@@ -231,9 +230,10 @@ export declare class DecodeSession {
     private _restart;
     private readonly _leadFrames;
     private readonly _keepCount;
+    private readonly _pumpDone;
     constructor(meta: VideoMeta, _src: string);
     getFrame(idx: number): Promise<Buffer>;
-    close(): void;
+    close(): Promise<void>;
     private wait;
     private wake;
     private requestRestart;
@@ -349,8 +349,9 @@ export declare function fitRect(srcW: number, srcH: number, dstW: number, dstH: 
 export declare class FormatMuxer {
     private readonly _ctx;
     private _opened;
+    private _disposed;
     constructor(outPath: string, formatName?: string);
-    addStream(codecCtx: CodecContext, codecTag?: string): ReturnType<FormatContext["newStream"]>;
+    addStream(codecCtx: CodecContext, codecTag?: string): Stream;
     open(): Promise<void>;
     writePacket(pkt: Packet): Promise<void>;
     [Symbol.asyncDispose](): Promise<void>;
@@ -363,7 +364,7 @@ export declare const FRAME_SYNC_MARKER_WIDTH = 32;
 export declare class FrameCache {
     private _caches;
     cacheOf(id: string): VideoCache;
-    fetch(state: VideoState, idx: number): Promise<ImageBitmap | null>;
+    fetch(state: VideoState, idx: number): Promise<ImageBitmap | undefined>;
     prefetch(state: VideoState, fromIdx: number, count: number): void;
     evict(c: VideoCache): void;
     release(id: string, state: VideoState): void;
@@ -404,15 +405,15 @@ export declare class FrameDropStats {
 }
 
 export declare class FrameServer {
+    private readonly _useInnerProxy;
     private _sessions;
     private _closed;
+    constructor(_useInnerProxy: boolean);
     open(opts: OpenOptions): Promise<VideoMeta>;
     getFrame(id: string, idx: number): Promise<Buffer>;
-    close(id: string): void;
-    closeAll(): void;
+    close(id: string): Promise<void>;
+    closeAll(): Promise<void>;
 }
-
-export declare const frameServer: FrameServer;
 
 export declare const HAVE_ENOUGH_DATA = 4;
 
@@ -637,7 +638,7 @@ export declare interface OpenOptions {
     fit?: string;
 }
 
-export declare function openSession(hook: VideoHook, args: AttachArgs): Promise<VideoState | null>;
+export declare function openSession(hook: VideoHook, args: AttachArgs): Promise<VideoState | undefined>;
 
 export declare function openVideoCtx(opts: VideoCtxOptions, label: string): Promise<CodecContext>;
 
@@ -840,8 +841,6 @@ export declare function setInterceptor({ source, window, useInnerProxy, cancelMe
 
 export declare function setupCanvas(video: HTMLVideoElement, snap: OffscreenCanvas | undefined): HTMLCanvasElement;
 
-export declare function setupFrameProtocol(): void;
-
 export declare function setupPupProtocol(): void;
 
 export declare function shoot(options: IPCRenderOptions): Promise<IpcDonePayload>;
@@ -903,6 +902,8 @@ export declare interface UnifiedExtradataOptions {
 
 export declare function unsetInterceptor(window: BrowserWindow): void;
 
+export declare function useFrameProtocol(useInnerProxy: boolean): AsyncDisposable;
+
 declare function useRetry<Args extends unknown[], Ret>({ fn, maxAttempts, timeout, signal, }: RetryOptions<Args, Ret>): (...args: Args) => Promise<Ret>;
 export { useRetry }
 export { useRetry as useRetry_alias_1 }
@@ -911,7 +912,7 @@ declare type Vec4 = [number, number, number, number];
 
 export declare interface VideoCache {
     bitmaps: Map<number, ImageBitmap>;
-    inFlight: Map<number, Promise<ImageBitmap | null>>;
+    inFlight: Map<number, Promise<ImageBitmap | undefined>>;
     readers: Map<VideoState, number>;
 }
 
@@ -965,14 +966,14 @@ export declare interface VideoFrameMeta {
 
 export declare class VideoHook {
     readonly sessions: WeakMap<HTMLVideoElement, VideoState>;
-    readonly attaching: WeakMap<HTMLVideoElement, Promise<VideoState | null>>;
+    readonly attaching: WeakMap<HTMLVideoElement, Promise<VideoState | undefined>>;
     readonly opening: Set<Promise<unknown>>;
     readonly cache: FrameCache;
     rvfcSeq: number;
     currMs: number;
     private _lastSnapshot;
     install(): void;
-    attach(video: HTMLVideoElement, native?: boolean): Promise<VideoState | null>;
+    attach(video: HTMLVideoElement, native?: boolean): Promise<VideoState | undefined>;
     ready(): Promise<void>;
     resume(video: HTMLVideoElement, state: VideoState): void;
     detach(video: HTMLVideoElement): void;
@@ -1014,7 +1015,7 @@ export declare interface VideoSetup {
 }
 
 export declare interface VideoState {
-    meta: VideoMeta_alias_1 | null;
+    meta?: VideoMeta_alias_1;
     cv: HTMLCanvasElement;
     ctx: CanvasRenderingContext2D;
     paused: boolean;

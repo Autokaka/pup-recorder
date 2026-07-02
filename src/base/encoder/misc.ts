@@ -35,6 +35,9 @@ export interface VideoCtxOptions {
 export async function openVideoCtx(opts: VideoCtxOptions, label: string): Promise<CodecContext> {
   const ctx = new CodecContext();
   ctx.allocContext3(opts.codec);
+  // Partial-construction safety: free ctx if any setter/open2 throws before we return it.
+  using stack = new DisposableStack();
+  stack.use(ctx);
   ctx.codecId = opts.codec.id;
   ctx.width = opts.width;
   ctx.height = opts.height;
@@ -57,16 +60,21 @@ export async function openVideoCtx(opts: VideoCtxOptions, label: string): Promis
     ctx.setOption(k, v);
   }
   FFmpegError.throwIfError(await ctx.open2(opts.codec, null), label);
+  stack.move();
   return ctx;
 }
 
 export function makeFrame(width: number, height: number, pixFmt: AVPixelFormat): Frame {
   const frame = new Frame();
   frame.alloc();
+  // Partial-construction safety: free frame if getBuffer throws before we return it.
+  using stack = new DisposableStack();
+  stack.use(frame);
   frame.format = pixFmt;
   frame.width = width;
   frame.height = height;
   FFmpegError.throwIfError(frame.getBuffer(0), "frame.getBuffer");
+  stack.move();
   return frame;
 }
 
@@ -82,13 +90,16 @@ export async function drainPackets(ctx: CodecContext, pkt: Packet, stream: Strea
     if (r === AVERROR_EAGAIN || r === AVERROR_EOF) {
       break;
     }
-    FFmpegError.throwIfError(r, "receivePacket");
-    pkt.streamIndex = stream.index;
-    if (pkt.duration === 0n) {
-      pkt.duration = 1n;
+    try {
+      FFmpegError.throwIfError(r, "receivePacket");
+      pkt.streamIndex = stream.index;
+      if (pkt.duration === 0n) {
+        pkt.duration = 1n;
+      }
+      pkt.rescaleTs(ctx.timeBase, stream.timeBase);
+      await muxer.writePacket(pkt);
+    } finally {
+      pkt.unref();
     }
-    pkt.rescaleTs(ctx.timeBase, stream.timeBase);
-    await muxer.writePacket(pkt);
-    pkt.unref();
   }
 }

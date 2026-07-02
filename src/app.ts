@@ -12,7 +12,6 @@ import { setupPupProtocol } from "./renderer/protocol";
 import { render } from "./renderer/render";
 import { withRerender } from "./renderer/rerender";
 import { shoot } from "./renderer/shoot";
-import { setupFrameProtocol } from "./renderer/video/protocol";
 
 const TAG = "[App]";
 
@@ -47,7 +46,6 @@ makeCLI({
     try {
       await app.whenReady();
       setupPupProtocol();
-      setupFrameProtocol();
       printFeatures();
       for (const out of options.outFile.split(",")) {
         await mkdir(dirname(out), { recursive: true });

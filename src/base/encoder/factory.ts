@@ -60,16 +60,22 @@ export async function createHwVideoEncoder(opts: HwVideoFactoryOptions, muxer: F
   }
 
   logger.debug(TAG, "using software libx265 HEVC alpha encoder");
-  const video = await VideoEncoder.create({
-    width,
-    height,
-    fps,
-    codecName: FF_ENCODER_LIBX265,
-    codecTag: "hvc1",
-    codecOpts: { preset: "fast", "x265-params": "log-level=1:bframes=3:pools=+:frame-threads=0" },
-    bitrate,
-    pixelFormat: AV_PIX_FMT_YUVA420P,
-    muxer,
-  });
-  return { video, codec: await CodecState.create(width, height), ownsHw: false };
+  // Partial-construction safety: free the video encoder if CodecState.create throws; move() disowns on success.
+  using stack = new DisposableStack();
+  const video = stack.use(
+    await VideoEncoder.create({
+      width,
+      height,
+      fps,
+      codecName: FF_ENCODER_LIBX265,
+      codecTag: "hvc1",
+      codecOpts: { preset: "fast", "x265-params": "log-level=1:bframes=3:pools=+:frame-threads=0" },
+      bitrate,
+      pixelFormat: AV_PIX_FMT_YUVA420P,
+      muxer,
+    }),
+  );
+  const codec = stack.use(await CodecState.create(width, height));
+  stack.move();
+  return { video, codec, ownsHw: false };
 }

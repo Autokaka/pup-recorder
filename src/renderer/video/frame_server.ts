@@ -1,6 +1,8 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/05/18.
 
 import { createHash } from "node:crypto";
+import { useRetry } from "../../base/retry";
+import { proxiedUrl } from "../network";
 import { DecodeSession } from "./decode_session";
 import { probe } from "./probe";
 
@@ -37,6 +39,9 @@ export class FrameServer {
   private _sessions = new Map<string, Entry>();
   private _closed = false;
 
+  // -d decode bypasses the window interceptor, so it remaps hosts itself when the inner proxy is on.
+  constructor(private readonly _useInnerProxy: boolean) {}
+
   // closed-checked after probe so closeAll() can't race a slow open into a leaked session.
   async open(opts: OpenOptions): Promise<VideoMeta> {
     if (this._closed) {
@@ -48,7 +53,8 @@ export class FrameServer {
       hit.refs++;
       return hit.session.meta;
     }
-    const info = await probe(opts.src);
+    const src = this._useInnerProxy ? proxiedUrl(opts.src) : opts.src;
+    const info = await useRetry({ fn: probe })(src);
     if (this._closed) {
       throw new Error("frame-server: closed");
     }
@@ -70,7 +76,7 @@ export class FrameServer {
       duration: info.duration,
       leadGap: info.leadGap,
     };
-    this._sessions.set(id, { session: new DecodeSession(meta, opts.src), refs: 1 });
+    this._sessions.set(id, { session: new DecodeSession(meta, src), refs: 1 });
     return meta;
   }
 
@@ -82,7 +88,7 @@ export class FrameServer {
     return e.session.getFrame(idx);
   }
 
-  close(id: string): void {
+  async close(id: string): Promise<void> {
     const e = this._sessions.get(id);
     if (!e) {
       return;
@@ -90,16 +96,15 @@ export class FrameServer {
     if (--e.refs > 0) {
       return;
     }
-    e.session.close();
     this._sessions.delete(id);
+    await e.session.close();
   }
 
-  closeAll(): void {
+  async closeAll(): Promise<void> {
     this._closed = true;
-    for (const [, e] of this._sessions) {
-      e.session.close();
-    }
+    const sessions = [...this._sessions.values()];
     this._sessions.clear();
+    await Promise.all(sessions.map((e) => e.session.close()));
   }
 }
 
@@ -114,5 +119,3 @@ function even(n: number): number {
   const r = Math.round(n);
   return Math.max(2, r - (r % 2));
 }
-
-export const frameServer = new FrameServer();

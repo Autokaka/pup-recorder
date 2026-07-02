@@ -9,7 +9,7 @@ import type { IpcDonePayload } from "./ipc";
 import type { IPCRenderOptions } from "./schema";
 import { decodeStego, swapBuffer } from "./stego";
 import { tick } from "./tick";
-import { frameServer } from "./video/frame_server";
+import { useFrameProtocol } from "./video/protocol";
 import { disposeWindow, loadWindow } from "./window";
 
 const TAG = "[Shoot]";
@@ -71,6 +71,7 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
     logger.warn(TAG, "audio will be ignored on this mode");
   }
 
+  await using _ = useFrameProtocol(options.useInnerProxy);
   const tInit = performance.now();
   const winP = loadWindow({ source, renderer: options, signal });
   await using pipeline = await EncoderPipeline.create({ width, height, fps, outFile, withAudio, disableHwCodec });
@@ -112,7 +113,6 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
       }
     }
   } finally {
-    frameServer.closeAll();
     await disposeWindow(win);
     await pipeline.finish();
   }

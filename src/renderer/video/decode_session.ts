@@ -31,6 +31,8 @@ export class DecodeSession {
   private readonly _leadFrames: number;
   // Frames kept behind the head; a clip that fits the budget retains every frame, so loops re-serve from memory.
   private readonly _keepCount: number;
+  // Resolves when pump() fully unwinds — awaited on close so node-av generators free before process teardown.
+  private readonly _pumpDone: Promise<void>;
 
   constructor(
     readonly meta: VideoMeta,
@@ -38,7 +40,7 @@ export class DecodeSession {
   ) {
     this._leadFrames = Math.round(meta.leadGap * meta.fps);
     this._keepCount = Math.max(KEEP_BEHIND, Math.floor(MEMORY_BUDGET / (meta.frameWidth * meta.frameHeight * 4)));
-    void this.pump();
+    this._pumpDone = this.pump();
   }
 
   async getFrame(idx: number): Promise<Buffer> {
@@ -71,7 +73,8 @@ export class DecodeSession {
     return this.wait(idx);
   }
 
-  close(): void {
+  // Await the pump so the node-av demuxer/decoder generators unwind (contexts freed) before the caller exits.
+  async close(): Promise<void> {
     this._closed = true;
     this._done = true;
     this._ctrl.abort();
@@ -82,6 +85,7 @@ export class DecodeSession {
     }
     this._waiters.clear();
     this._buf.clear();
+    await this._pumpDone;
   }
 
   // -d-only subsystem, so never time out: drainWaiters resolves on decode, EOF, or close — output never depends on fetch latency.

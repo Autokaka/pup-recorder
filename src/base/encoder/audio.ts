@@ -66,8 +66,11 @@ export class AudioEncoder implements Disposable {
     if (!codec) {
       throw new Error(`Audio encoder not found: ${opts.codecName}`);
     }
+    // Partial-construction safety: stack frees ctx if a later step throws; move() disowns on success.
+    using stack = new DisposableStack();
     const ctx = new CodecContext();
     ctx.allocContext3(codec);
+    stack.use(ctx);
     ctx.codecId = codec.id;
     ctx.sampleFormat = opts.outSampleFmt;
     ctx.sampleRate = opts.outSampleRate;
@@ -79,14 +82,18 @@ export class AudioEncoder implements Disposable {
     }
     FFmpegError.throwIfError(await ctx.open2(codec, null), "audioCtx.open2");
     const stream = opts.muxer.addStream(ctx);
+    stack.move();
     return new AudioEncoder(ctx, stream, opts.outSampleFmt);
   }
 
   setInputRate(inSampleRate: number): void {
     this._graph?.[Symbol.dispose]();
     this._inRate = inSampleRate;
+    // Partial-construction safety: stack frees the graph if filter setup throws; move() disowns on success.
+    using stack = new DisposableStack();
     const graph = new FilterGraph();
     graph.alloc();
+    stack.use(graph);
     const abuffer = Filter.getByName("abuffer")!;
     const bufSrc = graph.createFilter(
       abuffer,
@@ -107,6 +114,7 @@ export class AudioEncoder implements Disposable {
     const inputs = FilterInOut.createList([{ name: "out", filterCtx: bufSink, padIdx: 0 }]);
     FFmpegError.throwIfError(graph.parsePtr(filterDesc, inputs, outputs), "graph.parsePtr");
     FFmpegError.throwIfError(graph.configSync(), "graph.config");
+    stack.move();
     this._graph = graph;
     this._bufSrc = bufSrc;
     this._bufSink = bufSink;
@@ -158,10 +166,13 @@ export class AudioEncoder implements Disposable {
       if (r === AVERROR_EAGAIN || r === AVERROR_EOF) {
         break;
       }
-      FFmpegError.throwIfError(r, "buffersinkGetFrame");
-      FFmpegError.throwIfError(await this._ctx.sendFrame(this._filterFrame), "audioCtx.sendFrame");
-      this._filterFrame.unref();
-      await this.drainCodec(muxer);
+      try {
+        FFmpegError.throwIfError(r, "buffersinkGetFrame");
+        FFmpegError.throwIfError(await this._ctx.sendFrame(this._filterFrame), "audioCtx.sendFrame");
+        await this.drainCodec(muxer);
+      } finally {
+        this._filterFrame.unref();
+      }
     }
   }
 

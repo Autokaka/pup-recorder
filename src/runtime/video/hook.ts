@@ -18,7 +18,7 @@ declare global {
 
 export class VideoHook {
   readonly sessions = new WeakMap<HTMLVideoElement, VideoState>();
-  readonly attaching = new WeakMap<HTMLVideoElement, Promise<VideoState | null>>();
+  readonly attaching = new WeakMap<HTMLVideoElement, Promise<VideoState | undefined>>();
   // Enumerable mirror of in-flight opens (WeakMap isn't iterable) so ready() can await them.
   readonly opening = new Set<Promise<unknown>>();
   readonly cache = new FrameCache();
@@ -50,7 +50,7 @@ export class VideoHook {
     window.__pup_video__ = { advance: (ms) => advance(this, ms), ready: () => this.ready() };
   }
 
-  attach(video: HTMLVideoElement, native = false): Promise<VideoState | null> {
+  attach(video: HTMLVideoElement, native = false): Promise<VideoState | undefined> {
     const existing = this.sessions.get(video);
     if (existing) {
       return Promise.resolve(existing);
@@ -61,10 +61,10 @@ export class VideoHook {
     }
     const src = video.src || video.currentSrc;
     if (!src) {
-      return Promise.resolve(null);
+      return Promise.resolve(undefined);
     }
     if (/^(blob:|data:|mediastream:)/i.test(src)) {
-      return Promise.resolve(null);
+      return Promise.resolve(undefined);
     }
     const cv = setupCanvas(video, this._lastSnapshot.get(video));
     const state = newVideoState(video, cv);

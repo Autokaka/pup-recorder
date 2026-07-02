@@ -37,9 +37,13 @@ export class VideoEncoder implements Disposable {
       throw new Error(`Video encoder not found: ${codecName}`);
     }
 
-    const ctx = await openVideoCtx({ codec, ...rest, codecTag, options: codecOpts }, "videoCtx.open2");
+    // Partial-construction safety: stack disposes ctx/pkt if a later step throws; move() disowns on success.
+    using stack = new DisposableStack();
+    const ctx = stack.use(await openVideoCtx({ codec, ...rest, codecTag, options: codecOpts }, "videoCtx.open2"));
+    const pkt = stack.use(makePacket());
     const stream = muxer.addStream(ctx, codecTag);
-    return new VideoEncoder(ctx, makePacket(), stream);
+    stack.move();
+    return new VideoEncoder(ctx, pkt, stream);
   }
 
   async encode(frame: Frame, muxer: FormatMuxer): Promise<void> {

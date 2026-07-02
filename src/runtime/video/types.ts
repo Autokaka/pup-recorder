@@ -42,12 +42,12 @@ export interface MediaErrorLike {
 
 export interface VideoCache {
   bitmaps: Map<number, ImageBitmap>;
-  inFlight: Map<number, Promise<ImageBitmap | null>>;
+  inFlight: Map<number, Promise<ImageBitmap | undefined>>;
   readers: Map<VideoState, number>;
 }
 
 export interface VideoState {
-  meta: VideoMeta | null;
+  meta?: VideoMeta;
   cv: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
   paused: boolean;

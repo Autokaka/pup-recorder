@@ -49,17 +49,13 @@ export class VideoToolboxEncoder implements Disposable {
       },
       "vtEnc.open2",
     );
-    let pkt: Packet | undefined;
-    try {
-      const stream = muxer.addStream(ctx, "hvc1");
-      pkt = makePacket();
-      return new VideoToolboxEncoder(ctx, pkt, stream);
-    } catch (e) {
-      // Partial construction: encoder never returned, so [Symbol.dispose] is unreachable.
-      pkt?.free();
-      ctx.freeContext();
-      throw e;
-    }
+    // Partial-construction safety: stack disposes ctx/pkt if a later step throws; move() disowns on success.
+    using stack = new DisposableStack();
+    stack.use(ctx);
+    const pkt = stack.use(makePacket());
+    const stream = muxer.addStream(ctx, "hvc1");
+    stack.move();
+    return new VideoToolboxEncoder(ctx, pkt, stream);
   }
 
   async encode(bgraFrame: Frame, muxer: FormatMuxer): Promise<void> {

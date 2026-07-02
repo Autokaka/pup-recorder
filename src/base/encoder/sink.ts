@@ -64,12 +64,31 @@ export class OutputSink implements AsyncDisposable {
   }
 
   static async create(opts: SinkOptions): Promise<OutputSink> {
-    const muxer = new FormatMuxer(opts.outFile);
-    const video =
+    // Partial-construction safety: dispose muxer/encoders if a later step throws; move() disowns on success.
+    await using stack = new AsyncDisposableStack();
+    const muxer = stack.use(new FormatMuxer(opts.outFile));
+    const setup =
       opts.kind === "mp4" ? await OutputSink.mp4Video(opts, muxer) : await OutputSink.webmVideo(opts, muxer);
+    if (setup.video) {
+      stack.use(setup.video);
+    }
+    if (setup.hwVideo) {
+      stack.use(setup.hwVideo);
+    }
+    if (setup.codec) {
+      stack.use(setup.codec);
+    }
+    // Only a sink-owned hw device is ours to free here; a shared device belongs to the pipeline.
+    if (setup.ownsHw && setup.hw) {
+      stack.use(setup.hw);
+    }
     const audio = opts.withAudio ? await OutputSink.audioFor(opts, muxer) : undefined;
+    if (audio) {
+      stack.use(audio);
+    }
     await muxer.open();
-    return new OutputSink({ muxer, ...video, audio, opts });
+    stack.move();
+    return new OutputSink({ muxer, ...setup, audio, opts });
   }
 
   private static mp4Video(opts: SinkOptions, muxer: FormatMuxer): Promise<VideoSetup> {

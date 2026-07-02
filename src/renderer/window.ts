@@ -12,6 +12,7 @@ import type { IPCRenderOptions } from "./schema";
 
 const TAG = "[Window]";
 const TIMEOUT_ERROR = new Error("window timeout");
+const CONSOLE_IGNORES = [`%cElectron Security Warning`, "Mixed Content: The page at"];
 
 interface FinishOptions {
   source: string;
@@ -138,7 +139,8 @@ async function openWindow({ source, renderer, tolerant, signal, onCreated }: Win
   win.webContents.on("console-message", ({ level, message, lineNumber, sourceId }) => {
     const msgs = [TAG, "console:", { message, lineNumber, sourceId, source }];
     level === "error" ? logger.error(...msgs) : logger.debug(...msgs);
-    if (level === "warning" && message.startsWith(`%cElectron Security Warning`)) {
+    // Drop headless noise: security warnings and http→https auto-upgrade notices for internal-proxy assets.
+    if (level === "warning" && CONSOLE_IGNORES.find((i) => message.startsWith(i))) {
       return;
     }
     renderer.onConsole(level, message);

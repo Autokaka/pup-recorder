@@ -1,17 +1,18 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/03/21.
 
-import { type CodecContext, Dictionary, FFmpegError, FormatContext, type Packet } from "node-av";
+import { type CodecContext, Dictionary, FFmpegError, FormatContext, type Packet, type Stream } from "node-av";
 
 export class FormatMuxer {
   private readonly _ctx: FormatContext;
   private _opened = false;
+  private _disposed = false;
 
   constructor(outPath: string, formatName?: string) {
     this._ctx = new FormatContext();
     FFmpegError.throwIfError(this._ctx.allocOutputContext2(null, formatName ?? null, outPath), "allocOutputContext2");
   }
 
-  addStream(codecCtx: CodecContext, codecTag?: string): ReturnType<FormatContext["newStream"]> {
+  addStream(codecCtx: CodecContext, codecTag?: string): Stream {
     const stream = this._ctx.newStream(null);
     stream.timeBase = codecCtx.timeBase;
     FFmpegError.throwIfError(stream.codecpar.fromContext(codecCtx), "codecpar.fromContext");
@@ -37,15 +38,22 @@ export class FormatMuxer {
   }
 
   async [Symbol.asyncDispose](): Promise<void> {
-    if (!this._opened) {
+    if (this._disposed) {
       return;
     }
-    this._opened = false;
+    this._disposed = true;
     try {
-      await this._ctx.writeTrailer();
+      if (this._opened) {
+        this._opened = false;
+        try {
+          await this._ctx.writeTrailer();
+        } finally {
+          // A failed/truncated trailer write must not leak the FD.
+          await this._ctx.closeOutput();
+        }
+      }
     } finally {
-      // A failed/truncated trailer write must not leak the FD + native context.
-      await this._ctx.closeOutput();
+      // Always free the native context — even a never-opened muxer allocated one in the constructor.
       await this._ctx[Symbol.asyncDispose]();
     }
   }

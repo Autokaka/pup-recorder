@@ -56,59 +56,47 @@ export class NvencDualLayerEncoder implements Disposable {
     const nvencOpts = { preset: "p4", bf: "0", tier: "main" };
     const common = { codec, width, height, fps, bitrate, options: nvencOpts };
     // BGRA direct — NVENC converts internally, no CPU SWS, no hwFramesCtx needed.
-    const baseCtx = await openVideoCtx({ ...common, pixelFormat: AV_PIX_FMT_BGRA }, "nvenc.base.open2");
+    // Partial-construction safety: stack frees every native resource if a later step throws; move() disowns on success.
+    using stack = new DisposableStack();
+    const baseCtx = stack.use(await openVideoCtx({ ...common, pixelFormat: AV_PIX_FMT_BGRA }, "nvenc.base.open2"));
+    const alphaCtx = stack.use(await openVideoCtx({ ...common, pixelFormat: AV_PIX_FMT_YUV420P }, "nvenc.alpha.open2"));
 
-    let alphaCtx: CodecContext | undefined;
-    let basePkt: Packet | undefined;
-    let alphaPkt: Packet | undefined;
-    let alphaSwFrame: Frame | undefined;
-    try {
-      alphaCtx = await openVideoCtx({ ...common, pixelFormat: AV_PIX_FMT_YUV420P }, "nvenc.alpha.open2");
-
-      if (!baseCtx.extraData || !alphaCtx.extraData) {
-        throw new Error("nvenc: codec extradata missing");
-      }
-      const hevcCfg = parseNvencHevcConfig(baseCtx.extraData);
-
-      const stream = muxer.addStream(baseCtx, "hvc1");
-      const unified = buildUnifiedExtradata({
-        baseExtradata: baseCtx.extraData,
-        alphaExtradata: alphaCtx.extraData,
-        width,
-        height,
-      });
-      // Apple-VTB compat: rewrite VPS+SPS PTL bits to match x265/VTB output (tier=Main, compat[2]=1).
-      stream.codecpar.extradata = patchHevcAlphaPtl(unified);
-
-      const ySize = width * height;
-      // YUV420P chroma planes are ceil(w/2)×ceil(h/2); floor underflows on odd dimensions.
-      const chromaSize = ((width + 1) >> 1) * ((height + 1) >> 1);
-      const alphaBuf = Buffer.alloc(ySize + chromaSize * 2);
-      alphaBuf.fill(128, ySize);
-
-      basePkt = makePacket();
-      alphaPkt = makePacket();
-      alphaSwFrame = makeFrame(width, height, AV_PIX_FMT_YUV420P);
-
-      return new NvencDualLayerEncoder({
-        baseCtx,
-        alphaCtx,
-        basePkt,
-        alphaPkt,
-        stream,
-        alphaSwFrame,
-        alphaBuf,
-        hevcCfg,
-      });
-    } catch (e) {
-      // Partial construction: encoder never returned, so [Symbol.dispose] is unreachable.
-      basePkt?.free();
-      alphaPkt?.free();
-      alphaSwFrame?.free();
-      alphaCtx?.freeContext();
-      baseCtx.freeContext();
-      throw e;
+    if (!baseCtx.extraData || !alphaCtx.extraData) {
+      throw new Error("nvenc: codec extradata missing");
     }
+    const hevcCfg = parseNvencHevcConfig(baseCtx.extraData);
+
+    const stream = muxer.addStream(baseCtx, "hvc1");
+    const unified = buildUnifiedExtradata({
+      baseExtradata: baseCtx.extraData,
+      alphaExtradata: alphaCtx.extraData,
+      width,
+      height,
+    });
+    // Apple-VTB compat: rewrite VPS+SPS PTL bits to match x265/VTB output (tier=Main, compat[2]=1).
+    stream.codecpar.extradata = patchHevcAlphaPtl(unified);
+
+    const ySize = width * height;
+    // YUV420P chroma planes are ceil(w/2)×ceil(h/2); floor underflows on odd dimensions.
+    const chromaSize = ((width + 1) >> 1) * ((height + 1) >> 1);
+    const alphaBuf = Buffer.alloc(ySize + chromaSize * 2);
+    alphaBuf.fill(128, ySize);
+
+    const basePkt = stack.use(makePacket());
+    const alphaPkt = stack.use(makePacket());
+    const alphaSwFrame = stack.use(makeFrame(width, height, AV_PIX_FMT_YUV420P));
+
+    stack.move();
+    return new NvencDualLayerEncoder({
+      baseCtx,
+      alphaCtx,
+      basePkt,
+      alphaPkt,
+      stream,
+      alphaSwFrame,
+      alphaBuf,
+      hevcCfg,
+    });
   }
 
   async encode(bgraFrame: Frame, muxer: FormatMuxer): Promise<void> {

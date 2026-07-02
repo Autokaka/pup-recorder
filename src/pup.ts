@@ -94,9 +94,10 @@ export async function pup(source: string, options: Partial<PupOptions>): Promise
 
   const handle = await runPupApp(source, renderOpts);
 
+  let killTimer: NodeJS.Timeout | undefined;
   const onAbort = () => {
     handle.process.send?.({ type: IpcMsgType.Cancel, reason: String(signal?.reason ?? "abort") });
-    setTimeout(() => handle.kill(), 5_000);
+    killTimer = setTimeout(() => handle.kill(), 5_000);
   };
   signal?.addEventListener("abort", onAbort, { once: true });
 
@@ -122,6 +123,7 @@ export async function pup(source: string, options: Partial<PupOptions>): Promise
     signal?.throwIfAborted();
     throw e;
   } finally {
+    clearTimeout(killTimer);
     signal?.removeEventListener("abort", onAbort);
   }
 }

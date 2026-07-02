@@ -30,7 +30,7 @@ export interface AttachArgs {
 
 export function newVideoState(video: HTMLVideoElement, cv: HTMLCanvasElement): VideoState {
   return {
-    meta: null,
+    meta: undefined,
     cv,
     ctx: cv.getContext("2d")!,
     paused: !(video.autoplay || !video.paused),
@@ -50,17 +50,17 @@ export function newVideoState(video: HTMLVideoElement, cv: HTMLCanvasElement): V
   };
 }
 
-function failOpen(video: HTMLVideoElement, state: VideoState, error: MediaErrorLike): null {
+function failOpen(video: HTMLVideoElement, state: VideoState, error: MediaErrorLike): undefined {
   state.dead = true;
   state.error = error;
   state.networkState = NETWORK_NO_SOURCE;
-  console.warn(TAG, `${error.message} src=${video.src || video.currentSrc}`);
+  console.error(TAG, `${error.message} src=${video.src || video.currentSrc}`);
   fire(video, "error");
-  return null;
+  return undefined;
 }
 
 // Open the frame server session, then emit the HTMLMediaElement load sequence (readyState/networkState + events).
-export async function openSession(hook: VideoHook, args: AttachArgs): Promise<VideoState | null> {
+export async function openSession(hook: VideoHook, args: AttachArgs): Promise<VideoState | undefined> {
   const { video, state, src, birthMs, native } = args;
   const fps = Number.parseInt(video.dataset["pupFps"] || "30", 10);
   state.networkState = NETWORK_LOADING;
@@ -76,7 +76,7 @@ export async function openSession(hook: VideoHook, args: AttachArgs): Promise<Vi
     });
   }
   if (hook.sessions.get(video) !== state) {
-    return null;
+    return undefined;
   }
   if (!res.ok) {
     return failOpen(video, state, {
@@ -86,7 +86,7 @@ export async function openSession(hook: VideoHook, args: AttachArgs): Promise<Vi
   }
   const meta = (await res.json()) as VideoMeta;
   if (hook.sessions.get(video) !== state) {
-    return null;
+    return undefined;
   }
   state.meta = meta;
   state.currentTime = state.paused ? 0 : Math.max(0, (hook.currMs - birthMs) / 1000);

@@ -42,9 +42,13 @@ export class CodecState implements Disposable {
    * across frames, so a shared instance corrupts output when decoding standalone PNGs.
    */
   async png(): Promise<CodecContext> {
+    // Partial-construction safety: free the ctx if open2 throws; move() disowns on success.
+    using stack = new DisposableStack();
     const png = new CodecContext();
     png.allocContext3(this._png);
+    stack.use(png);
     FFmpegError.throwIfError(await png.open2(this._png), "pngDecoder.open2");
+    stack.move();
     return png;
   }
 

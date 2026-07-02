@@ -2,7 +2,7 @@
 
 import { protocol } from "electron";
 import { logger } from "../../base/logging";
-import { frameServer, type VideoMeta } from "./frame_server";
+import { FrameServer, type VideoMeta } from "./frame_server";
 
 const TAG = "[FrameProtocol]";
 
@@ -15,8 +15,9 @@ const CORS_HEADERS: Record<string, string> = {
   "access-control-allow-headers": "*",
 };
 
-// Must be called after app is ready.
-export function setupFrameProtocol(): void {
+// Must be called after app is ready. Deterministic-only (real-time videos self-tick, no frame protocol).
+export function useFrameProtocol(useInnerProxy: boolean): AsyncDisposable {
+  const fs = new FrameServer(useInnerProxy);
   protocol.handle(SCHEME, async (req) => {
     if (req.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
@@ -27,7 +28,7 @@ export function setupFrameProtocol(): void {
       switch (url.hostname) {
         case "open":
           return jsonOk(
-            await frameServer.open({
+            await fs.open({
               src: url.searchParams.get("src") ?? "",
               fps: int(url, "fps", 30),
               dstW: int(url, "w", 0),
@@ -36,18 +37,25 @@ export function setupFrameProtocol(): void {
             }),
           );
         case "frame":
-          return rgbaOk(await frameServer.getFrame(url.searchParams.get("id") ?? "", int(url, "idx", 1)));
+          return rgbaOk(await fs.getFrame(url.searchParams.get("id") ?? "", int(url, "idx", 1)));
         case "close":
-          frameServer.close(url.searchParams.get("id") ?? "");
+          await fs.close(url.searchParams.get("id") ?? "");
           return new Response(null, { status: 204, headers: CORS_HEADERS });
         default:
           return new Response(`unknown action: ${url.hostname}`, { status: 404, headers: CORS_HEADERS });
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
+      logger.error(TAG, `${url.hostname} failed${url.search}: ${msg}`);
       return new Response(msg, { status: 500, headers: CORS_HEADERS });
     }
   });
+  return {
+    [Symbol.asyncDispose]: async () => {
+      protocol.unhandle(SCHEME);
+      await fs.closeAll();
+    },
+  };
 }
 
 function jsonOk(meta: VideoMeta): Response {

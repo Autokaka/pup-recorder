@@ -47,7 +47,12 @@ export class EncoderPipeline {
 
     const kinds = outFiles.map((p) => OutputSink.kindFromPath(p));
     const needsMp4Hw = !disableHwCodec && kinds.includes("mp4");
+    // Partial-construction safety: dispose sharedHw + any sinks already built if a later sink throws; move() disowns on success.
+    await using stack = new AsyncDisposableStack();
     const sharedHw = needsMp4Hw ? (HardwareContext.auto() ?? undefined) : undefined;
+    if (sharedHw) {
+      stack.use(sharedHw);
+    }
     const isHwAlphaCapable =
       sharedHw?.deviceTypeName === FF_HWDEVICE_TYPE_VIDEOTOOLBOX || sharedHw?.deviceTypeName === FF_HWDEVICE_TYPE_CUDA;
 
@@ -63,9 +68,11 @@ export class EncoderPipeline {
         disableHwCodec,
         sharedHw: kinds[i] === "mp4" && isHwAlphaCapable ? sharedHw : undefined,
       });
+      stack.use(sink);
       sinks.push(sink);
     }
 
+    stack.move();
     return new EncoderPipeline({ sinks, sharedHw, limiter: new ConcurrencyLimiter(1), outFiles, opts });
   }
 
@@ -134,8 +141,11 @@ export class EncoderPipeline {
   }
 
   private bgraFrame(input: Buffer): Frame {
-    const frame = makeFrame(this._s.opts.width, this._s.opts.height, AV_PIX_FMT_BGRA);
+    // Partial-construction safety: free frame if fromBuffer throws before we return it.
+    using stack = new DisposableStack();
+    const frame = stack.use(makeFrame(this._s.opts.width, this._s.opts.height, AV_PIX_FMT_BGRA));
     FFmpegError.throwIfError(frame.fromBuffer(input), "bgraFrame.fromBuffer");
+    stack.move();
     return frame;
   }
 }
