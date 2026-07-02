@@ -7,12 +7,12 @@ import { dependencies } from "./package.json";
 
 const require = createRequire(import.meta.url);
 const tsPath = require.resolve("@typescript/native-preview/package.json");
-const tsgo = join(tsPath, "..", "bin", "tsgo.js");
+const tsgo = join(tsPath, "..", require(tsPath).bin.tsgo);
 const biomePath = require.resolve("@biomejs/biome/package.json");
 const biome = join(biomePath, "..", "bin", "biome");
 
 await $`${tsgo}`;
-await $`${biome} check --write src`;
+await $`${biome} check --write --error-on-warnings`;
 await rm("dist", { recursive: true, force: true });
 
 const common: Options = {

@@ -137,12 +137,12 @@ async function openWindow({ source, renderer, tolerant, signal, onCreated }: Win
   await onCreated?.(win);
 
   win.webContents.on("console-message", ({ level, message, lineNumber, sourceId }) => {
-    const msgs = [TAG, "console:", { message, lineNumber, sourceId, source }];
-    level === "error" ? logger.error(...msgs) : logger.debug(...msgs);
     // Drop headless noise: security warnings and http→https auto-upgrade notices for internal-proxy assets.
     if (level === "warning" && CONSOLE_IGNORES.find((i) => message.startsWith(i))) {
       return;
     }
+    const msgs = [TAG, "console:", { message, lineNumber, sourceId, source }];
+    level === "error" ? logger.error(...msgs) : logger.debug(...msgs);
     renderer.onConsole(level, message);
   });
 

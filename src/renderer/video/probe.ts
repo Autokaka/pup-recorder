@@ -4,8 +4,6 @@ import { Decoder } from "node-av/api";
 import { AVMEDIA_TYPE_VIDEO } from "node-av/constants";
 import { openInput } from "./open";
 
-const PROBE_TIMEOUT_MS = 5_000;
-
 export interface ProbeResult {
   width: number;
   height: number;
@@ -14,16 +12,16 @@ export interface ProbeResult {
   leadGap: number;
 }
 
+// No wall-clock cap: openInput's per-read rw_timeout bounds a stuck source, and the caller retries on throw.
 export async function probe(src: string): Promise<ProbeResult> {
-  const signal = AbortSignal.timeout(PROBE_TIMEOUT_MS);
-  await using d = await openInput(src, signal);
+  await using d = await openInput(src);
   const stream = d.streams?.find((s) => s.codecpar.codecType === AVMEDIA_TYPE_VIDEO);
   if (!stream) {
     throw new Error("probe: no video stream");
   }
   const duration = d.duration > 0 ? d.duration : 0;
   const tb = stream.timeBase.num / stream.timeBase.den;
-  using dec = await Decoder.create(stream, { threadCount: 1, signal });
+  using dec = await Decoder.create(stream, { threadCount: 1 });
   let leadGap = 0;
   // First clean frame's PTS = where content begins; skip corrupt frames like a browser.
   outer: for await (using pkt of d.packets(stream.index)) {

@@ -15,6 +15,7 @@
             "strictCase": false,
             "conventions": [
               { "selector": { "kind": "classProperty", "modifiers": ["private"] }, "match": "_(.+)" },
+              { "selector": { "kind": "classMethod", "modifiers": ["private"] }, "match": "[^_].*" },
               { "selector": { "kind": "typeProperty" }, "match": "__.+|[a-z][A-Za-z0-9]*|[a-z][a-z0-9]*(?:_[a-z0-9]+)*|[A-Z][A-Za-z0-9]*|[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*" },
               { "selector": { "kind": "objectLiteralProperty" }, "formats": ["camelCase", "snake_case", "PascalCase", "CONSTANT_CASE"] },
               { "selector": { "kind": "variable" }, "formats": ["camelCase", "snake_case", "PascalCase", "CONSTANT_CASE"] },
