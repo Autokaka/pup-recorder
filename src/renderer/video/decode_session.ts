@@ -151,7 +151,7 @@ export class DecodeSession {
         return;
       }
       const at = this._leadFrames + idx; // map decode position past the held lead-gap frames
-      while (!this._closed && this._gen === gen && at > this._want + DECODE_AHEAD) {
+      while (!this._closed && this._gen === gen && at > this.demand + DECODE_AHEAD) {
         await this.pause();
       }
       if (this._closed || this._gen !== gen) {
@@ -162,6 +162,17 @@ export class DecodeSession {
       this.evict();
       this.drainWaiters();
     }
+  }
+
+  // Waiters that survived a rewind restart are still demand; ignoring them parks the pass and starves them forever.
+  private get demand(): number {
+    let d = this._want;
+    for (const w of this._waiters) {
+      if (w.idx > d) {
+        d = w.idx;
+      }
+    }
+    return d;
   }
 
   private pause(): Promise<void> {

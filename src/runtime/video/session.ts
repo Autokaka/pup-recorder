@@ -90,21 +90,38 @@ export async function openSession(hook: VideoHook, args: AttachArgs): Promise<Vi
   }
   state.meta = meta;
   state.currentTime = state.paused ? 0 : Math.max(0, (hook.currMs - birthMs) / 1000);
-  Object.defineProperty(video, "videoWidth", { value: meta.width, configurable: true });
-  Object.defineProperty(video, "videoHeight", { value: meta.height, configurable: true });
-  Object.defineProperty(video, "duration", { value: meta.duration, configurable: true });
+  // The stub media usually loads natively first; Blink then owns the real event sequence — don't duplicate it.
+  const nativeMeta = video.videoWidth > 0;
+  Object.defineProperty(video, "videoWidth", {
+    value: meta.width,
+    configurable: true,
+  });
+  Object.defineProperty(video, "videoHeight", {
+    value: meta.height,
+    configurable: true,
+  });
+  Object.defineProperty(video, "duration", {
+    value: meta.duration,
+    configurable: true,
+  });
   state.readyState = HAVE_METADATA;
-  fire(video, "durationchange");
-  fire(video, "loadedmetadata");
+  if (!nativeMeta) {
+    fire(video, "durationchange");
+    fire(video, "loadedmetadata");
+  }
   state.readyState = HAVE_ENOUGH_DATA;
-  fire(video, "loadeddata");
-  fire(video, "canplay");
-  fire(video, "canplaythrough");
+  if (!nativeMeta) {
+    fire(video, "loadeddata");
+    fire(video, "canplay");
+    fire(video, "canplaythrough");
+  }
   state.networkState = NETWORK_IDLE;
-  fire(video, "suspend");
-  if (!state.paused) {
-    fire(video, "play");
-    fire(video, "playing");
+  if (!nativeMeta) {
+    fire(video, "suspend");
+    if (!state.paused) {
+      fire(video, "play");
+      fire(video, "playing");
+    }
   }
   hook.cache.prefetch(state, 1, AHEAD);
   return state;

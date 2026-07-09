@@ -1,6 +1,7 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/09.
 
 import type { NativeImage, Size } from "electron";
+import { BLANK_WARN_RATIO, BlankFrameStats } from "../base/blank_frame";
 import { resizeDrawable } from "../base/cdp";
 import { EncoderPipeline } from "../base/encoder/pipeline";
 import { FrameDropStats } from "../base/frame_drop";
@@ -31,10 +32,12 @@ export async function render(options: IPCRenderOptions): Promise<IpcDonePayload>
   let rejecter: ((reason?: unknown) => void) | undefined;
   let interval: NodeJS.Timeout | undefined;
   const dropStats = new FrameDropStats(fps);
+  const blankStats = new BlankFrameStats(width, height);
 
   let disposeAudio: AudioDisposal | undefined;
   const scheduleFrame = (frame: Buffer) => {
     written++;
+    blankStats.sample(frame);
     encoder.encodeBGRA(frame).catch((e) => (encodeError ??= e));
   };
 
@@ -154,6 +157,10 @@ export async function render(options: IPCRenderOptions): Promise<IpcDonePayload>
     throw encodeError ?? new Error("no frames captured");
   } else {
     const dropScore = dropStats.finalize();
-    return { written, jank: dropScore.jank, outFile };
+    const blank = blankStats.finalize();
+    if (blank >= BLANK_WARN_RATIO) {
+      logger.warn(TAG, `${source} blank-frame ratio ${Math.round(blank * 100)}% — possible white/blank screen`);
+    }
+    return { written, jank: dropScore.jank, outFile, blank };
   }
 }

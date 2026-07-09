@@ -37,7 +37,9 @@ function waitForFinish({ source, win, action, timeoutMs, tolerant, signal }: Fin
       }
     };
     signal?.throwIfAborted();
-    signal?.addEventListener("abort", () => done(signal.reason), { once: true });
+    signal?.addEventListener("abort", () => done(signal.reason), {
+      once: true,
+    });
     win.webContents.once("dom-ready", () => {
       logger.debug(TAG, "dom-ready:", { source });
       domReady = true;
@@ -132,7 +134,12 @@ async function openWindow({ source, renderer, tolerant, signal, onCreated }: Win
       preload: pickPreload(renderer),
     },
   });
-  setInterceptor({ source, window: win, useInnerProxy, cancelMedia: renderer.deterministic });
+  setInterceptor({
+    source,
+    window: win,
+    useInnerProxy,
+    stubMedia: renderer.deterministic,
+  });
   win.webContents.debugger.attach("1.3");
   await onCreated?.(win);
 
@@ -178,7 +185,15 @@ export async function loadWindow({ source, renderer, onCreated, signal }: Window
     error = e;
   }
 
-  const open = () => openWindow({ source, renderer, onCreated, signal, tolerant: renderer.windowTolerant });
+  const open = () => {
+    return openWindow({
+      source,
+      renderer,
+      onCreated,
+      signal,
+      tolerant: renderer.windowTolerant,
+    });
+  };
 
   if (renderer.windowTolerant && error === TIMEOUT_ERROR) {
     logger.warn(TAG, `warmup timeout: ${source}, falling back to dom-ready`);

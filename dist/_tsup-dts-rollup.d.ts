@@ -10,7 +10,7 @@ import type { Debugger } from 'electron';
 import { Demuxer } from 'node-av/api';
 import { EventEmitter } from 'node:events';
 import { FFAudioEncoder } from 'node-av/constants';
-import type { FFVideoEncoder } from 'node-av/constants';
+import { FFVideoEncoder } from 'node-av/constants';
 import { Frame } from 'node-av';
 import { HardwareContext } from 'node-av/api';
 import { HardwareFramesContext } from 'node-av';
@@ -129,6 +129,18 @@ export declare class BitWriter {
     copy(src: number[], start: number, len: number): void;
 }
 
+export declare const BLANK_WARN_RATIO = 0.5;
+
+export declare class BlankFrameStats {
+    private readonly _width;
+    private readonly _height;
+    private _total;
+    private _blank;
+    constructor(width: number, height: number);
+    sample(frame: Buffer): void;
+    finalize(): number;
+}
+
 export declare function buildAlphaChannelInfoSEI(): Buffer;
 
 /**
@@ -239,6 +251,7 @@ export declare class DecodeSession {
     private requestRestart;
     private pump;
     private decodePass;
+    private get demand();
     private pause;
     private untilRestart;
     private evict;
@@ -329,6 +342,8 @@ export declare interface EncoderPipelineOptions {
     disableHwCodec?: boolean;
 }
 
+export declare function encodeStubWebm({ width, height, duration }: StubEncodeOptions): Promise<Buffer>;
+
 export declare type EnvParser<T> = (value: unknown) => T;
 
 export declare interface ErrorMsg {
@@ -341,6 +356,8 @@ export declare function evalIn(cdp: Debugger, expression: string): Promise<unkno
 export declare function exec(cmd: string, options?: SpawnOptions): ProcessHandle;
 
 export declare function extractAlphaToYuv420pBuffer(bgraFrame: Frame, buf: Buffer): void;
+
+export declare const FF_ENCODER_LIBVPX_VP9: FFVideoEncoder;
 
 export declare function fire(el: EventTarget, type: string): void;
 
@@ -407,11 +424,15 @@ export declare class FrameDropStats {
 export declare class FrameServer {
     private readonly _useInnerProxy;
     private _sessions;
+    private _probes;
+    private _stubs;
     private _closed;
     constructor(_useInnerProxy: boolean);
     open(opts: OpenOptions): Promise<VideoMeta>;
+    stub(src: string): Promise<Buffer>;
     getFrame(id: string, idx: number): Promise<Buffer>;
     close(id: string): Promise<void>;
+    private probeCached;
     closeAll(): Promise<void>;
 }
 
@@ -453,6 +474,7 @@ export declare interface IpcDonePayload {
     written: number;
     jank: number;
     outFile: string;
+    blank: number;
 }
 
 export declare interface IpcEvents {
@@ -491,6 +513,8 @@ export declare class IpcWriter {
     writeDone(payload: IpcDonePayload): Promise<void>;
     private send;
 }
+
+export declare function isBlankFrame(bgra: Buffer, width: number, height: number): boolean;
 
 export declare function isEmpty(image: NativeImage): boolean;
 
@@ -594,7 +618,7 @@ export declare interface NetworkOptions {
     source: string;
     window: BrowserWindow;
     useInnerProxy?: boolean;
-    cancelMedia?: boolean;
+    stubMedia?: boolean;
 }
 
 export declare function newVideoState(video: HTMLVideoElement, cv: HTMLCanvasElement): VideoState;
@@ -778,6 +802,7 @@ declare interface RenderResult {
     written: number;
     jank: number;
     outFile: string;
+    blank: number;
 }
 export { RenderResult }
 export { RenderResult as RenderResult_alias_1 }
@@ -837,7 +862,7 @@ export declare const SCHEME = "pup-frame://";
 
 export declare function send(cdp: Debugger, method: string, params?: object): Promise<unknown>;
 
-export declare function setInterceptor({ source, window, useInnerProxy, cancelMedia }: NetworkOptions): void;
+export declare function setInterceptor({ source, window, useInnerProxy, stubMedia }: NetworkOptions): void;
 
 export declare function setupCanvas(video: HTMLVideoElement, snap: OffscreenCanvas | undefined): HTMLCanvasElement;
 
@@ -874,6 +899,12 @@ export declare function startStego(cdp: Debugger): Promise<unknown>;
 export declare const STEGO_TICK_CHANNEL = "stego-tick";
 
 export declare function stopStego(cdp: Debugger): Promise<unknown>;
+
+export declare interface StubEncodeOptions {
+    width: number;
+    height: number;
+    duration: number;
+}
 
 export declare function swapBuffer(wc: WebContents, expected: number, interval: number): Promise<void>;
 

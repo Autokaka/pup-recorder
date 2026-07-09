@@ -38,11 +38,16 @@ export function useFrameProtocol(useInnerProxy: boolean): AsyncDisposable {
           );
         case "frame":
           return rgbaOk(await fs.getFrame(url.searchParams.get("id") ?? "", int(url, "idx", 1)));
+        case "stub":
+          return webmOk(await fs.stub(url.searchParams.get("src") ?? ""));
         case "close":
           await fs.close(url.searchParams.get("id") ?? "");
           return new Response(null, { status: 204, headers: CORS_HEADERS });
         default:
-          return new Response(`unknown action: ${url.hostname}`, { status: 404, headers: CORS_HEADERS });
+          return new Response(`unknown action: ${url.hostname}`, {
+            status: 404,
+            headers: CORS_HEADERS,
+          });
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -64,6 +69,19 @@ function jsonOk(meta: VideoMeta): Response {
   });
 }
 
+// Cached stub Buffer is shared across responses — copy so a consumer can't detach it.
+function webmOk(bytes: Buffer): Response {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return new Response(copy.buffer as ArrayBuffer, {
+    headers: {
+      ...CORS_HEADERS,
+      "content-type": "video/webm",
+      "cache-control": "no-store",
+    },
+  });
+}
+
 // Raw RGBA pixels; the page wraps them in ImageData using meta.width/height it got from `open`.
 function rgbaOk(bytes: Buffer): Response {
   if (bytes.byteLength === 0) {
@@ -72,7 +90,11 @@ function rgbaOk(bytes: Buffer): Response {
   const copy = new Uint8Array(bytes.byteLength);
   copy.set(bytes);
   return new Response(copy.buffer as ArrayBuffer, {
-    headers: { ...CORS_HEADERS, "content-type": "application/octet-stream", "cache-control": "no-store" },
+    headers: {
+      ...CORS_HEADERS,
+      "content-type": "application/octet-stream",
+      "cache-control": "no-store",
+    },
   });
 }
 

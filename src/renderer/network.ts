@@ -42,10 +42,10 @@ export interface NetworkOptions {
   source: string;
   window: BrowserWindow;
   useInnerProxy?: boolean;
-  cancelMedia?: boolean;
+  stubMedia?: boolean;
 }
 
-export function setInterceptor({ source, window, useInnerProxy, cancelMedia }: NetworkOptions) {
+export function setInterceptor({ source, window, useInnerProxy, stubMedia }: NetworkOptions) {
   const req = window.webContents.session.webRequest;
   const limiter = new ConcurrencyLimiter(256);
   const events = new Map<string, WaitableEvent>();
@@ -62,8 +62,11 @@ export function setInterceptor({ source, window, useInnerProxy, cancelMedia }: N
 
   req.onBeforeRequest((details, callback) => {
     const url = details.url;
-    if (cancelMedia && details.resourceType === "media") {
-      callback({ cancel: true });
+    // Swap media for a frame-server stub (true intrinsic size/duration) so Blink lays out like Chrome.
+    if (stubMedia && details.resourceType === "media" && !url.startsWith("pup-frame:")) {
+      callback({
+        redirectURL: `pup-frame://stub?src=${encodeURIComponent(url)}`,
+      });
       return;
     }
     const proxied = useInnerProxy ? proxiedUrl(url) : url;
@@ -120,17 +123,11 @@ export function setInterceptor({ source, window, useInnerProxy, cancelMedia }: N
   req.onErrorOccurred((details) => {
     const key = `${window.id}_${details.id}`;
     signal(key);
-    if (cancelMedia && details.resourceType === "media" && details.error === "net::ERR_BLOCKED_BY_CLIENT") {
-      return;
-    }
-    logger.error(TAG, `error:`, {
-      key,
-      url: details.url,
-      method: details.method,
-      error: details.error,
-      resourceType: details.resourceType,
-      source,
-    });
+    const { url, method, error, resourceType } = details;
+    // Stubbed media downgrades: ERR_ABORTED is just the loader restarting onto the cross-scheme redirect.
+    const media = stubMedia && resourceType === "media";
+    const level = media ? (error === "net::ERR_ABORTED" ? "debug" : "warn") : "error";
+    logger[level](TAG, `error:`, { key, url, method, error, resourceType, source });
   });
 }
 

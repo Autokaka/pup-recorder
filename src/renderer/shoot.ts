@@ -1,6 +1,7 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/03/13.
 
 import type { BrowserWindow, Event, NativeImage, Rectangle, Size, WebContentsPaintEventParams } from "electron";
+import { BLANK_WARN_RATIO, BlankFrameStats } from "../base/blank_frame";
 import { pauseVirtualTime, resizeDrawable } from "../base/cdp";
 import { EncoderPipeline } from "../base/encoder/pipeline";
 import { sizeEquals } from "../base/image";
@@ -84,6 +85,7 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
   let written = 0;
   let progress = 0;
   let encodeError: Error | undefined;
+  const blankStats = new BlankFrameStats(width, height);
   const cdp = win.webContents.debugger;
   const main = win.webContents.mainFrame;
   const iframe = main.frames[0];
@@ -99,6 +101,7 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
       await tick({ frame: iframe, timestampMs: frameMs, signal });
       await swapBuffer(win.webContents, frameMs, frameInterval);
       const bitmap = await paint({ source, win, size: { width, height }, ms: frameMs });
+      blankStats.sample(bitmap);
       // Encode without awaiting (limiter serializes), so it overlaps the next frame's CDP/paint setup.
       pipeline.encodeBGRA(bitmap).catch((e) => (encodeError ??= e));
       written++;
@@ -123,6 +126,10 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
   if (written === 0) {
     throw new Error("no frames captured");
   } else {
-    return { written, jank: 0, outFile };
+    const blank = blankStats.finalize();
+    if (blank >= BLANK_WARN_RATIO) {
+      logger.warn(TAG, `${source} blank-frame ratio ${Math.round(blank * 100)}% — possible white/blank screen`);
+    }
+    return { written, jank: 0, outFile, blank };
   }
 }

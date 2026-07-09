@@ -4,7 +4,8 @@ import { createHash } from "node:crypto";
 import { useRetry } from "../../base/retry";
 import { proxiedUrl } from "../network";
 import { DecodeSession } from "./decode_session";
-import { probe } from "./probe";
+import { type ProbeResult, probe } from "./probe";
+import { encodeStubWebm } from "./stub";
 
 export interface VideoMeta {
   id: string;
@@ -37,6 +38,8 @@ interface Entry {
 
 export class FrameServer {
   private _sessions = new Map<string, Entry>();
+  private _probes = new Map<string, Promise<ProbeResult>>();
+  private _stubs = new Map<string, Promise<Buffer>>();
   private _closed = false;
 
   // -d decode bypasses the window interceptor, so it remaps hosts itself when the inner proxy is on.
@@ -54,7 +57,7 @@ export class FrameServer {
       return hit.session.meta;
     }
     const src = this._useInnerProxy ? proxiedUrl(opts.src) : opts.src;
-    const info = await useRetry({ fn: probe })(src);
+    const info = await this.probeCached(src);
     if (this._closed) {
       throw new Error("frame-server: closed");
     }
@@ -80,6 +83,28 @@ export class FrameServer {
     return meta;
   }
 
+  // Deterministic media requests redirect here: real parseable bytes with true intrinsic size + duration.
+  stub(src: string): Promise<Buffer> {
+    if (this._closed) {
+      throw new Error("frame-server: closed");
+    }
+    const real = this._useInnerProxy ? proxiedUrl(src) : src;
+    const hit = this._stubs.get(real);
+    if (hit) {
+      return hit;
+    }
+    const p = this.probeCached(real).then((info) =>
+      encodeStubWebm({
+        width: info.width,
+        height: info.height,
+        duration: info.duration,
+      }),
+    );
+    p.catch(() => this._stubs.delete(real));
+    this._stubs.set(real, p);
+    return p;
+  }
+
   getFrame(id: string, idx: number): Promise<Buffer> {
     const e = this._sessions.get(id);
     if (!e) {
@@ -98,6 +123,18 @@ export class FrameServer {
     }
     this._sessions.delete(id);
     await e.session.close();
+  }
+
+  // Failed probes evict so a transient source error can retry on the next request.
+  private probeCached(src: string): Promise<ProbeResult> {
+    const hit = this._probes.get(src);
+    if (hit) {
+      return hit;
+    }
+    const p = useRetry({ fn: probe })(src);
+    p.catch(() => this._probes.delete(src));
+    this._probes.set(src, p);
+    return p;
   }
 
   async closeAll(): Promise<void> {

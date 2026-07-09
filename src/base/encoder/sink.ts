@@ -9,16 +9,13 @@ import {
   AV_SAMPLE_FMT_FLTP,
   FF_ENCODER_AAC,
   FF_ENCODER_LIBOPUS,
-  type FFVideoEncoder,
 } from "node-av/constants";
 import { AudioEncoder } from "./audio";
 import { CodecState } from "./codec";
 import { createHwVideoEncoder, type HwEncoder, type VideoSetup } from "./factory";
+import { FF_ENCODER_LIBVPX_VP9 } from "./misc";
 import { FormatMuxer } from "./muxer";
 import { VideoEncoder } from "./video";
-
-// node-av 5.2.3 constant is wrong; ffmpeg registers with dash.
-const FF_ENCODER_LIBVPX_VP9 = "libvpx-vp9" as FFVideoEncoder;
 
 export type SinkKind = "mp4" | "webm";
 
@@ -103,21 +100,43 @@ export class OutputSink implements AsyncDisposable {
       height,
       fps,
       codecName: FF_ENCODER_LIBVPX_VP9,
-      codecOpts: { deadline: "realtime", "cpu-used": "8", "row-mt": "1", threads: "2" },
+      codecOpts: {
+        deadline: "realtime",
+        "cpu-used": "8",
+        "row-mt": "1",
+        threads: "2",
+      },
       bitrate: 4_000_000,
       pixelFormat: AV_PIX_FMT_YUVA420P,
       muxer,
     });
-    return { video, codec: await CodecState.create(width, height), ownsHw: false };
+    return {
+      video,
+      codec: await CodecState.create(width, height),
+      ownsHw: false,
+    };
   }
 
   private static audioFor(opts: SinkOptions, muxer: FormatMuxer): Promise<AudioEncoder> {
     // Opus rejects 44.1k.
     const cfg =
       opts.kind === "mp4"
-        ? { outSampleRate: 44_100, outSampleFmt: AV_SAMPLE_FMT_FLTP, codecName: FF_ENCODER_AAC }
-        : { outSampleRate: 48_000, outSampleFmt: AV_SAMPLE_FMT_FLT, codecName: FF_ENCODER_LIBOPUS };
-    return AudioEncoder.create({ ...cfg, globalHeader: true, bitrate: 128_000, muxer });
+        ? {
+            outSampleRate: 44_100,
+            outSampleFmt: AV_SAMPLE_FMT_FLTP,
+            codecName: FF_ENCODER_AAC,
+          }
+        : {
+            outSampleRate: 48_000,
+            outSampleFmt: AV_SAMPLE_FMT_FLT,
+            codecName: FF_ENCODER_LIBOPUS,
+          };
+    return AudioEncoder.create({
+      ...cfg,
+      globalHeader: true,
+      bitrate: 128_000,
+      muxer,
+    });
   }
 
   setInputRate(sampleRate: number): void {

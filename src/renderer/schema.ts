@@ -42,6 +42,7 @@ export interface RenderResult {
   written: number;
   jank: number;
   outFile: string;
+  blank: number;
 }
 
 export const defaultRenderOptions: RenderOptions = {

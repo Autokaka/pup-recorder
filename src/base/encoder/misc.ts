@@ -16,8 +16,12 @@ import {
   AVERROR_EAGAIN,
   AVERROR_EOF,
   type AVPixelFormat,
+  type FFVideoEncoder,
 } from "node-av/constants";
 import type { FormatMuxer } from "./muxer";
+
+// node-av 5.2.3 constant is wrong; ffmpeg registers with dash.
+export const FF_ENCODER_LIBVPX_VP9 = "libvpx-vp9" as FFVideoEncoder;
 
 export interface VideoCtxOptions {
   codec: Codec;

@@ -28,6 +28,7 @@ export interface IpcDonePayload {
   written: number;
   jank: number;
   outFile: string;
+  blank: number;
 }
 
 export interface ProgressMsg {
