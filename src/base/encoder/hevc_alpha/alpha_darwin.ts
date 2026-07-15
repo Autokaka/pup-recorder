@@ -1,6 +1,4 @@
-// Patch NVENC output to conform to Apple HEVC Video with Alpha Interoperability Profile.
-// Spec: https://developer.apple.com/av-foundation/HEVC-Video-with-Alpha-Interoperability-Profile.pdf
-// Slice parser is config-driven: NvencHevcConfig from parse.ts derives flags at encoder init.
+// Conform NVENC output to https://developer.apple.com/av-foundation/HEVC-Video-with-Alpha-Interoperability-Profile.pdf
 
 import { BitReader, BitWriter, packBits } from "./bit";
 import {
@@ -114,8 +112,7 @@ function readSe(br: BitReader): number {
   return ue & 1 ? (ue + 1) >> 1 : -(ue >> 1);
 }
 
-// Inline st_ref_pic_set when slice has short_term_ref_pic_set_sps_flag=0.
-// stRpsIdx = num_short_term_ref_pic_sets so inter_ref_pic_set_prediction may use prev set.
+// Inline st_ref_pic_set (sps_flag=0); stRpsIdx = num_short_term_ref_pic_sets → inter prediction may use prev set.
 function parseInlineStRefPicSet(br: BitReader, numDeltaPocsSet0: number): void {
   const interFlag = br.read(1); // inter_ref_pic_set_prediction_flag
   if (interFlag) {

@@ -28,8 +28,8 @@ function cssCase(s: string): string {
   return s.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
 }
 
-// Track the overlay canvas to the video element's live box (position, size×dpr, mirrored visual styles).
-export function syncOverlay(video: HTMLVideoElement, cv: HTMLCanvasElement): void {
+// Track the overlay canvas to the video element's live box; true = backing store resized (which wipes the canvas).
+export function syncOverlay(video: HTMLVideoElement, cv: HTMLCanvasElement): boolean {
   const cs = window.getComputedStyle(video);
   cv.style.position = "absolute";
   // offset* are pre-transform coords from offsetParent's padding edge = the abs containing-block origin; map direct.
@@ -51,12 +51,16 @@ export function syncOverlay(video: HTMLVideoElement, cv: HTMLCanvasElement): voi
   const dpr = window.devicePixelRatio || 1;
   const w = Math.max(1, Math.round(vr.width * dpr));
   const h = Math.max(1, Math.round(vr.height * dpr));
+  let resized = false;
   if (cv.width !== w) {
     cv.width = w;
+    resized = true;
   }
   if (cv.height !== h) {
     cv.height = h;
+    resized = true;
   }
+  return resized;
 }
 
 export function setupCanvas(video: HTMLVideoElement, snap: OffscreenCanvas | undefined): HTMLCanvasElement {

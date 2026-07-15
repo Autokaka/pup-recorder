@@ -908,7 +908,7 @@ export declare interface StubEncodeOptions {
 
 export declare function swapBuffer(wc: WebContents, expected: number, interval: number): Promise<void>;
 
-export declare function syncOverlay(video: HTMLVideoElement, cv: HTMLCanvasElement): void;
+export declare function syncOverlay(video: HTMLVideoElement, cv: HTMLCanvasElement): boolean;
 
 export declare const TAG = "[VideoHook]";
 

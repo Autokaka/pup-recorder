@@ -159,8 +159,9 @@ export class DecodeSession {
       }
       this._buf.set(at, buf);
       this._ready = at;
-      this.evict();
+      // Drain before evict: with want far ahead the floor covers this frame, and evicting it first starves its waiter forever.
       this.drainWaiters();
+      this.evict();
     }
   }
 

@@ -55,8 +55,7 @@ export class NvencDualLayerEncoder implements Disposable {
     // tier=main matches Apple VideoToolbox; macOS Chrome requires Main tier for HEVC alpha decode.
     const nvencOpts = { preset: "p4", bf: "0", tier: "main" };
     const common = { codec, width, height, fps, bitrate, options: nvencOpts };
-    // BGRA direct — NVENC converts internally, no CPU SWS, no hwFramesCtx needed.
-    // Partial-construction safety: stack frees every native resource if a later step throws; move() disowns on success.
+    // BGRA direct (NVENC converts, no CPU SWS); stack frees every native if a later step throws, move() disowns on success.
     using stack = new DisposableStack();
     const baseCtx = stack.use(await openVideoCtx({ ...common, pixelFormat: AV_PIX_FMT_BGRA }, "nvenc.base.open2"));
     const alphaCtx = stack.use(await openVideoCtx({ ...common, pixelFormat: AV_PIX_FMT_YUV420P }, "nvenc.alpha.open2"));
@@ -133,8 +132,7 @@ export class NvencDualLayerEncoder implements Disposable {
     basePkt.free();
     alphaPkt.free();
     alphaSwFrame.free();
-    // NVIDIA driver 520.56.06+ UAF in libnvcuvid when NVENC sessions freed in creation order.
-    // LIFO destroy avoids the segfault. Per NVIDIA forum /t/269974.
+    // NVIDIA driver 520.56.06+ UAF in libnvcuvid on creation-order session free — LIFO destroy avoids it (forum /t/269974).
     alphaCtx.freeContext();
     baseCtx.freeContext();
   }

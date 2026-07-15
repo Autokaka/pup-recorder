@@ -17,8 +17,7 @@ import {
 import type { NvencHevcConfig } from "./parser";
 import { buildAlphaVPS } from "./vps";
 
-// BGRA alpha → Y plane of packed YUV420P. Caller pre-fills UV=128.
-// Uint32 path: BGRA LE u32 >>> 24 = A byte.
+// BGRA alpha → Y plane of packed YUV420P (caller pre-fills UV=128); Uint32 fast path: BGRA LE u32 >>> 24 = A byte.
 export function extractAlphaToYuv420pBuffer(bgraFrame: Frame, buf: Buffer): void {
   const src = bgraFrame.data?.[0];
   const srcLs = bgraFrame.linesize?.[0];

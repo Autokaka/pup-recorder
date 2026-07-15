@@ -1,5 +1,4 @@
-// Parse NVENC SPS/PPS extradata at encoder init to derive flags the slice header parser depends on.
-// Defuses fragile hardcoded assumptions: if NVENC defaults shift, throws with actionable error.
+// Parse NVENC SPS/PPS extradata at encoder init to derive slice-header parser flags; throws if NVENC defaults shift.
 
 import { BitReader } from "./bit";
 import { NAL_PPS, NAL_SPS, removeEmulationPrevention, splitNalUnits } from "./nal";
@@ -175,8 +174,7 @@ function parsePps(ppsRbsp: Buffer): { cabacInitPresent: boolean; ppsHasLoopFilte
       br.readUe(); // beta/tc offsets (se via ue advance)
     }
   }
-  // slice_loop_filter_across_slices_enabled_flag in slice header is present iff
-  // pps_loop_filter_across_slices_enabled_flag && !slice_deblocking_disabled.
+  // slice_loop_filter_across_slices_enabled_flag present iff PPS across-slices enabled && !slice_deblocking_disabled.
   const ppsHasLoopFilterAcrossSlicesFlag = ppsLoopFilterAcrossSlicesEnabled && !sliceDeblockingDisabledOverride;
   return { cabacInitPresent, ppsHasLoopFilterAcrossSlicesFlag };
 }

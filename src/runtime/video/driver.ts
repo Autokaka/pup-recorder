@@ -71,7 +71,10 @@ export function advance(hook: VideoHook, timestampMs: number): Promise<unknown> 
     if (!state || state.dead) {
       return;
     }
-    syncOverlay(video, state.cv);
+    // A backing-store resize (animated container) wipes the canvas; force a redraw even on an unchanged frame idx.
+    if (syncOverlay(video, state.cv)) {
+      state.lastDrawnIdx = -1;
+    }
     if (!state.meta) {
       return;
     }

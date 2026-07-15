@@ -7,8 +7,7 @@ export interface RetryOptions<Args extends unknown[], Ret> {
   fn: (...args: Args) => Promise<Ret>;
   maxAttempts?: number;
   timeout?: number;
-  // When provided, useRetry bails out immediately on abort instead of retrying. The signal
-  // is not auto-threaded into fn — caller must wire it where it matters (e.g. fetch, S3 send).
+  // Abort bails immediately instead of retrying; signal is not auto-threaded into fn — caller wires it (fetch, S3 send).
   signal?: AbortSignal;
 }
 

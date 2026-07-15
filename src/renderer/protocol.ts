@@ -7,8 +7,7 @@ import { buildStegoHTML } from "./stego";
 const PUP_SCHEME = "pup";
 const FRAME_SCHEME = "pup-frame";
 
-// `protocol.registerSchemesAsPrivileged` honors only the LAST call — register every
-// custom scheme in this one place. New schemes must be added to PRIVILEGED_SCHEMES below.
+// registerSchemesAsPrivileged honors only the LAST call — register every custom scheme in this one list below.
 const PRIVILEGED_PRIVILEGES = {
   standard: true,
   secure: true,
