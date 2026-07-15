@@ -1,7 +1,7 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/09.
 
 import type { Debugger, Size, WebContents } from "electron";
-import { advanceVirtualTime, evalIn } from "../base/cdp";
+import { evalIn } from "../base/cdp";
 import { withTimeout } from "../base/timing";
 
 export const FRAME_SYNC_MARKER_WIDTH = 32;
@@ -35,36 +35,11 @@ export function buildStegoHTML(targetURL: string, size: Size): string {
       display: block;
       image-rendering: pixelated;
     }
-    /* Heartbeat: invisible always-on tick. Forces Chromium compositor to issue BeginFrame each
-       virtual tick on otherwise-static pages so canvas#stego putImageData updates land in the
-       captured paint event. Without this, a static iframe + paused virtual time leaves the
-       compositor's last frame cached even after canvas dirties; invalidate() only re-emits the
-       cached frame. */
-    /* Heartbeat: invisible always-on tick. Forces Chromium compositor to issue BeginFrame each
-       virtual tick on otherwise-static pages so canvas#stego putImageData updates land in the
-       captured paint event. Without this, a static iframe + paused virtual time leaves the
-       compositor's last frame cached even after canvas dirties; invalidate() only re-emits the
-       cached frame. */
-    @keyframes pup_heartbeat {
-      0% { opacity: 0.5; }
-      100% { opacity: 1; }
-    }
-    #heartbeat {
-      position: absolute;
-      bottom: 0;
-      right: 0;
-      width: 1px;
-      height: 1px;
-      background: #000;
-      animation: pup_heartbeat 1s linear infinite;
-      pointer-events: none;
-    }
   </style>
 </head>
 <body>
   <iframe id="target" src="${targetURL}"></iframe>
   <canvas id="stego" width="${width}" height="1"></canvas>
-  <div id="heartbeat"></div>
   <script>
     (function() {
       const { ipcRenderer } = require('electron');
@@ -117,7 +92,7 @@ export function buildStegoHTML(targetURL: string, size: Size): string {
       };
 
       window.__pup_draw_stego__ = (ms) => {
-        requestAnimationFrame(() => encodeTimestamp(ms));
+        encodeTimestamp(ms);
       };
 
       window.__pup_stop_stego__ = () => {
@@ -165,9 +140,13 @@ export function stopStego(cdp: Debugger) {
   return evalIn(cdp, `__pup_stop_stego__()`);
 }
 
-export async function swapBuffer(wc: WebContents, expected: number, interval: number): Promise<void> {
-  const swapped = new Promise((r) => wc.ipc.once(STEGO_TICK_CHANNEL, r));
+// Paints the stego row for `expected` ms synchronously; the damage rides out on the next composited frame.
+export async function drawStego(wc: WebContents, expected: number): Promise<void> {
   await evalIn(wc.debugger, `__pup_draw_stego__(${expected})`);
-  await advanceVirtualTime(wc.debugger, interval);
-  await withTimeout(swapped, 5_000, "swapBuffer");
+}
+
+// Resolves when the renderer committed the stego row; arm BEFORE drawStego to avoid missing the ack.
+export async function waitStegoTick(wc: WebContents): Promise<void> {
+  const swapped = new Promise((r) => wc.ipc.once(STEGO_TICK_CHANNEL, r));
+  await withTimeout(swapped, 5_000, "stego tick");
 }

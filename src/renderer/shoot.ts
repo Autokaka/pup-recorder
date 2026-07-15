@@ -2,13 +2,13 @@
 
 import type { BrowserWindow, Event, NativeImage, Rectangle, Size, WebContentsPaintEventParams } from "electron";
 import { BLANK_WARN_RATIO, BlankFrameStats } from "../base/blank_frame";
-import { pauseVirtualTime, resizeDrawable } from "../base/cdp";
+import { advanceVirtualTime, pauseVirtualTime, resizeDrawable } from "../base/cdp";
 import { EncoderPipeline } from "../base/encoder/pipeline";
 import { sizeEquals } from "../base/image";
 import { logger } from "../base/logging";
 import type { IpcDonePayload } from "./ipc";
 import type { IPCRenderOptions } from "./schema";
-import { decodeStego, swapBuffer } from "./stego";
+import { decodeStego, drawStego, FRAME_SYNC_MARKER_WIDTH, waitStegoTick } from "./stego";
 import { tick } from "./tick";
 import { useFrameProtocol } from "./video/protocol";
 import { disposeWindow, loadWindow } from "./window";
@@ -22,6 +22,7 @@ interface PaintOptions {
   ms: number;
 }
 
+// Painting stays on for the whole run; this only waits for the frame whose stego row matches `ms`.
 async function paint({ source, win, size, ms }: PaintOptions): Promise<Buffer> {
   let lastTs: number | undefined;
   let stuck = 0;
@@ -46,20 +47,18 @@ async function paint({ source, win, size, ms }: PaintOptions): Promise<Buffer> {
           resizeDrawable(cdp, frameSize);
           return;
         }
-        const bitmap = image.toBitmap();
-        const ts = decodeStego(bitmap, imageSize);
+        // Decode from a 2-row sliver first; the full-frame readback (~8MB memcpy) is paid only on the matching frame.
+        const sliver = image.crop({ x: 0, y: frameSize.height - 2, width: FRAME_SYNC_MARKER_WIDTH, height: 2 });
+        const ts = decodeStego(sliver.toBitmap(), { width: FRAME_SYNC_MARKER_WIDTH, height: 2 });
         if (ts === undefined || Math.abs(ts - ms) > 1) {
           lastTs = ts;
           return;
         }
+        const bitmap = image.toBitmap();
         win.webContents.off("paint", handler);
         resolve(Buffer.from(bitmap.buffer, bitmap.byteOffset, size.height * size.width * 4));
-        win.webContents.stopPainting();
-        // Compositor cap, NOT output fps. Max it so paint events arrive without inter-frame wall delay.
-        win.webContents.setFrameRate(240);
       };
       win.webContents.on("paint", handler);
-      win.webContents.startPainting();
     });
   } finally {
     clearInterval(interval);
@@ -90,16 +89,18 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
   const main = win.webContents.mainFrame;
   const iframe = main.frames[0];
   try {
-    win.webContents.setFrameRate(fps);
-    win.webContents.stopPainting();
+    // Compositor/capture cadence cap, NOT output fps; frames are damage-driven per virtual step.
+    win.webContents.setFrameRate(240);
     await pauseVirtualTime(cdp);
 
     for (let frame = 0; frame < total; frame++) {
       signal?.throwIfAborted();
       const frameMs = (frame + 1) * frameInterval;
 
-      await tick({ frame: iframe, timestampMs: frameMs, signal });
-      await swapBuffer(win.webContents, frameMs, frameInterval);
+      const swapped = waitStegoTick(win.webContents);
+      // Independent targets (iframe clock vs main-frame stego canvas): one concurrent hop instead of two serial ones.
+      await Promise.all([tick({ frame: iframe, timestampMs: frameMs, signal }), drawStego(win.webContents, frameMs)]);
+      await Promise.all([advanceVirtualTime(cdp, frameInterval), swapped]);
       const bitmap = await paint({ source, win, size: { width, height }, ms: frameMs });
       blankStats.sample(bitmap);
       // Encode without awaiting (limiter serializes), so it overlaps the next frame's CDP/paint setup.

@@ -6,14 +6,15 @@ import { build, type Options } from "tsup";
 import { dependencies } from "./package.json";
 
 const require = createRequire(import.meta.url);
-const tsPath = require.resolve("@typescript/native-preview/package.json");
-const tsgo = join(tsPath, "..", require(tsPath).bin.tsgo);
+const tsPath = require.resolve("typescript/package.json");
+const tsc = join(tsPath, "..", require(tsPath).bin.tsc);
 const biomePath = require.resolve("@biomejs/biome/package.json");
 const biome = join(biomePath, "..", "bin", "biome");
 
-await $`${tsgo}`;
 await $`${biome} check --write --error-on-warnings`;
 await rm("dist", { recursive: true, force: true });
+// tsup's dts path needs the pre-TS7 compiler API; tsc typechecks and emits the declarations in one pass.
+await $`${tsc}`;
 
 const common: Options = {
   silent: true,
@@ -34,7 +35,6 @@ await build({
   ],
   format: "esm",
   outDir: "dist",
-  experimentalDts: true,
 });
 
 await build({

@@ -1,0 +1,10 @@
+import type { Debugger, Size, WebContents } from "electron";
+export declare const FRAME_SYNC_MARKER_WIDTH = 32;
+export declare const FRAME_SYNC_MARKER_HEIGHT = 1;
+export declare const STEGO_TICK_CHANNEL = "stego-tick";
+export declare function buildStegoHTML(targetURL: string, size: Size): string;
+export declare function decodeStego(bitmap: Buffer, size: Size): number | undefined;
+export declare function startStego(cdp: Debugger): Promise<unknown>;
+export declare function stopStego(cdp: Debugger): Promise<unknown>;
+export declare function drawStego(wc: WebContents, expected: number): Promise<void>;
+export declare function waitStegoTick(wc: WebContents): Promise<void>;

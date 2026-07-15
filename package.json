@@ -1,6 +1,6 @@
 {
   "name": "pup-recorder",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "description": "Record web pages as video",
   "repository": {
     "type": "git",
@@ -18,7 +18,7 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./dist/src/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.js"
     }
@@ -64,7 +64,7 @@
     "@microsoft/api-extractor": "latest",
     "@types/bun": "latest",
     "@types/node": "^22.0.0",
-    "@typescript/native-preview": "latest",
+    "typescript": "latest",
     "tsup": "latest"
   },
   "scripts": {
