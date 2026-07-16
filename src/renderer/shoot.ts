@@ -15,26 +15,30 @@ import { useFrameProtocol } from "./video/protocol";
 import { disposeWindow, loadWindow } from "./window";
 
 const TAG = "[Shoot]";
+const RENDER_FPS = 240;
 
 interface PaintOptions {
   source: string;
-  fps: number;
   win: BrowserWindow;
   size: Size;
   ms: number;
 }
 
 // Painting stays on for the whole run; this only waits for the frame whose stego row matches `ms`.
-async function paint({ source, fps, win, size, ms }: PaintOptions): Promise<Buffer> {
+async function paint({ source, win, size, ms }: PaintOptions): Promise<Buffer> {
   let lastTs: number | undefined;
   let stuck = 0;
-  let interval: NodeJS.Timeout | undefined;
+  let stuckSheck: NodeJS.Timeout | undefined;
   let markDirty: NodeJS.Timeout | undefined;
+  const defer = () => {
+    clearTimeout(markDirty);
+    clearInterval(stuckSheck);
+  };
   const cdp = win.webContents.debugger;
   const frameSize: Size = { width: size.width, height: size.height + 1 };
   try {
     return await new Promise<Buffer>((resolve, reject) => {
-      interval = setInterval(() => {
+      stuckSheck = setInterval(() => {
         if (stuck >= 3) {
           reject(new Error("drawable timeout"));
           return;
@@ -57,16 +61,16 @@ async function paint({ source, fps, win, size, ms }: PaintOptions): Promise<Buff
           lastTs = ts;
           return;
         }
-        clearTimeout(markDirty);
+        defer();
         const bitmap = image.toBitmap();
         win.webContents.off("paint", handler);
         resolve(Buffer.from(bitmap.buffer, bitmap.byteOffset, size.height * size.width * 4));
       };
       win.webContents.on("paint", handler);
-      markDirty = setTimeout(() => win.webContents.invalidate(), 1000 / fps);
+      markDirty = setTimeout(() => win.webContents.invalidate(), 1000 / RENDER_FPS);
     });
   } finally {
-    clearInterval(interval);
+    defer();
   }
 }
 
@@ -98,7 +102,7 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
   const iframe = main.frames[0];
   try {
     // Compositor/capture cadence cap, NOT output fps; frames are damage-driven per virtual step.
-    win.webContents.setFrameRate(240);
+    win.webContents.setFrameRate(RENDER_FPS);
     await pauseVirtualTime(cdp);
 
     for (let frame = 0; frame < total; frame++) {
@@ -109,7 +113,7 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
       // Independent targets (iframe clock vs main-frame stego canvas): one concurrent hop instead of two serial ones.
       await Promise.all([tick({ frame: iframe, timestampMs: frameMs, signal }), drawStego(win.webContents, frameMs)]);
       await Promise.all([advanceVirtualTime(cdp, frameInterval), swapped]);
-      const bitmap = await paint({ source, fps, win, size: { width, height }, ms: frameMs });
+      const bitmap = await paint({ source, win, size: { width, height }, ms: frameMs });
       lastBitmap = bitmap;
       taker.capture(frameMs, bitmap);
       blankStats.sample(bitmap);
