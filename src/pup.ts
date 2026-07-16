@@ -37,7 +37,7 @@ async function runPupApp(source: string, render: RenderOptions) {
     `--window-timeout`,
     `${render.windowTimeout}`,
     `--out-file`,
-    `${render.outFile}`,
+    render.outFiles.join(","),
   ];
   if (render.withAudio) {
     args.push(`--with-audio`);
@@ -57,6 +57,9 @@ async function runPupApp(source: string, render: RenderOptions) {
   if (render.windowTolerant) {
     args.push(`--window-tolerant`);
   }
+  if (render.screenshots.length > 0) {
+    args.push(`--screenshots`, render.screenshots.join(","));
+  }
 
   return runElectronApp({ args });
 }
@@ -69,7 +72,7 @@ export async function pup(source: string, options: Partial<PupOptions>): Promise
   const { signal } = options;
   signal?.throwIfAborted();
 
-  const outFile = options.outFile ?? d.outFile;
+  const outFiles = options.outFiles ?? d.outFiles;
   const renderOpts: RenderOptions = {
     width: options.width ?? d.width,
     height: options.height ?? d.height,
@@ -82,7 +85,8 @@ export async function pup(source: string, options: Partial<PupOptions>): Promise
     disableHwCodec: options.disableHwCodec ?? d.disableHwCodec,
     windowTolerant: options.windowTolerant ?? d.windowTolerant,
     windowTimeout: options.windowTimeout ?? d.windowTimeout,
-    outFile,
+    screenshots: options.screenshots ?? d.screenshots,
+    outFiles,
   };
 
   const t0 = performance.now();
@@ -116,7 +120,7 @@ export async function pup(source: string, options: Partial<PupOptions>): Promise
     tick(0);
     const [summary] = await Promise.all([result, handle.wait]);
     tick(100);
-    logger.debug(TAG, `done ${outFile} in ${Math.round(performance.now() - t0)}ms`);
+    logger.debug(TAG, `done ${outFiles.join(",")} in ${Math.round(performance.now() - t0)}ms`);
     return { ...summary, options: renderOpts };
   } catch (e) {
     handle.kill();

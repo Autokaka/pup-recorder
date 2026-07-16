@@ -7,7 +7,7 @@ export const DEFAULT_HEIGHT = 1080;
 export const DEFAULT_FPS = 30;
 export const DEFAULT_DURATION = 5;
 export const DEFAULT_WINDOW_TIMEOUT = 10;
-export const DEFAULT_OUT_FILE = "out/html.mp4,out/html.webm";
+export const DEFAULT_OUT_FILES = ["out/html.mp4", "out/html.webm"];
 
 export const renderSchema = z.object({
   duration: z.number().describe("Duration in seconds"),
@@ -15,13 +15,14 @@ export const renderSchema = z.object({
   height: z.number().describe("Video height"),
   fps: z.number().describe("Frames per second"),
   withAudio: z.boolean().describe("Capture and encode audio"),
-  outFile: z.string().describe("Comma-separated output paths; extension (.mp4/.webm) selects encoder"),
+  outFiles: z.array(z.string()).describe("Output paths; extension (.mp4/.webm) selects encoder"),
   useInnerProxy: z.boolean().describe("Use bilibili inner proxy for resource access"),
   deterministic: z.boolean().describe("Render by frame rather than recording"),
   disableGpu: z.boolean().describe("Disable GPU rendering, may reduce performance but increase stability"),
   disableHwCodec: z.boolean().describe("Disable hardware video encoder (NVENC/VideoToolbox), use software x265"),
   windowTolerant: z.boolean().describe("Fall back to dom-ready if warmup load times out"),
   windowTimeout: z.number().describe("Window load timeout in seconds"),
+  screenshots: z.array(z.number()).describe("Second marks to dump frame bitmaps as PNG"),
 });
 
 export type RenderOptions = z.infer<typeof renderSchema>;
@@ -41,8 +42,9 @@ export interface RenderResult {
   options: RenderOptions;
   written: number;
   jank: number;
-  outFile: string;
+  outFiles: string[];
   blank: number;
+  screenshots: string[];
 }
 
 export const defaultRenderOptions: RenderOptions = {
@@ -50,7 +52,7 @@ export const defaultRenderOptions: RenderOptions = {
   height: DEFAULT_HEIGHT,
   fps: DEFAULT_FPS,
   duration: DEFAULT_DURATION,
-  outFile: DEFAULT_OUT_FILE,
+  outFiles: DEFAULT_OUT_FILES,
   withAudio: false,
   useInnerProxy: false,
   deterministic: false,
@@ -58,4 +60,5 @@ export const defaultRenderOptions: RenderOptions = {
   disableHwCodec: false,
   windowTolerant: false,
   windowTimeout: DEFAULT_WINDOW_TIMEOUT,
+  screenshots: [],
 };

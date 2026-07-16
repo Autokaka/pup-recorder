@@ -10,21 +10,25 @@ import { logger } from "../base/logging";
 import { type AudioDisposal, attachAudioListeners } from "./audio";
 import type { IpcDonePayload } from "./ipc";
 import type { IPCRenderOptions } from "./schema";
+import { ScreenshotTaker } from "./screenshot";
 import { decodeStego, startStego } from "./stego";
 import { disposeWindow, loadWindow } from "./window";
 
 const TAG = "[Render]";
 
 export async function render(options: IPCRenderOptions): Promise<IpcDonePayload> {
-  const { source, fps, width, height, duration, withAudio, outFile, disableHwCodec, signal, onProgress } = options;
+  const { source, fps, width, height, duration, withAudio, outFiles, disableHwCodec, signal, onProgress } = options;
 
-  await using encoder = await EncoderPipeline.create({ width, height, fps, outFile, withAudio, disableHwCodec });
+  await using encoder = await EncoderPipeline.create({ width, height, fps, outFiles, withAudio, disableHwCodec });
+  const taker = new ScreenshotTaker({ marks: options.screenshots, width, height, outFiles });
 
   const total = Math.ceil(fps * duration);
   const frameInterval = 1000 / fps;
   const frameSize: Size = { width, height: height + 1 };
 
   let written = 0;
+  let lastFrame: Buffer | undefined;
+  let screenshots: string[] = [];
   let lastWrittenTime: number | undefined;
   let progress = 0;
   let encodeError: Error | undefined;
@@ -69,6 +73,8 @@ export async function render(options: IPCRenderOptions): Promise<IpcDonePayload>
     }
 
     const cropped = Buffer.from(bitmap.buffer, bitmap.byteOffset, height * width * 4);
+    lastFrame = cropped;
+    taker.capture(currentTime, cropped);
 
     if (lastWrittenTime === undefined) {
       scheduleFrame(cropped);
@@ -151,6 +157,7 @@ export async function render(options: IPCRenderOptions): Promise<IpcDonePayload>
     await disposeWindow(win);
     disposeAudio?.();
     await encoder.finish();
+    screenshots = await taker.finish(lastFrame);
   }
 
   if (encodeError || written === 0) {
@@ -161,6 +168,6 @@ export async function render(options: IPCRenderOptions): Promise<IpcDonePayload>
     if (blank >= BLANK_WARN_RATIO) {
       logger.warn(TAG, `${source} blank-frame ratio ${Math.round(blank * 100)}% — possible white/blank screen`);
     }
-    return { written, jank: dropScore.jank, outFile, blank };
+    return { written, jank: dropScore.jank, outFiles, blank, screenshots };
   }
 }

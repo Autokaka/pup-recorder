@@ -8,6 +8,7 @@ import { sizeEquals } from "../base/image";
 import { logger } from "../base/logging";
 import type { IpcDonePayload } from "./ipc";
 import type { IPCRenderOptions } from "./schema";
+import { ScreenshotTaker } from "./screenshot";
 import { decodeStego, drawStego, FRAME_SYNC_MARKER_WIDTH, waitStegoTick } from "./stego";
 import { tick } from "./tick";
 import { useFrameProtocol } from "./video/protocol";
@@ -17,16 +18,18 @@ const TAG = "[Shoot]";
 
 interface PaintOptions {
   source: string;
+  fps: number;
   win: BrowserWindow;
   size: Size;
   ms: number;
 }
 
 // Painting stays on for the whole run; this only waits for the frame whose stego row matches `ms`.
-async function paint({ source, win, size, ms }: PaintOptions): Promise<Buffer> {
+async function paint({ source, fps, win, size, ms }: PaintOptions): Promise<Buffer> {
   let lastTs: number | undefined;
   let stuck = 0;
   let interval: NodeJS.Timeout | undefined;
+  let markDirty: NodeJS.Timeout | undefined;
   const cdp = win.webContents.debugger;
   const frameSize: Size = { width: size.width, height: size.height + 1 };
   try {
@@ -54,11 +57,13 @@ async function paint({ source, win, size, ms }: PaintOptions): Promise<Buffer> {
           lastTs = ts;
           return;
         }
+        clearTimeout(markDirty);
         const bitmap = image.toBitmap();
         win.webContents.off("paint", handler);
         resolve(Buffer.from(bitmap.buffer, bitmap.byteOffset, size.height * size.width * 4));
       };
       win.webContents.on("paint", handler);
+      markDirty = setTimeout(() => win.webContents.invalidate(), 1000 / fps);
     });
   } finally {
     clearInterval(interval);
@@ -66,15 +71,16 @@ async function paint({ source, win, size, ms }: PaintOptions): Promise<Buffer> {
 }
 
 export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> {
-  const { source, fps, width, height, duration, withAudio, outFile, disableHwCodec, signal, onProgress } = options;
+  const { source, fps, width, height, duration, withAudio, outFiles, disableHwCodec, signal, onProgress } = options;
   if (withAudio) {
     logger.warn(TAG, "audio will be ignored on this mode");
   }
+  const taker = new ScreenshotTaker({ marks: options.screenshots, width, height, outFiles });
 
   await using _ = useFrameProtocol(options.useInnerProxy);
   const tInit = performance.now();
   const winP = loadWindow({ source, renderer: options, signal });
-  await using pipeline = await EncoderPipeline.create({ width, height, fps, outFile, withAudio, disableHwCodec });
+  await using pipeline = await EncoderPipeline.create({ width, height, fps, outFiles, withAudio, disableHwCodec });
   const win = await winP;
   logger.debug(TAG, "init done:", { source, cost: performance.now() - tInit });
 
@@ -83,6 +89,8 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
 
   let written = 0;
   let progress = 0;
+  let lastBitmap: Buffer | undefined;
+  let screenshots: string[] = [];
   let encodeError: Error | undefined;
   const blankStats = new BlankFrameStats(width, height);
   const cdp = win.webContents.debugger;
@@ -101,7 +109,9 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
       // Independent targets (iframe clock vs main-frame stego canvas): one concurrent hop instead of two serial ones.
       await Promise.all([tick({ frame: iframe, timestampMs: frameMs, signal }), drawStego(win.webContents, frameMs)]);
       await Promise.all([advanceVirtualTime(cdp, frameInterval), swapped]);
-      const bitmap = await paint({ source, win, size: { width, height }, ms: frameMs });
+      const bitmap = await paint({ source, fps, win, size: { width, height }, ms: frameMs });
+      lastBitmap = bitmap;
+      taker.capture(frameMs, bitmap);
       blankStats.sample(bitmap);
       // Encode without awaiting (limiter serializes), so it overlaps the next frame's CDP/paint setup.
       pipeline.encodeBGRA(bitmap).catch((e) => (encodeError ??= e));
@@ -119,6 +129,7 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
   } finally {
     await disposeWindow(win);
     await pipeline.finish();
+    screenshots = await taker.finish(lastBitmap);
   }
 
   if (encodeError) {
@@ -131,6 +142,6 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
     if (blank >= BLANK_WARN_RATIO) {
       logger.warn(TAG, `${source} blank-frame ratio ${Math.round(blank * 100)}% — possible white/blank screen`);
     }
-    return { written, jank: 0, outFile, blank };
+    return { written, jank: 0, outFiles, blank, screenshots };
   }
 }

@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { program } from "commander";
 import { logger } from "./base/logging";
 import { noerr } from "./base/noerr";
-import { parseNumber } from "./base/parser";
+import { parseArray, parseNumber, parseString } from "./base/parser";
 import { pargs } from "./base/process";
 import { defaultRenderOptions, type RenderOptions, renderSchema } from "./renderer/schema";
 
@@ -36,9 +36,10 @@ export async function makeCLI(options: CLIOptions) {
     .argument("<source>", "file://, http(s)://, data: URI, or filesystem path")
     .option("-W, --width <number>", shape.width.description, `${d.width}`)
     .option("-H, --height <number>", shape.height.description, `${d.height}`)
+    .option("-S, --screenshots <seconds>", shape.screenshots.description, "")
     .option("-f, --fps <number>", shape.fps.description, `${d.fps}`)
     .option("-t, --duration <number>", shape.duration.description, `${d.duration}`)
-    .option("-o, --out-file <path>", shape.outFile.description, d.outFile)
+    .option("-o, --out-file <paths>", shape.outFiles.description, d.outFiles.join(","))
     .option("-a, --with-audio", shape.withAudio.description, d.withAudio)
     .option("-d, --deterministic", shape.deterministic.description, d.deterministic)
     .option("--use-inner-proxy", shape.useInnerProxy.description, d.useInnerProxy)
@@ -53,7 +54,7 @@ export async function makeCLI(options: CLIOptions) {
           height: noerr(parseNumber, d.height)(opts.height),
           fps: noerr(parseNumber, d.fps)(opts.fps),
           duration: noerr(parseNumber, d.duration)(opts.duration),
-          outFile: opts.outFile ?? d.outFile,
+          outFiles: parseArray(parseString)(opts.outFile),
           withAudio: opts.withAudio ?? d.withAudio,
           useInnerProxy: opts.useInnerProxy ?? d.useInnerProxy,
           deterministic: opts.deterministic ?? d.deterministic,
@@ -61,6 +62,7 @@ export async function makeCLI(options: CLIOptions) {
           disableHwCodec: opts.disableHwCodec ?? d.disableHwCodec,
           windowTolerant: opts.windowTolerant ?? d.windowTolerant,
           windowTimeout: noerr(parseNumber, d.windowTimeout)(opts.windowTimeout),
+          screenshots: parseArray(parseNumber)(opts.screenshots),
         });
       } catch (e) {
         logger.fatal(e);

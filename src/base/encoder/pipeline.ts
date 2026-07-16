@@ -13,7 +13,7 @@ export interface EncoderPipelineOptions {
   width: number;
   height: number;
   fps: number;
-  outFile: string;
+  outFiles: string[];
   withAudio?: boolean;
   disableHwCodec?: boolean;
 }
@@ -36,13 +36,9 @@ export class EncoderPipeline {
   }
 
   static async create(opts: EncoderPipelineOptions): Promise<EncoderPipeline> {
-    const { width, height, fps, outFile, withAudio = false, disableHwCodec = false } = opts;
-    const outFiles = outFile
-      .split(",")
-      .map((p) => p.trim())
-      .filter(Boolean);
+    const { width, height, fps, outFiles, withAudio = false, disableHwCodec = false } = opts;
     if (outFiles.length === 0) {
-      throw new Error("outFile must contain at least one path");
+      throw new Error("outFiles must contain at least one path");
     }
 
     const kinds = outFiles.map((p) => OutputSink.kindFromPath(p));

@@ -27,23 +27,18 @@ makeCLI({
     const bar = new ProgressBar({ total, out: process.stderr, showCount: true });
     logger.impl = barLogger(bar);
 
-    const outs = options.outFile
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    bar.log(`rendering ${source} → ${outs.join(", ")}`);
     const t0 = performance.now();
     try {
-      await pup(source, {
+      const { screenshots, outFiles } = await pup(source, {
         ...options,
         signal: ctrl.signal,
         onProgress: (p) => bar.updatePercent(p),
       });
       const sec = ((performance.now() - t0) / 1000).toFixed(2);
       bar.update(total);
-      bar.finish(
-        `done: ${outs.join(", ")} (${total} frames, ${options.width}x${options.height} @ ${options.fps}fps) in ${sec}s`,
-      );
+      bar.log(`screenshots → ${screenshots.join(",")}`);
+      bar.log(`videos → ${outFiles.join(",")}`);
+      bar.finish(`summary → ${total} frames, ${options.width}x${options.height} @ ${options.fps}fps in ${sec}s`);
     } catch (e) {
       bar.finish(`error: ${e instanceof Error ? e.message : String(e)}`);
     } finally {

@@ -2,7 +2,7 @@ export interface EncoderPipelineOptions {
     width: number;
     height: number;
     fps: number;
-    outFile: string;
+    outFiles: string[];
     withAudio?: boolean;
     disableHwCodec?: boolean;
 }

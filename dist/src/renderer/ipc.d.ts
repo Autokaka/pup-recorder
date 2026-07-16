@@ -19,8 +19,9 @@ export interface CancelMsg {
 export interface IpcDonePayload {
     written: number;
     jank: number;
-    outFile: string;
+    outFiles: string[];
     blank: number;
+    screenshots: string[];
 }
 export interface ProgressMsg {
     type: IpcMsgType.Progress;

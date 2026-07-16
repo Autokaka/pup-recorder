@@ -47,7 +47,7 @@ makeCLI({
       await app.whenReady();
       setupPupProtocol();
       printFeatures();
-      for (const out of options.outFile.split(",")) {
+      for (const out of options.outFiles) {
         await mkdir(dirname(out), { recursive: true });
       }
       const action = options.deterministic ? shoot : render;
