@@ -42,7 +42,8 @@ await build({
   entry: [
     "src/app.ts", //
     "src/runtime/audio_preload.ts",
-    "src/runtime/iframe_preload.ts",
+    "src/runtime/render_preload.ts",
+    "src/runtime/shoot_preload.ts",
   ],
   format: "cjs",
   outDir: "dist",

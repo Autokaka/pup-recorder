@@ -146,7 +146,8 @@ export class DecodeSession {
   }
 
   private async decodePass(gen: number): Promise<void> {
-    for await (const { idx, buf } of decodeFrames(this._src, this.meta, this._ctrl.signal)) {
+    const stream = decodeFrames({ src: this._src, meta: this.meta, signal: this._ctrl.signal });
+    for await (const { idx, buf } of stream) {
       if (this._closed || this._gen !== gen) {
         return;
       }

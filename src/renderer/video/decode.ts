@@ -11,8 +11,14 @@ export interface DecodedFrame {
   buf: Buffer;
 }
 
+export interface DecodeFramesOptions {
+  src: string;
+  meta: VideoMeta;
+  signal: AbortSignal;
+}
+
 // Decode a source to fps-resampled, display-scaled, tight-RGBA frames in order (idx = 1-based decode position). Consumer backpressure is just pulling slower.
-export async function* decodeFrames(src: string, meta: VideoMeta, signal: AbortSignal): AsyncGenerator<DecodedFrame> {
+export async function* decodeFrames({ src, meta, signal }: DecodeFramesOptions): AsyncGenerator<DecodedFrame> {
   await using input = await openInput(src, signal);
   const stream = input.streams?.find((s) => s.codecpar.codecType === AVMEDIA_TYPE_VIDEO);
   if (!stream) {

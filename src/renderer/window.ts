@@ -1,7 +1,7 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/27.
 
 import { BrowserWindow } from "electron";
-import { pupAudioPreload, pupIframePreload } from "../base/constants";
+import { pupAudioPreload, pupRenderPreload, pupShootPreload } from "../base/constants";
 import { logger } from "../base/logging";
 import { useRetry } from "../base/retry";
 import { sleep } from "../base/timing";
@@ -95,12 +95,12 @@ export interface WindowOptions {
 
 function pickPreload(renderer: IPCRenderOptions): string | undefined {
   if (renderer.deterministic) {
-    return pupIframePreload;
+    return pupShootPreload;
   }
   if (renderer.withAudio) {
     return pupAudioPreload;
   }
-  return undefined;
+  return pupRenderPreload;
 }
 
 async function openWindow({ source, renderer, tolerant, signal, onCreated }: WindowOptions): Promise<BrowserWindow> {
