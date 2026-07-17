@@ -17,6 +17,7 @@ import { disposeWindow, loadWindow } from "./window";
 
 const TAG = "[Shoot]";
 const RENDER_FPS = 240;
+const RENDER_TOLERANCE = 10;
 
 interface PaintOptions {
   source: string;
@@ -55,7 +56,7 @@ async function paint({ win, fps, size, ms }: PaintOptions): Promise<Buffer> {
       };
       win.webContents.on("paint", handler);
       clearDirtyCheck = periodical(async () => {
-        if (stuck >= 3) {
+        if (stuck >= RENDER_TOLERANCE) {
           reject(new Error(`renderer timeout @ ${ms} lastTs ${lastTs}`));
         }
         stuck++;

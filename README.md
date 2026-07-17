@@ -37,6 +37,7 @@ const result = await pup("https://example.com", {
 result.outFiles;    // video paths
 result.written;     // frames encoded
 result.blank;       // blank-frame ratio
+result.jank;        // frame-drop score
 result.screenshots; // PNG paths
 ```
 
