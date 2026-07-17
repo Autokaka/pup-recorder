@@ -41,9 +41,9 @@ export interface IPCRenderOptions extends RenderOptions {
 export interface RenderResult {
   options: RenderOptions;
   written: number;
-  jank: number;
   outFiles: string[];
   blank: number;
+  jank: number;
   screenshots: string[];
 }
 

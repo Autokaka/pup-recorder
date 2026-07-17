@@ -1,11 +1,12 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/03/13.
 
-import type { BrowserWindow, Event, NativeImage, Rectangle, Size, WebContentsPaintEventParams } from "electron";
+import type { BrowserWindow, NativeImage, Size } from "electron";
 import { BLANK_WARN_RATIO, BlankFrameStats } from "../base/blank_frame";
 import { advanceVirtualTime, pauseVirtualTime, resizeDrawable } from "../base/cdp";
 import { EncoderPipeline } from "../base/encoder/pipeline";
 import { sizeEquals } from "../base/image";
 import { logger } from "../base/logging";
+import { periodical } from "../base/timing";
 import type { IpcDonePayload } from "./ipc";
 import type { IPCRenderOptions } from "./schema";
 import { ScreenshotTaker } from "./screenshot";
@@ -19,35 +20,22 @@ const RENDER_FPS = 240;
 
 interface PaintOptions {
   source: string;
+  fps: number;
   win: BrowserWindow;
   size: Size;
   ms: number;
 }
 
 // Painting stays on for the whole run; this only waits for the frame whose stego row matches `ms`.
-async function paint({ source, win, size, ms }: PaintOptions): Promise<Buffer> {
+async function paint({ win, fps, size, ms }: PaintOptions): Promise<Buffer> {
   let lastTs: number | undefined;
   let stuck = 0;
-  let stuckSheck: NodeJS.Timeout | undefined;
-  let markDirty: NodeJS.Timeout | undefined;
-  const defer = () => {
-    clearTimeout(markDirty);
-    clearInterval(stuckSheck);
-  };
+  let clearDirtyCheck: VoidFunction | undefined;
   const cdp = win.webContents.debugger;
   const frameSize: Size = { width: size.width, height: size.height + 1 };
   try {
     return await new Promise<Buffer>((resolve, reject) => {
-      stuckSheck = setInterval(() => {
-        if (stuck >= 3) {
-          reject(new Error("drawable timeout"));
-          return;
-        }
-        stuck++;
-        logger.warn(TAG, `${source} render is extremely slow @ ${ms}, current: ${lastTs} with ${stuck} repeats`);
-        win.webContents.invalidate();
-      }, 1000);
-      const handler = (_e: Event<WebContentsPaintEventParams>, _d: Rectangle, image: NativeImage) => {
+      const handler = (_e: unknown, _d: unknown, image: NativeImage) => {
         const imageSize = image.getSize();
         if (!sizeEquals(imageSize, frameSize)) {
           // NOTE(Autokaka): We must ensure frame is ready on electron v41+
@@ -61,16 +49,24 @@ async function paint({ source, win, size, ms }: PaintOptions): Promise<Buffer> {
           lastTs = ts;
           return;
         }
-        defer();
         const bitmap = image.toBitmap();
         win.webContents.off("paint", handler);
         resolve(Buffer.from(bitmap.buffer, bitmap.byteOffset, size.height * size.width * 4));
       };
       win.webContents.on("paint", handler);
-      markDirty = setTimeout(() => win.webContents.invalidate(), 1000 / RENDER_FPS);
+      clearDirtyCheck = periodical(async () => {
+        if (stuck >= 3) {
+          reject(new Error(`renderer timeout @ ${ms} lastTs ${lastTs}`));
+        }
+        stuck++;
+        const bmp = await win.webContents.capturePage().catch(() => null);
+        if (bmp && !win.isDestroyed()) {
+          handler(undefined, undefined, bmp);
+        }
+      }, 1000 / fps);
     });
   } finally {
-    defer();
+    clearDirtyCheck?.();
   }
 }
 
@@ -113,7 +109,7 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
       // Independent targets (iframe clock vs main-frame stego canvas): one concurrent hop instead of two serial ones.
       await Promise.all([tick({ frame: iframe, timestampMs: frameMs, signal }), drawStego(win.webContents, frameMs)]);
       await Promise.all([advanceVirtualTime(cdp, frameInterval), swapped]);
-      const bitmap = await paint({ source, win, size: { width, height }, ms: frameMs });
+      const bitmap = await paint({ source, fps, win, size: { width, height }, ms: frameMs });
       lastBitmap = bitmap;
       taker.capture(frameMs, bitmap);
       blankStats.sample(bitmap);
@@ -146,6 +142,6 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
     if (blank >= BLANK_WARN_RATIO) {
       logger.warn(TAG, `${source} blank-frame ratio ${Math.round(blank * 100)}% — possible white/blank screen`);
     }
-    return { written, jank: 0, outFiles, blank, screenshots };
+    return { written, outFiles, blank, jank: 0, screenshots };
   }
 }

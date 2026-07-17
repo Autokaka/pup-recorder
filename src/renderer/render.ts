@@ -7,6 +7,7 @@ import { EncoderPipeline } from "../base/encoder/pipeline";
 import { FrameDropStats } from "../base/frame_drop";
 import { sizeEquals } from "../base/image";
 import { logger } from "../base/logging";
+import { periodical } from "../base/timing";
 import { type AudioDisposal, attachAudioListeners } from "./audio";
 import type { IpcDonePayload } from "./ipc";
 import type { IPCRenderOptions } from "./schema";
@@ -34,9 +35,9 @@ export async function render(options: IPCRenderOptions): Promise<IpcDonePayload>
   let encodeError: Error | undefined;
   let resolver: (() => void) | undefined;
   let rejecter: ((reason?: unknown) => void) | undefined;
-  let interval: NodeJS.Timeout | undefined;
-  const dropStats = new FrameDropStats(fps);
+  let clearStuckCheck: VoidFunction | undefined;
   const blankStats = new BlankFrameStats(width, height);
+  const dropStats = new FrameDropStats(fps);
 
   let disposeAudio: AudioDisposal | undefined;
   const scheduleFrame = (frame: Buffer) => {
@@ -136,23 +137,25 @@ export async function render(options: IPCRenderOptions): Promise<IpcDonePayload>
       [resolver, rejecter] = [r, j];
       let lastWritten = 0;
       let stuck = 0;
-      interval = setInterval(() => {
+      clearStuckCheck = periodical(async () => {
         if (written !== lastWritten) {
           lastWritten = written;
           stuck = 0;
           return;
         }
         if (stuck >= 3) {
-          rejecter?.(new Error("drawable timeout"));
+          rejecter?.(new Error(`renderer timeout @ ${written} lastTs ${lastWritten}`));
           return;
         }
-        logger.warn(TAG, `${source} render is extremely slow, written=${written} stuck=${stuck}`);
         stuck++;
-        win.webContents.invalidate();
-      }, 1000);
+        const bmp = await win.webContents.capturePage().catch(() => null);
+        if (bmp && !win.isDestroyed()) {
+          paint(undefined, undefined, bmp);
+        }
+      }, 1000 / fps);
     });
   } finally {
-    clearInterval(interval);
+    clearStuckCheck?.();
     win.webContents.off("paint", paint);
     await disposeWindow(win);
     disposeAudio?.();
@@ -163,11 +166,10 @@ export async function render(options: IPCRenderOptions): Promise<IpcDonePayload>
   if (encodeError || written === 0) {
     throw encodeError ?? new Error("no frames captured");
   } else {
-    const dropScore = dropStats.finalize();
     const blank = blankStats.finalize();
     if (blank >= BLANK_WARN_RATIO) {
       logger.warn(TAG, `${source} blank-frame ratio ${Math.round(blank * 100)}% — possible white/blank screen`);
     }
-    return { written, jank: dropScore.jank, outFiles, blank, screenshots };
+    return { written, outFiles, blank, screenshots, jank: dropStats.finalize().jank };
   }
 }

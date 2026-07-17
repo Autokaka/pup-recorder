@@ -10,7 +10,6 @@ import { makeCLI } from "./common";
 import { type IpcMsg, IpcMsgType, IpcWriter } from "./renderer/ipc";
 import { setupPupProtocol } from "./renderer/protocol";
 import { render } from "./renderer/render";
-import { withRerender } from "./renderer/rerender";
 import { shoot } from "./renderer/shoot";
 
 const TAG = "[App]";
@@ -52,15 +51,13 @@ makeCLI({
       }
       const action = options.deterministic ? shoot : render;
       ctrl.signal.throwIfAborted();
-      const result = await withRerender(ctrl.signal, () =>
-        action({
-          source,
-          ...options,
-          signal: ctrl.signal,
-          onProgress: (p) => ipc.writeProgress(p),
-          onConsole: (l, m) => ipc.writeConsole(l, m),
-        }),
-      );
+      const result = await action({
+        source,
+        ...options,
+        signal: ctrl.signal,
+        onProgress: (p) => ipc.writeProgress(p),
+        onConsole: (l, m) => ipc.writeConsole(l, m),
+      });
       await ipc.writeDone(result);
     } catch (e) {
       const error = e as Error;

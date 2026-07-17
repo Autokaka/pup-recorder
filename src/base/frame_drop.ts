@@ -1,14 +1,6 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/03/23.
 
-/**
- * Frame drop quality score (0 = perfect, 1 = worst).
- *
- * Combines two dimensions:
- * - Global: overall drop rate across the timeline
- * - Local: perceptual severity of consecutive drops (bursts)
- *
- * Uses complementary multiplication: score = 1 - (1-g)(1-l)
- */
+// Frame-drop quality score (0 = perfect, 1 = worst): global drop rate and local burst severity combined via 1-(1-g)(1-l).
 export interface FrameDropScore {
   global: number;
   local: number;
@@ -28,7 +20,6 @@ export class FrameDropStats {
     this._fps = fps;
   }
 
-  /** Call when a frame is actually written to the encoder. */
   wrote(count = 1): void {
     if (this._currentBurst > 0) {
       this._bursts.push(this._currentBurst);
@@ -37,12 +28,10 @@ export class FrameDropStats {
     this._actual += count;
   }
 
-  /** Call when a frame is dropped. */
   dropped(count = 1): void {
     this._currentBurst += count;
   }
 
-  /** Finalize and return the score. */
   finalize(): FrameDropScore {
     if (this._currentBurst > 0) {
       this._bursts.push(this._currentBurst);
