@@ -2,6 +2,7 @@
 
 import { logger } from "./base/logging";
 import { runElectronApp } from "./renderer/electron";
+import { checkHTML } from "./renderer/html_check";
 import { type IpcDonePayload, IpcMsgType, IpcReader } from "./renderer/ipc";
 import {
   type ConsoleCallback,
@@ -71,6 +72,7 @@ export async function pup(source: string, options: Partial<PupOptions>): Promise
 
   const { signal } = options;
   signal?.throwIfAborted();
+  checkHTML(source);
 
   const outFiles = options.outFiles ?? d.outFiles;
   const renderOpts: RenderOptions = {

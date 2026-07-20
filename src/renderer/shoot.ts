@@ -1,11 +1,12 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/03/13.
 
 import type { BrowserWindow, NativeImage, Size } from "electron";
-import { BLANK_WARN_RATIO, BlankFrameStats } from "../base/blank_frame";
 import { advanceVirtualTime, pauseVirtualTime, resizeDrawable } from "../base/cdp";
 import { EncoderPipeline } from "../base/encoder/pipeline";
 import { sizeEquals } from "../base/image";
 import { logger } from "../base/logging";
+import { BLANK_WARN_RATIO, BlankStats } from "../base/quality/blank";
+import { DropStats, JANK_WARN_SCORE } from "../base/quality/drop";
 import { periodical } from "../base/timing";
 import type { IpcDonePayload } from "./ipc";
 import type { IPCRenderOptions } from "./schema";
@@ -17,7 +18,8 @@ import { disposeWindow, loadWindow } from "./window";
 
 const TAG = "[Shoot]";
 const RENDER_FPS = 240;
-const RENDER_TOLERANCE = 10;
+const PAINT_TIMEOUT_MS = 1_000;
+const PAINT_HOLD_LIMIT = 3;
 
 interface PaintOptions {
   source: string;
@@ -27,15 +29,14 @@ interface PaintOptions {
   ms: number;
 }
 
-// Painting stays on for the whole run; this only waits for the frame whose stego row matches `ms`.
-async function paint({ win, fps, size, ms }: PaintOptions): Promise<Buffer> {
-  let lastTs: number | undefined;
-  let stuck = 0;
+// Painting stays on for the whole run; waits for the frame whose stego row matches `ms`, undefined on timeout.
+async function paint({ win, fps, size, ms }: PaintOptions): Promise<Buffer | undefined> {
   let clearDirtyCheck: VoidFunction | undefined;
   const cdp = win.webContents.debugger;
   const frameSize: Size = { width: size.width, height: size.height + 1 };
+  const t0 = performance.now();
   try {
-    return await new Promise<Buffer>((resolve, reject) => {
+    return await new Promise<Buffer | undefined>((resolve) => {
       const handler = (_e: unknown, _d: unknown, image: NativeImage) => {
         const imageSize = image.getSize();
         if (!sizeEquals(imageSize, frameSize)) {
@@ -47,7 +48,6 @@ async function paint({ win, fps, size, ms }: PaintOptions): Promise<Buffer> {
         const sliver = image.crop({ x: 0, y: frameSize.height - 2, width: FRAME_SYNC_MARKER_WIDTH, height: 2 });
         const ts = decodeStego(sliver.toBitmap(), { width: FRAME_SYNC_MARKER_WIDTH, height: 2 });
         if (ts === undefined || Math.abs(ts - ms) > 1) {
-          lastTs = ts;
           return;
         }
         const bitmap = image.toBitmap();
@@ -56,14 +56,17 @@ async function paint({ win, fps, size, ms }: PaintOptions): Promise<Buffer> {
       };
       win.webContents.on("paint", handler);
       clearDirtyCheck = periodical(async () => {
-        if (stuck >= RENDER_TOLERANCE) {
-          reject(new Error(`renderer timeout @ ${ms} lastTs ${lastTs}`));
+        if (performance.now() - t0 >= PAINT_TIMEOUT_MS) {
+          logger.warn(TAG, `paint timeout @ ${ms}`);
+          win.webContents.off("paint", handler);
+          resolve(undefined);
+        } else {
+          const bmp = await win.webContents.capturePage().catch(() => null);
+          if (bmp && !win.isDestroyed()) {
+            handler(undefined, undefined, bmp);
+          }
         }
-        stuck++;
-        const bmp = await win.webContents.capturePage().catch(() => null);
-        if (bmp && !win.isDestroyed()) {
-          handler(undefined, undefined, bmp);
-        }
+        return undefined;
       }, 1000 / fps);
     });
   } finally {
@@ -90,10 +93,12 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
 
   let written = 0;
   let progress = 0;
+  let held = 0;
   let lastBitmap: Buffer | undefined;
   let screenshots: string[] = [];
   let encodeError: Error | undefined;
-  const blankStats = new BlankFrameStats(width, height);
+  const blankStats = new BlankStats(width, height);
+  const dropStats = new DropStats(fps);
   const cdp = win.webContents.debugger;
   const main = win.webContents.mainFrame;
   const iframe = main.frames[0];
@@ -107,10 +112,21 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
       const frameMs = (frame + 1) * frameInterval;
 
       const swapped = waitStegoTick(win.webContents);
-      // Independent targets (iframe clock vs main-frame stego canvas): one concurrent hop instead of two serial ones.
+      swapped.catch(() => {});
       await Promise.all([tick({ frame: iframe, timestampMs: frameMs, signal }), drawStego(win.webContents, frameMs)]);
       await Promise.all([advanceVirtualTime(cdp, frameInterval), swapped]);
-      const bitmap = await paint({ source, fps, win, size: { width, height }, ms: frameMs });
+      const painted = await paint({ source, fps, win, size: { width, height }, ms: frameMs });
+      if (painted) {
+        held = 0;
+        dropStats.wrote();
+      } else {
+        held++;
+        dropStats.dropped(1);
+      }
+      const bitmap = painted ?? lastBitmap;
+      if (!bitmap || held >= PAINT_HOLD_LIMIT) {
+        throw new Error(`renderer exausted @ ${frameMs}`);
+      }
       lastBitmap = bitmap;
       taker.capture(frameMs, bitmap);
       blankStats.sample(bitmap);
@@ -143,6 +159,10 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
     if (blank >= BLANK_WARN_RATIO) {
       logger.warn(TAG, `${source} blank-frame ratio ${Math.round(blank * 100)}% — possible white/blank screen`);
     }
-    return { written, outFiles, blank, jank: 0, screenshots };
+    const { jank } = dropStats.finalize();
+    if (jank >= JANK_WARN_SCORE) {
+      logger.warn(TAG, `${source} jank score ${jank.toFixed(2)} — frames held past paint timeout`);
+    }
+    return { written, outFiles, blank, jank, screenshots };
   }
 }

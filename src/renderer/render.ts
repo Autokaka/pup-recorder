@@ -1,12 +1,12 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/09.
 
 import type { NativeImage, Size } from "electron";
-import { BLANK_WARN_RATIO, BlankFrameStats } from "../base/blank_frame";
 import { resizeDrawable } from "../base/cdp";
 import { EncoderPipeline } from "../base/encoder/pipeline";
-import { FrameDropStats } from "../base/frame_drop";
 import { sizeEquals } from "../base/image";
 import { logger } from "../base/logging";
+import { BLANK_WARN_RATIO, BlankStats } from "../base/quality/blank";
+import { DropStats, JANK_WARN_SCORE } from "../base/quality/drop";
 import { periodical } from "../base/timing";
 import { type AudioDisposal, attachAudioListeners } from "./audio";
 import type { IpcDonePayload } from "./ipc";
@@ -36,8 +36,8 @@ export async function render(options: IPCRenderOptions): Promise<IpcDonePayload>
   let resolver: (() => void) | undefined;
   let rejecter: ((reason?: unknown) => void) | undefined;
   let clearStuckCheck: VoidFunction | undefined;
-  const blankStats = new BlankFrameStats(width, height);
-  const dropStats = new FrameDropStats(fps);
+  const blankStats = new BlankStats(width, height);
+  const dropStats = new DropStats(fps);
 
   let disposeAudio: AudioDisposal | undefined;
   const scheduleFrame = (frame: Buffer) => {
@@ -141,17 +141,18 @@ export async function render(options: IPCRenderOptions): Promise<IpcDonePayload>
         if (written !== lastWritten) {
           lastWritten = written;
           stuck = 0;
-          return;
+          return undefined;
         }
         if (stuck >= 3) {
           rejecter?.(new Error(`renderer timeout @ ${written} lastTs ${lastWritten}`));
-          return;
+          return undefined;
         }
         stuck++;
         const bmp = await win.webContents.capturePage().catch(() => null);
         if (bmp && !win.isDestroyed()) {
           paint(undefined, undefined, bmp);
         }
+        return undefined;
       }, 1000 / fps);
     });
   } finally {
@@ -170,6 +171,10 @@ export async function render(options: IPCRenderOptions): Promise<IpcDonePayload>
     if (blank >= BLANK_WARN_RATIO) {
       logger.warn(TAG, `${source} blank-frame ratio ${Math.round(blank * 100)}% — possible white/blank screen`);
     }
-    return { written, outFiles, blank, screenshots, jank: dropStats.finalize().jank };
+    const { jank } = dropStats.finalize();
+    if (jank >= JANK_WARN_SCORE) {
+      logger.warn(TAG, `${source} jank score ${jank.toFixed(2)} — dropped frames`);
+    }
+    return { written, outFiles, blank, screenshots, jank };
   }
 }

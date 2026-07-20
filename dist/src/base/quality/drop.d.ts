@@ -1,4 +1,5 @@
-export interface FrameDropScore {
+export declare const JANK_WARN_SCORE = 0.25;
+export interface DropScore {
     global: number;
     local: number;
     jank: number;
@@ -6,7 +7,7 @@ export interface FrameDropScore {
     actual: number;
     maxBurst: number;
 }
-export declare class FrameDropStats {
+export declare class DropStats {
     private readonly _fps;
     private _actual;
     private _currentBurst;
@@ -14,5 +15,5 @@ export declare class FrameDropStats {
     constructor(fps: number);
     wrote(count?: number): void;
     dropped(count?: number): void;
-    finalize(): FrameDropScore;
+    finalize(): DropScore;
 }

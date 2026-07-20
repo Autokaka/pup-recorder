@@ -1,7 +1,9 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/03/23.
 
+export const JANK_WARN_SCORE = 0.25; // jank score above this warns at render end (~quarter dropped or a ~0.5s freeze)
+
 // Frame-drop quality score (0 = perfect, 1 = worst): global drop rate and local burst severity combined via 1-(1-g)(1-l).
-export interface FrameDropScore {
+export interface DropScore {
   global: number;
   local: number;
   jank: number;
@@ -10,7 +12,7 @@ export interface FrameDropScore {
   maxBurst: number;
 }
 
-export class FrameDropStats {
+export class DropStats {
   private readonly _fps: number;
   private _actual = 0;
   private _currentBurst = 0;
@@ -32,7 +34,7 @@ export class FrameDropStats {
     this._currentBurst += count;
   }
 
-  finalize(): FrameDropScore {
+  finalize(): DropScore {
     if (this._currentBurst > 0) {
       this._bursts.push(this._currentBurst);
       this._currentBurst = 0;

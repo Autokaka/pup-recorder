@@ -5,7 +5,6 @@ import { pupAudioPreload, pupRenderPreload, pupShootPreload } from "../base/cons
 import { logger } from "../base/logging";
 import { useRetry } from "../base/retry";
 import { sleep } from "../base/timing";
-import { checkHTML } from "./html_check";
 import { proxiedUrl, setInterceptor, unsetInterceptor } from "./network";
 import { createStegoURL } from "./protocol";
 import type { IPCRenderOptions } from "./schema";
@@ -174,8 +173,6 @@ async function openWindow({ source, renderer, tolerant, signal, onCreated }: Win
 const openWindowWithRetry = useRetry({ fn: openWindow, maxAttempts: 2 });
 
 export async function loadWindow({ source, renderer, onCreated, signal }: WindowOptions): Promise<BrowserWindow> {
-  checkHTML(source);
-
   signal?.throwIfAborted();
   let warmup: BrowserWindow | undefined;
   let error: unknown;
