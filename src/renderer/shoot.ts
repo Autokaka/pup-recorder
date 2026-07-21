@@ -86,7 +86,7 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
   const winP = loadWindow({ source, renderer: options, signal });
   await using pipeline = await EncoderPipeline.create({ width, height, fps, outFiles, withAudio, disableHwCodec });
   const win = await winP;
-  logger.debug(TAG, "init done:", { source, cost: performance.now() - tInit });
+  logger.debug(TAG, "init done:", { source, cost: Math.round(performance.now() - tInit) });
 
   const total = Math.ceil(fps * duration);
   const frameInterval = 1000 / fps;
@@ -111,8 +111,10 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
       signal?.throwIfAborted();
       const frameMs = (frame + 1) * frameInterval;
 
+      // Arm before drawStego so the commit ack can't be missed; branch catch keeps an early tick failure from orphaning it.
       const swapped = waitStegoTick(win.webContents);
       swapped.catch(() => {});
+      // Independent targets (iframe clock vs main-frame stego canvas): one concurrent hop instead of two serial ones.
       await Promise.all([tick({ frame: iframe, timestampMs: frameMs, signal }), drawStego(win.webContents, frameMs)]);
       await Promise.all([advanceVirtualTime(cdp, frameInterval), swapped]);
       const painted = await paint({ source, fps, win, size: { width, height }, ms: frameMs });

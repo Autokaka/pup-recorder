@@ -18,8 +18,7 @@ interface RafEntry {
 
 interface AnimEntry {
   startMs: number;
-  pausedAccum: number;
-  pausedAt: number;
+  adopted: boolean;
 }
 
 export function installTickHook(): void {
@@ -105,6 +104,16 @@ export function installTickHook(): void {
   }
 
   const animState = new WeakMap<Animation, AnimEntry>();
+  function endBoundary(a: Animation): number | undefined {
+    try {
+      const t = a.effect?.getComputedTiming().endTime;
+      return typeof t === "number" && Number.isFinite(t) ? t : undefined;
+    } catch {
+      // Detached/foreign effects have no timing; treat as unbounded.
+      return undefined;
+    }
+  }
+  // Adopt running animations (pause + drive currentTime off the virtual clock): an infinite compositor animation otherwise keeps viz free-running at RENDER_FPS, starving CDP evals.
   function syncAnimations(ms: number) {
     let anims: Animation[];
     try {
@@ -125,20 +134,41 @@ export function installTickHook(): void {
       let s = animState.get(a);
       if (!s) {
         const ct0 = typeof a.currentTime === "number" ? a.currentTime : 0;
-        s = { startMs: ms - ct0 / rate, pausedAccum: 0, pausedAt: -1 };
+        s = { startMs: ms - ct0 / rate, adopted: state !== "paused" };
         animState.set(a, s);
+        if (s.adopted) {
+          try {
+            a.pause();
+          } catch {
+            // Pause-rejecting states (e.g. mid-cancel) still accept currentTime writes below.
+          }
+        }
+      } else if (!s.adopted && state !== "paused") {
+        const ct = typeof a.currentTime === "number" ? a.currentTime : 0;
+        s.startMs = ms - ct / rate;
+        s.adopted = true;
+        try {
+          a.pause();
+        } catch {
+          // Same as adoption above: drive by currentTime regardless.
+        }
       }
-      if (state === "paused") {
-        if (s.pausedAt < 0) {
-          s.pausedAt = ms;
+      if (!s.adopted) {
+        continue;
+      }
+      const target = (ms - s.startMs) * rate;
+      const end = endBoundary(a);
+      // finish() seeks to the rate-appropriate boundary and applies fill mode; paused holds would misrender fill:none.
+      if (rate > 0 ? end !== undefined && target >= end : target <= 0) {
+        animState.delete(a);
+        try {
+          a.finish();
+        } catch {
+          // Infinite-duration reverse or detached effect: leave as-is.
         }
         continue;
       }
-      if (s.pausedAt >= 0) {
-        s.pausedAccum += ms - s.pausedAt;
-        s.pausedAt = -1;
-      }
-      a.currentTime = (ms - s.startMs - s.pausedAccum) * rate;
+      a.currentTime = target;
     }
   }
 

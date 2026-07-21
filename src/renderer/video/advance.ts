@@ -19,11 +19,10 @@ export async function advanceVideos({ frame, timestampMs, signal }: AdvanceOptio
   }
   signal?.throwIfAborted();
   try {
-    // Source opens are wall-time async; settle them first so virtual time can't step onto a blank, not-yet-opened <video>.
-    await abortable(frame.executeJavaScript(`window.__pup_video__&&window.__pup_video__.ready()`), signal);
-    // No wall-clock cap: a slow fetch delays the frame instead of dropping it, keeping -d output deterministic.
     await abortable(
-      frame.executeJavaScript(`window.__pup_video__&&window.__pup_video__.advance(${timestampMs})`),
+      frame.executeJavaScript(
+        `window.__pup_video__&&(async()=>{await __pup_video__.ready();await __pup_video__.advance(${timestampMs})})()`,
+      ),
       signal,
     );
   } catch (e) {
