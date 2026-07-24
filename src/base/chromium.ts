@@ -55,7 +55,8 @@ export async function chromiumOptions(disableGpu: boolean) {
   }
 
   const features = ["FontationBackend"];
-  const enableGpu = (await canIUseGPU) && !disableGpu;
+  // disableGpu first: it short-circuits past the lazy probe, so a disabled pod never dlopens libcuda.
+  const enableGpu = !disableGpu && canIUseGPU.value;
   if (!enableGpu) {
     opts.push("use-angle=swiftshader", "enable-unsafe-swiftshader");
   } else {

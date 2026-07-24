@@ -1,1 +1,2 @@
-export declare const canIUseGPU: Promise<boolean>;
+import { Lazy } from "./lazy";
+export declare const canIUseGPU: Lazy<boolean>;
