@@ -14,6 +14,8 @@ import { shoot } from "./renderer/shoot";
 
 const TAG = "[App]";
 
+process.env["ELECTRON_DISABLE_SECURITY_WARNINGS"] = "1";
+
 function printFeatures() {
   logger.debug(TAG, "gpu features:", app.getGPUFeatureStatus());
 }

@@ -11,7 +11,7 @@ import type { IPCRenderOptions } from "./schema";
 
 const TAG = "[Window]";
 const TIMEOUT_ERROR = new Error("window timeout");
-const CONSOLE_IGNORES = [`%cElectron Security Warning`, "Mixed Content: The page at"];
+const CONSOLE_IGNORES = ["Mixed Content: The page at"];
 
 interface FinishOptions {
   source: string;

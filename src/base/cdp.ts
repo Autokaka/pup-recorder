@@ -51,3 +51,8 @@ export async function resizeDrawable(cdp: Debugger, size: Size) {
     mobile: false,
   });
 }
+
+export async function rebuildDrawable(cdp: Debugger, size: Size) {
+  await resizeDrawable(cdp, { ...size, height: size.height + 1 });
+  await resizeDrawable(cdp, size);
+}
