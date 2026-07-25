@@ -1,6 +1,6 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/03/13.
 
-import type { Debugger, Size } from "electron";
+import type { Debugger, Size, WebContents } from "electron";
 import { withTimeout } from "./timing";
 
 const CDP_TIMEOUT_MS = 5_000;
@@ -44,15 +44,17 @@ export async function pauseVirtualTime(cdp: Debugger): Promise<void> {
   await send(cdp, "Emulation.setVirtualTimePolicy", { policy: "pause" });
 }
 
-export async function resizeDrawable(cdp: Debugger, size: Size) {
-  await send(cdp, "Emulation.setDeviceMetricsOverride", {
-    ...size,
-    deviceScaleFactor: 1,
-    mobile: false,
-  });
-}
-
-export async function rebuildDrawable(cdp: Debugger, size: Size) {
-  await resizeDrawable(cdp, { ...size, height: size.height + 1 });
-  await resizeDrawable(cdp, size);
+export async function rebuildDrawable(web: WebContents, size: Size) {
+  try {
+    const cdp = web.debugger;
+    await send(cdp, "Emulation.clearDeviceMetricsOverride", {});
+    await send(cdp, "Emulation.setDeviceMetricsOverride", {
+      ...size,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    web.invalidate();
+  } catch {
+    // Sth like teardown detach rejects in-flight CDP sends; a lost repaint kick is harmless.
+  }
 }

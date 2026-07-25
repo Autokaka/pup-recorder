@@ -1,7 +1,7 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/09.
 
 import type { NativeImage, Size } from "electron";
-import { resizeDrawable } from "../base/cdp";
+import { rebuildDrawable } from "../base/cdp";
 import { EncoderPipeline } from "../base/encoder/pipeline";
 import { sizeEquals } from "../base/image";
 import { logger } from "../base/logging";
@@ -56,7 +56,7 @@ export async function render(options: IPCRenderOptions): Promise<IpcDonePayload>
     const imageSize = image.getSize();
     if (!sizeEquals(imageSize, frameSize)) {
       // NOTE(Autokaka): We must ensure frame is ready on electron v41+
-      resizeDrawable(cdp, frameSize);
+      rebuildDrawable(win.webContents, frameSize);
       return;
     }
 
@@ -143,14 +143,11 @@ export async function render(options: IPCRenderOptions): Promise<IpcDonePayload>
           stuck = 0;
           return undefined;
         }
-        if (stuck >= 3) {
-          rejecter?.(new Error(`renderer timeout @ ${written} lastTs ${lastWritten}`));
-          return undefined;
-        }
         stuck++;
-        const bmp = await win.webContents.capturePage().catch(() => null);
-        if (bmp && !win.isDestroyed()) {
-          paint(undefined, undefined, bmp);
+        if (stuck >= fps) {
+          rejecter?.(new Error(`renderer stalled for ${Math.round((stuck * 1000) / fps)}ms @ ${written}`));
+        } else if (stuck === 0 || stuck === Math.floor(fps / 2)) {
+          await rebuildDrawable(win.webContents, frameSize);
         }
         return undefined;
       }, 1000 / fps);

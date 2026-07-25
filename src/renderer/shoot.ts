@@ -1,7 +1,7 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/03/13.
 
 import type { BrowserWindow, NativeImage, Size } from "electron";
-import { advanceVirtualTime, pauseVirtualTime, rebuildDrawable, resizeDrawable } from "../base/cdp";
+import { advanceVirtualTime, pauseVirtualTime, rebuildDrawable } from "../base/cdp";
 import { EncoderPipeline } from "../base/encoder/pipeline";
 import { sizeEquals } from "../base/image";
 import { logger } from "../base/logging";
@@ -18,7 +18,7 @@ import { disposeWindow, loadWindow } from "./window";
 
 const TAG = "[Shoot]";
 const RENDER_FPS = 240;
-const PAINT_HOLD_LIMIT = 10;
+const PAINT_HOLD_LIMIT = 3;
 
 interface PaintOptions {
   source: string;
@@ -31,15 +31,12 @@ interface PaintOptions {
 // Painting stays on for the whole run; waits for the frame whose stego row matches `ms`, undefined on timeout.
 async function paint({ win, fps, size, ms }: PaintOptions): Promise<Buffer | undefined> {
   let clearDirtyCheck: VoidFunction | undefined;
-  const cdp = win.webContents.debugger;
   const frameSize: Size = { width: size.width, height: size.height + 1 };
   try {
     return await new Promise<Buffer | undefined>((resolve) => {
       const handler = (_e: unknown, _d: unknown, image: NativeImage) => {
         const imageSize = image.getSize();
         if (!sizeEquals(imageSize, frameSize)) {
-          // NOTE(Autokaka): must ensure frame ready on electron v41+; teardown detach may reject the in-flight send.
-          resizeDrawable(cdp, frameSize).catch(() => {});
           return;
         }
         // Decode from a 2-row sliver first; the full-frame readback (~8MB memcpy) is paid only on the matching frame.
@@ -53,16 +50,14 @@ async function paint({ win, fps, size, ms }: PaintOptions): Promise<Buffer | und
         resolve(Buffer.from(bitmap.buffer, bitmap.byteOffset, size.height * size.width * 4));
       };
       win.webContents.on("paint", handler);
-      clearDirtyCheck = periodical(async (times) => {
-        if (times <= PAINT_HOLD_LIMIT) {
-          // Teardown detach rejects in-flight CDP sends; a lost repaint kick is harmless.
-          await rebuildDrawable(cdp, frameSize).catch(() => {});
-        } else {
+      clearDirtyCheck = periodical(async (stuck) => {
+        if (stuck === 0 || stuck === Math.floor(fps / 2)) {
+          await rebuildDrawable(win.webContents, frameSize);
+        } else if (stuck >= fps) {
           logger.warn(TAG, `paint timeout @ ${ms}`);
           win.webContents.off("paint", handler);
           resolve(undefined);
         }
-        return undefined;
       }, 1000 / fps);
     });
   } finally {
