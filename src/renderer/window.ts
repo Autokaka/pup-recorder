@@ -1,10 +1,12 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/27.
 
+import { join } from "node:path";
 import { BrowserWindow } from "electron";
-import { pupAudioPreload, pupRenderPreload, pupShootPreload } from "../base/constants";
+import { pupPkgRoot, pupPreload } from "../base/constants";
 import { logger } from "../base/logging";
 import { useRetry } from "../base/retry";
 import { sleep } from "../base/timing";
+import { WORLD_ARG, type WorldMode } from "../runtime/world";
 import { proxiedUrl, setInterceptor, unsetInterceptor } from "./network";
 import { createStegoURL } from "./protocol";
 import type { IPCRenderOptions } from "./schema";
@@ -52,6 +54,10 @@ function waitForFinish({ source, win, action, timeoutMs, tolerant, signal }: Fin
       logger.error(TAG, msg);
       done(new Error(msg));
     });
+    win.webContents.once("preload-error", (_e, _path, error) => {
+      logger.error(TAG, `preload-error: ${JSON.stringify({ source, message: error.message })}`);
+      done(error);
+    });
     win.webContents.once("render-process-gone", (_e, { exitCode, reason }) => {
       const msg = `render-process-gone: ${JSON.stringify({ source, exitCode, reason })}`;
       logger.error(TAG, msg);
@@ -92,14 +98,16 @@ export interface WindowOptions {
   signal?: AbortSignal;
 }
 
-function pickPreload(renderer: IPCRenderOptions): string | undefined {
-  if (renderer.deterministic) {
-    return pupShootPreload;
-  }
-  if (renderer.withAudio) {
-    return pupAudioPreload;
-  }
-  return pupRenderPreload;
+// Page-world hook bundles; the preload evaluates the named one in the main world of every frame it lands in.
+const WORLD_SCRIPTS: Record<WorldMode, string> = {
+  shoot: join(pupPkgRoot, "dist", "runtime", "shoot.global.js"),
+  render: join(pupPkgRoot, "dist", "runtime", "render.global.js"),
+  audio: join(pupPkgRoot, "dist", "runtime", "audio.global.js"),
+};
+
+function pickWorldScript(renderer: IPCRenderOptions): string {
+  const mode: WorldMode = renderer.deterministic ? "shoot" : renderer.withAudio ? "audio" : "render";
+  return WORLD_SCRIPTS[mode];
 }
 
 async function openWindow({ source, renderer, tolerant, signal, onCreated }: WindowOptions): Promise<BrowserWindow> {
@@ -123,14 +131,14 @@ async function openWindow({ source, renderer, tolerant, signal, onCreated }: Win
     webPreferences: {
       offscreen: true,
       backgroundThrottling: false,
-      // Only injects preloads into the target iframe; node stays off there, as nodeIntegration keeps its false default.
+      // Carries the bridge preload into the target iframe; node stays off, as nodeIntegration keeps its false default.
       nodeIntegrationInSubFrames: true,
-      // Must stay off: the tick/audio/video hooks patch the page's own globals, which an isolated world can't reach.
-      contextIsolation: false,
       // Electron sandboxes preloads by default, which breaks their bundled requires; the OS sandbox is off regardless.
       sandbox: false,
+      webSecurity: !renderer.disableWebSecurity,
       experimentalFeatures: true,
-      preload: pickPreload(renderer),
+      preload: pupPreload,
+      additionalArguments: [`${WORLD_ARG}${pickWorldScript(renderer)}`],
     },
   });
   setInterceptor({

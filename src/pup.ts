@@ -55,6 +55,9 @@ async function runPupApp(source: string, render: RenderOptions) {
   if (render.disableHwCodec) {
     args.push(`--disable-hw-codec`);
   }
+  if (render.disableWebSecurity) {
+    args.push(`--disable-web-security`);
+  }
   if (render.windowTolerant) {
     args.push(`--window-tolerant`);
   }
@@ -85,6 +88,7 @@ export async function pup(source: string, options: Partial<PupOptions>): Promise
     deterministic: options.deterministic ?? d.deterministic,
     disableGpu: options.disableGpu ?? d.disableGpu,
     disableHwCodec: options.disableHwCodec ?? d.disableHwCodec,
+    disableWebSecurity: options.disableWebSecurity ?? d.disableWebSecurity,
     windowTolerant: options.windowTolerant ?? d.windowTolerant,
     windowTimeout: options.windowTimeout ?? d.windowTimeout,
     screenshots: options.screenshots ?? d.screenshots,

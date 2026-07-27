@@ -39,12 +39,20 @@ await build({
 
 await build({
   ...common,
-  entry: [
-    "src/app.ts", //
-    "src/runtime/audio_preload.ts",
-    "src/runtime/render_preload.ts",
-    "src/runtime/shoot_preload.ts",
-  ],
+  entry: ["src/app.ts", "src/runtime/preload.ts"],
   format: "cjs",
   outDir: "dist",
+});
+
+// Page-world hooks: self-contained iife, no banner — they are injected as text and have no module loader.
+await build({
+  ...common,
+  entry: [
+    "src/runtime/audio.ts", //
+    "src/runtime/render.ts",
+    "src/runtime/shoot.ts",
+  ],
+  format: "iife",
+  banner: {},
+  outDir: "dist/runtime",
 });

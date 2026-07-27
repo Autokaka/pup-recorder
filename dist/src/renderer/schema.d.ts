@@ -16,6 +16,7 @@ export declare const renderSchema: z.ZodObject<{
     deterministic: z.ZodBoolean;
     disableGpu: z.ZodBoolean;
     disableHwCodec: z.ZodBoolean;
+    disableWebSecurity: z.ZodBoolean;
     windowTolerant: z.ZodBoolean;
     windowTimeout: z.ZodNumber;
     screenshots: z.ZodArray<z.ZodNumber>;
