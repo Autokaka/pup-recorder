@@ -46,6 +46,7 @@ export async function makeCLI(options: CLIOptions) {
     .option("--disable-gpu", shape.disableGpu.description, d.disableGpu)
     .option("--disable-hw-codec", shape.disableHwCodec.description, d.disableHwCodec)
     .option("--disable-web-security", shape.disableWebSecurity.description, d.disableWebSecurity)
+    .option("--ignore-certificate-errors", shape.ignoreCertificateErrors.description, d.ignoreCertificateErrors)
     .option("--window-tolerant", shape.windowTolerant.description, d.windowTolerant)
     .option("--window-timeout <number>", shape.windowTimeout.description, `${d.windowTimeout}`)
     .action(async (source: string, opts) => {
@@ -62,6 +63,7 @@ export async function makeCLI(options: CLIOptions) {
           disableGpu: opts.disableGpu ?? d.disableGpu,
           disableHwCodec: opts.disableHwCodec ?? d.disableHwCodec,
           disableWebSecurity: opts.disableWebSecurity ?? d.disableWebSecurity,
+          ignoreCertificateErrors: opts.ignoreCertificateErrors ?? d.ignoreCertificateErrors,
           windowTolerant: opts.windowTolerant ?? d.windowTolerant,
           windowTimeout: noerr(parseNumber, d.windowTimeout)(opts.windowTimeout),
           screenshots: parseArray(parseNumber)(opts.screenshots),

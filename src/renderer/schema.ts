@@ -21,6 +21,9 @@ export const renderSchema = z.object({
   disableGpu: z.boolean().describe("Disable GPU rendering, may reduce performance but increase stability"),
   disableHwCodec: z.boolean().describe("Disable hardware video encoder (NVENC/VideoToolbox), use software x265"),
   disableWebSecurity: z.boolean().describe("Drop the same-origin wall; required to record a local file"),
+  ignoreCertificateErrors: z
+    .boolean()
+    .describe("Record over TLS the platform rejects, e.g. a self-signed intranet host"),
   windowTolerant: z.boolean().describe("Fall back to dom-ready if warmup load times out"),
   windowTimeout: z.number().describe("Window load timeout in seconds"),
   screenshots: z.array(z.number()).describe("Second marks to dump frame bitmaps as PNG"),
@@ -60,6 +63,7 @@ export const defaultRenderOptions: RenderOptions = {
   disableGpu: false,
   disableHwCodec: false,
   disableWebSecurity: false,
+  ignoreCertificateErrors: false,
   windowTolerant: false,
   windowTimeout: DEFAULT_WINDOW_TIMEOUT,
   screenshots: [],

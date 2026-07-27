@@ -1,4 +1,4 @@
-export declare function electronOpts(disableGpu: boolean): Promise<string[]>;
+export declare function electronOpts(args: unknown[]): Promise<string[]>;
 export interface RunElectronAppOptions {
     args: unknown[];
 }

@@ -6,7 +6,7 @@ import { pupPkgRoot, pupPreload } from "../base/constants";
 import { logger } from "../base/logging";
 import { useRetry } from "../base/retry";
 import { sleep } from "../base/timing";
-import { WORLD_ARG, type WorldMode } from "../runtime/world";
+import { AUDIO_ARG, WORLD_ARG, type WorldMode } from "../runtime/world";
 import { proxiedUrl, setInterceptor, unsetInterceptor } from "./network";
 import { createStegoURL } from "./protocol";
 import type { IPCRenderOptions } from "./schema";
@@ -136,9 +136,11 @@ async function openWindow({ source, renderer, tolerant, signal, onCreated }: Win
       // Electron sandboxes preloads by default, which breaks their bundled requires; the OS sandbox is off regardless.
       sandbox: false,
       webSecurity: !renderer.disableWebSecurity,
+      // The wrapper is a secure scheme, so it upgrades the target to https and every http subresource it owns turns mixed.
+      allowRunningInsecureContent: true,
       experimentalFeatures: true,
       preload: pupPreload,
-      additionalArguments: [`${WORLD_ARG}${pickWorldScript(renderer)}`],
+      additionalArguments: [`${WORLD_ARG}${pickWorldScript(renderer)}`, ...(renderer.withAudio ? [AUDIO_ARG] : [])],
     },
   });
   setInterceptor({

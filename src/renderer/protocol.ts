@@ -11,8 +11,8 @@ const FRAME_SCHEME = "pup-frame";
 const PRIVILEGED_PRIVILEGES = {
   standard: true,
   secure: true,
+  // A page's own CSP would otherwise refuse the video hook's fetch of pup-frame:// stubs (connect-src).
   bypassCSP: true,
-  allowServiceWorkers: true,
   supportFetchAPI: true,
   corsEnabled: true,
   stream: true,

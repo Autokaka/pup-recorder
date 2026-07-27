@@ -15,9 +15,16 @@ export interface AudioListenerOptions {
 
 export type AudioDisposal = () => void;
 
+// A render quantum is 128 stereo floats; anything past a second of audio came from a page abusing the bridge.
+const MAX_CHUNK_BYTES = 48_000 * 2 * 4;
+const MAX_SAMPLE_RATE = 192_000;
+
 export function attachAudioListeners({ wc, encoder, getVideoTimeMs, onError }: AudioListenerOptions): AudioDisposal {
   const onMeta = async (_e: unknown, data: { sampleRate: number }) => {
     const sampleRate = data.sampleRate;
+    if (!Number.isFinite(sampleRate) || sampleRate <= 0 || sampleRate > MAX_SAMPLE_RATE) {
+      return;
+    }
     const startMs = getVideoTimeMs();
     encoder.setupAudio(sampleRate);
     const silenceSamples = Math.ceil((startMs * sampleRate) / 1000);
@@ -32,6 +39,11 @@ export function attachAudioListeners({ wc, encoder, getVideoTimeMs, onError }: A
   };
 
   const onChunk = async (_e: unknown, buffer: Buffer) => {
+    // Page-world code owns this channel, so treat its payload as input: wrong size means it is not our worklet's PCM.
+    const bytes = ArrayBuffer.isView(buffer) ? buffer.byteLength : 0;
+    if (bytes === 0 || bytes > MAX_CHUNK_BYTES || bytes % 8 !== 0) {
+      return;
+    }
     try {
       await encoder.encodeAudio(buffer);
     } catch (error) {

@@ -58,6 +58,9 @@ async function runPupApp(source: string, render: RenderOptions) {
   if (render.disableWebSecurity) {
     args.push(`--disable-web-security`);
   }
+  if (render.ignoreCertificateErrors) {
+    args.push(`--ignore-certificate-errors`);
+  }
   if (render.windowTolerant) {
     args.push(`--window-tolerant`);
   }
@@ -89,6 +92,7 @@ export async function pup(source: string, options: Partial<PupOptions>): Promise
     disableGpu: options.disableGpu ?? d.disableGpu,
     disableHwCodec: options.disableHwCodec ?? d.disableHwCodec,
     disableWebSecurity: options.disableWebSecurity ?? d.disableWebSecurity,
+    ignoreCertificateErrors: options.ignoreCertificateErrors ?? d.ignoreCertificateErrors,
     windowTolerant: options.windowTolerant ?? d.windowTolerant,
     windowTimeout: options.windowTimeout ?? d.windowTimeout,
     screenshots: options.screenshots ?? d.screenshots,

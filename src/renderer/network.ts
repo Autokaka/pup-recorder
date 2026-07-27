@@ -13,6 +13,8 @@ const map = new Map([
   [`boss.hdslb.com`, `shjd-boss.bilibili.co`],
 ]);
 
+const targets = new Set(map.values());
+
 const LOCAL_SCHEMES = ["pup:", "pup-frame:", "file:", "data:", "blob:", "chrome-extension:", "devtools:"];
 
 function isLocalScheme(url: string): boolean {
@@ -22,6 +24,10 @@ function isLocalScheme(url: string): boolean {
     }
   }
   return false;
+}
+
+function isProxyTarget(url: string): boolean {
+  return url.startsWith("http") && targets.has(new URL(url).hostname);
 }
 
 export function proxiedUrl(url: string) {
@@ -100,11 +106,16 @@ export function setInterceptor({ source, window, useInnerProxy, stubMedia }: Net
     });
   });
 
-  req.onHeadersReceived(({ responseHeaders }, callback) => {
+  req.onHeadersReceived(({ url, responseHeaders }, callback) => {
     delete responseHeaders?.["x-frame-options"];
     delete responseHeaders?.["X-Frame-Options"];
     delete responseHeaders?.["content-security-policy"];
     delete responseHeaders?.["Content-Security-Policy"];
+    // Proxying rewrote the origin, so fonts and other CORS-mode fetches need the grant the original host would have had.
+    if (useInnerProxy && isProxyTarget(url)) {
+      callback({ cancel: false, responseHeaders: { ...responseHeaders, "access-control-allow-origin": ["*"] } });
+      return;
+    }
     callback({ cancel: false, responseHeaders });
   });
 

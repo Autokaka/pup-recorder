@@ -4,15 +4,17 @@ import { platform } from "node:os";
 import { pupLogLevel } from "./constants";
 import { canIUseGPU } from "./hwaccel";
 
-export async function chromiumOptions(disableGpu: boolean) {
+export interface ChromiumOptions {
+  disableGpu: boolean;
+  disableWebSecurity: boolean;
+  ignoreCertificateErrors: boolean;
+}
+
+export async function chromiumOptions({ disableGpu, disableWebSecurity, ignoreCertificateErrors }: ChromiumOptions) {
   const opts = [
     // 容器沙箱
     "no-sandbox",
     "disable-dev-shm-usage",
-    // 跨域/安全
-    "disable-web-security",
-    "disable-site-isolation-trials",
-    "ignore-certificate-errors",
     // 录制行为
     "disable-blink-features=AutomationControlled",
     "mute-audio",
@@ -47,6 +49,14 @@ export async function chromiumOptions(disableGpu: boolean) {
     // 日志追踪
     "enable-logging=stderr",
   ];
+
+  // Relax at the process level only alongside the window-level knob, so neither layer silently overrides the other.
+  if (disableWebSecurity) {
+    opts.push("disable-web-security");
+  }
+  if (ignoreCertificateErrors) {
+    opts.push("ignore-certificate-errors");
+  }
 
   if (pupLogLevel >= 3) {
     opts.push("log-level=0", "v=1");

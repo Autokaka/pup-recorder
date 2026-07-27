@@ -2,4 +2,6 @@
 
 import { installAudioCapture } from "./audio/capture";
 
-installAudioCapture();
+if (window.self !== window.top) {
+  installAudioCapture();
+}

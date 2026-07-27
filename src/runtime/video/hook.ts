@@ -12,7 +12,7 @@ declare global {
     __pup_video__?: { advance: (ms: number) => Promise<unknown>; ready: () => Promise<void> };
   }
   interface HTMLVideoElement {
-    __pupLastSrc?: string;
+    __pup_last_src__?: string;
   }
 }
 
@@ -119,10 +119,10 @@ export class VideoHook {
 
   onSrcChange(video: HTMLVideoElement): void {
     const src = video.src || video.currentSrc || "";
-    if (video.__pupLastSrc === src) {
+    if (video.__pup_last_src__ === src) {
       return;
     }
-    video.__pupLastSrc = src;
+    video.__pup_last_src__ = src;
     if (this.sessions.has(video)) {
       this.detach(video);
     }

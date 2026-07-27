@@ -142,7 +142,7 @@ export function installMediaShim(hook: VideoHook): void {
     }
     hook.detach(this);
     fire(this, "emptied");
-    this.__pupLastSrc = undefined;
+    this.__pup_last_src__ = undefined;
     hook.attach(this);
   };
   if (srcDesc?.set) {

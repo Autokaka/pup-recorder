@@ -5,7 +5,7 @@ declare global {
         __pup_audio__?: PupAudioBridge;
     }
     interface AudioContext {
-        __pup_captureDest__?: MediaStreamAudioDestinationNode;
+        __pup_capture_dest__?: MediaStreamAudioDestinationNode;
     }
     interface HTMLMediaElement {
         __pup_captured__?: boolean;

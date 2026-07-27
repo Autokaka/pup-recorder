@@ -9,8 +9,13 @@ import { pupApp } from "../base/constants";
 import { logger } from "../base/logging";
 import { exec, PUP_ARGS_KEY } from "../base/process";
 
-export async function electronOpts(disableGpu: boolean) {
-  return [...(await chromiumOptions(disableGpu)), "headless=new"];
+export async function electronOpts(args: unknown[]) {
+  const flags = await chromiumOptions({
+    disableGpu: args.includes("--disable-gpu"),
+    disableWebSecurity: args.includes("--disable-web-security"),
+    ignoreCertificateErrors: args.includes("--ignore-certificate-errors"),
+  });
+  return [...flags, "headless=new"];
 }
 
 const TAG = "[Electron]";
@@ -22,7 +27,7 @@ export interface RunElectronAppOptions {
 export async function runElectronApp({ args }: RunElectronAppOptions) {
   // Lazy: electron's entry throws if the binary is absent, so util-only consumers must not load it at import time.
   const { default: electron } = await import("electron");
-  const opts = await electronOpts(args.includes("--disable-gpu"));
+  const opts = await electronOpts(args);
   // Per-process profile: isolates this call's Chromium cache (warmup windows share it via defaultSession), wiped on exit.
   const profileDir = await mkdtemp(join(tmpdir(), "pup-profile-"));
   const electronArgs = opts.map((a) => `--${a}`);

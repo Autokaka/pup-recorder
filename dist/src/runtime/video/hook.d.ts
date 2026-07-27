@@ -8,7 +8,7 @@ declare global {
         };
     }
     interface HTMLVideoElement {
-        __pupLastSrc?: string;
+        __pup_last_src__?: string;
     }
 }
 export declare class VideoHook {

@@ -6,7 +6,7 @@ import { contextBridge, ipcRenderer, webFrame } from "electron";
 import { AUDIO_CHUNK_CHANNEL, AUDIO_META_CHANNEL } from "../renderer/audio";
 import { STEGO_TICK_CHANNEL } from "../renderer/stego";
 import type { PupAudioBridge } from "./audio/capture";
-import { WORLD_ARG } from "./world";
+import { AUDIO_ARG, WORLD_ARG } from "./world";
 
 const audio: PupAudioBridge = {
   meta: (sampleRate) => ipcRenderer.send(AUDIO_META_CHANNEL, { sampleRate }),
@@ -18,9 +18,13 @@ if (!process.contextIsolated) {
   throw new Error("preload requires contextIsolation");
 }
 
-// The only capability the page world gets: two fixed IPC channels behind contextBridge, never ipcRenderer itself.
-contextBridge.exposeInMainWorld("__pup_stego_tick__", () => ipcRenderer.send(STEGO_TICK_CHANNEL));
-contextBridge.exposeInMainWorld("__pup_audio__", audio);
+// Each channel reaches only the frame that owns it: the wrapper draws the stego row, the target page makes the sound.
+const isWrapper = window.self === window.top;
+if (isWrapper) {
+  contextBridge.exposeInMainWorld("__pup_stego_tick__", () => ipcRenderer.send(STEGO_TICK_CHANNEL));
+} else if (process.argv.includes(AUDIO_ARG)) {
+  contextBridge.exposeInMainWorld("__pup_audio__", audio);
+}
 
 // Hooks must patch page globals, so they run in the main world — reachable from here but not from this isolated scope.
 const worldScript = process.argv.find((a) => a.startsWith(WORLD_ARG))?.slice(WORLD_ARG.length);
