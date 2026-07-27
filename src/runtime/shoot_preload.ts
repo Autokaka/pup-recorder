@@ -2,6 +2,7 @@
 
 import { installAudioShim } from "./audio_shim";
 import { installHfHook } from "./hf_hook";
+import { installStegoBridge } from "./stego_bridge";
 import { installTickHook } from "./tick_hook";
 import { installVideoHook } from "./video/hook";
 
@@ -10,4 +11,6 @@ if (window.self !== window.top) {
   installHfHook();
   installTickHook();
   installVideoHook();
+} else {
+  installStegoBridge();
 }

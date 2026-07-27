@@ -146,7 +146,7 @@ export async function render(options: IPCRenderOptions): Promise<IpcDonePayload>
         stuck++;
         if (stuck >= fps) {
           rejecter?.(new Error(`renderer stalled for ${Math.round((stuck * 1000) / fps)}ms @ ${written}`));
-        } else if (stuck === 0 || stuck === Math.floor(fps / 2)) {
+        } else if (stuck === 1 || stuck === Math.floor(fps / 2)) {
           await rebuildDrawable(win.webContents, frameSize);
         }
         return undefined;

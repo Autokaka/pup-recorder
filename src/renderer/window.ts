@@ -123,12 +123,12 @@ async function openWindow({ source, renderer, tolerant, signal, onCreated }: Win
     webPreferences: {
       offscreen: true,
       backgroundThrottling: false,
-      nodeIntegration: true,
+      // Only injects preloads into the target iframe; node stays off there, as nodeIntegration keeps its false default.
       nodeIntegrationInSubFrames: true,
-      nodeIntegrationInWorker: true,
+      // Must stay off: the tick/audio/video hooks patch the page's own globals, which an isolated world can't reach.
       contextIsolation: false,
-      webSecurity: false,
-      allowRunningInsecureContent: true,
+      // Electron sandboxes preloads by default, which breaks their bundled requires; the OS sandbox is off regardless.
+      sandbox: false,
       experimentalFeatures: true,
       preload: pickPreload(renderer),
     },

@@ -42,7 +42,6 @@ export function buildStegoHTML(targetURL: string, size: Size): string {
   <canvas id="stego" width="${width}" height="1"></canvas>
   <script>
     (function() {
-      const { ipcRenderer } = require('electron');
       const WIDTH = ${width};
       const MARKER_WIDTH = ${FRAME_SYNC_MARKER_WIDTH};
       const canvas = document.getElementById('stego');
@@ -75,7 +74,7 @@ export function buildStegoHTML(targetURL: string, size: Size): string {
         }
 
         ctx.putImageData(imageData, 0, 0);
-        ipcRenderer.send('${STEGO_TICK_CHANNEL}');
+        window.__pup_stego_tick__();
       }
 
       function updateLoop() {

@@ -18,7 +18,6 @@ import { disposeWindow, loadWindow } from "./window";
 
 const TAG = "[Shoot]";
 const RENDER_FPS = 240;
-const PAINT_HOLD_LIMIT = 3;
 
 interface PaintOptions {
   source: string;
@@ -51,13 +50,14 @@ async function paint({ win, fps, size, ms }: PaintOptions): Promise<Buffer | und
       };
       win.webContents.on("paint", handler);
       clearDirtyCheck = periodical(async (stuck) => {
-        if (stuck === 0 || stuck === Math.floor(fps / 2)) {
-          await rebuildDrawable(win.webContents, frameSize);
-        } else if (stuck >= fps) {
+        if (stuck >= fps * 5) {
           logger.warn(TAG, `paint timeout @ ${ms}`);
           win.webContents.off("paint", handler);
           resolve(undefined);
+        } else if (stuck % Math.floor(fps / 2) === 0) {
+          await rebuildDrawable(win.webContents, frameSize);
         }
+        return undefined;
       }, 1000 / fps);
     });
   } finally {
@@ -117,7 +117,7 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
         dropStats.dropped(1);
       }
       const bitmap = painted ?? lastBitmap;
-      if (!bitmap || held >= PAINT_HOLD_LIMIT) {
+      if (!bitmap || held >= fps) {
         throw new Error(`renderer exausted @ ${frameMs}`);
       }
       lastBitmap = bitmap;
