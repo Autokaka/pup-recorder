@@ -61,7 +61,6 @@
   },
   "devDependencies": {
     "@biomejs/biome": "latest",
-    "@microsoft/api-extractor": "latest",
     "@types/bun": "latest",
     "@types/node": "^22.0.0",
     "typescript": "latest",
