@@ -1,5 +1,5 @@
 import { $ } from "bun";
-import { rm } from "fs/promises";
+import { chmod, rm } from "fs/promises";
 import { createRequire } from "module";
 import { join } from "path";
 import { build, type Options } from "tsup";
@@ -36,6 +36,9 @@ await build({
   format: "esm",
   outDir: "dist",
 });
+
+// The `bin` target: bun chmods it on install anyway, so state the mode here rather than let it differ per command.
+await chmod("dist/cli.js", 0o755);
 
 await build({
   ...common,
