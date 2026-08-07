@@ -87,7 +87,6 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
   let held = 0;
   let lastBitmap: Buffer | undefined;
   let screenshots: string[] = [];
-  let encodeError: Error | undefined;
   const blankStats = new BlankStats(width, height);
   const dropStats = new DropStats(fps);
   const cdp = win.webContents.debugger;
@@ -123,12 +122,9 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
       lastBitmap = bitmap;
       taker.capture(frameMs, bitmap);
       blankStats.sample(bitmap);
-      // Encode without awaiting (limiter serializes), so it overlaps the next frame's CDP/paint setup.
-      pipeline.encodeBGRA(bitmap).catch((e) => (encodeError ??= e));
+      // Awaited: the limiter queues without bound, so an encoder slower than capture pins one full BGRA frame per backlog entry.
+      await pipeline.encodeBGRA(bitmap);
       written++;
-      if (encodeError) {
-        throw encodeError;
-      }
 
       const newProgress = Math.floor((written / total) * 100);
       if (newProgress !== progress) {
@@ -142,9 +138,6 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
     screenshots = await taker.finish(lastBitmap);
   }
 
-  if (encodeError) {
-    throw encodeError;
-  }
   if (written === 0) {
     throw new Error("no frames captured");
   } else {
