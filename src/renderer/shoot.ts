@@ -27,12 +27,18 @@ interface PaintOptions {
   ms: number;
 }
 
+interface Frame {
+  pix: Buffer;
+  ts: number;
+}
+
 // Painting stays on for the whole run; waits for the frame whose stego row matches `ms`, undefined on timeout.
-async function paint({ win, fps, size, ms }: PaintOptions): Promise<Buffer | undefined> {
+async function paint({ win, fps, size, ms }: PaintOptions): Promise<Frame | undefined> {
   let clearDirtyCheck: VoidFunction | undefined;
   const frameSize: Size = { width: size.width, height: size.height + 1 };
+  const isFirstFrame = Math.abs(1000 / fps - ms) < 1;
   try {
-    return await new Promise<Buffer | undefined>((resolve) => {
+    return await new Promise<Frame | undefined>((resolve) => {
       const handler = (_e: unknown, _d: unknown, image: NativeImage) => {
         const imageSize = image.getSize();
         if (!sizeEquals(imageSize, frameSize)) {
@@ -41,20 +47,22 @@ async function paint({ win, fps, size, ms }: PaintOptions): Promise<Buffer | und
         // Decode from a 2-row sliver first; the full-frame readback (~8MB memcpy) is paid only on the matching frame.
         const sliver = image.crop({ x: 0, y: frameSize.height - 2, width: FRAME_SYNC_MARKER_WIDTH, height: 2 });
         const ts = decodeStego(sliver.toBitmap(), { width: FRAME_SYNC_MARKER_WIDTH, height: 2 });
-        if (ts === undefined || Math.abs(ts - ms) > 1) {
+        if (ts === undefined || ms - ts > 1) {
           return;
         }
         const bitmap = image.toBitmap();
         win.webContents.off("paint", handler);
-        resolve(Buffer.from(bitmap.buffer, bitmap.byteOffset, size.height * size.width * 4));
+        resolve({ ts, pix: Buffer.from(bitmap.buffer, bitmap.byteOffset, size.height * size.width * 4) });
       };
       win.webContents.on("paint", handler);
+      const timeout = isFirstFrame ? fps * 10 : fps * 5;
+      const refreshFps = Math.floor(isFirstFrame ? fps : fps / 2);
       clearDirtyCheck = periodical(async (stuck) => {
-        if (stuck >= fps * 10) {
+        if (stuck >= timeout) {
           logger.warn(TAG, `paint timeout @ ${ms}`);
           win.webContents.off("paint", handler);
           resolve(undefined);
-        } else if (stuck % fps === 0) {
+        } else if (stuck % refreshFps === 0) {
           await rebuildDrawable(win.webContents, frameSize);
         }
         return undefined;
@@ -85,7 +93,7 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
   let written = 0;
   let progress = 0;
   let held = 0;
-  let lastBitmap: Buffer | undefined;
+  let lastFrame: Frame | undefined;
   let screenshots: string[] = [];
   const blankStats = new BlankStats(width, height);
   const dropStats = new DropStats(fps);
@@ -97,9 +105,9 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
     win.webContents.setFrameRate(RENDER_FPS);
     await pauseVirtualTime(cdp);
 
-    for (let frame = 0; frame < total; frame++) {
+    for (let frameId = 0; frameId < total; frameId++) {
       signal?.throwIfAborted();
-      const frameMs = (frame + 1) * frameInterval;
+      const frameMs = (frameId + 1) * frameInterval;
 
       // Arm before drawStego so the commit ack can't be missed; branch catch keeps an early tick failure from orphaning it.
       const swapped = waitStegoTick(win.webContents);
@@ -115,17 +123,20 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
         held++;
         dropStats.dropped(1);
       }
-      const bitmap = painted ?? lastBitmap;
-      if (!bitmap || held >= fps) {
+      const frame = painted ?? lastFrame;
+      if (!frame || held >= fps) {
         throw new Error(`renderer exausted @ ${frameMs}`);
       }
-      lastBitmap = bitmap;
-      taker.capture(frameMs, bitmap);
-      blankStats.sample(bitmap);
-      // Awaited: the limiter queues without bound, so an encoder slower than capture pins one full BGRA frame per backlog entry.
-      await pipeline.encodeBGRA(bitmap);
-      written++;
-
+      // The compositor may paint quicker than us, or stuck, so we at least paint once
+      const repeat = Math.max(1, Math.ceil(frame.ts / frameInterval - frameId));
+      lastFrame = frame;
+      for (let i = 0; i < repeat; i++) {
+        taker.capture(frameMs, frame.pix);
+        blankStats.sample(frame.pix);
+        // Awaited: the limiter queues without bound, so an encoder slower than capture pins one full BGRA frame per backlog entry.
+        await pipeline.encodeBGRA(frame.pix);
+        written++;
+      }
       const newProgress = Math.floor((written / total) * 100);
       if (newProgress !== progress) {
         progress = newProgress;
@@ -135,7 +146,7 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
   } finally {
     await disposeWindow(win);
     await pipeline.finish();
-    screenshots = await taker.finish(lastBitmap);
+    screenshots = await taker.finish(lastFrame?.pix);
   }
 
   if (written === 0) {
