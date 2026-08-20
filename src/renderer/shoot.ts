@@ -50,11 +50,11 @@ async function paint({ win, fps, size, ms }: PaintOptions): Promise<Buffer | und
       };
       win.webContents.on("paint", handler);
       clearDirtyCheck = periodical(async (stuck) => {
-        if (stuck >= fps * 5) {
+        if (stuck >= fps * 10) {
           logger.warn(TAG, `paint timeout @ ${ms}`);
           win.webContents.off("paint", handler);
           resolve(undefined);
-        } else if (stuck % Math.floor(fps / 2) === 0) {
+        } else if (stuck % fps === 0) {
           await rebuildDrawable(win.webContents, frameSize);
         }
         return undefined;
