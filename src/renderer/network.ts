@@ -9,8 +9,9 @@ import { WaitableEvent } from "../base/waitable_event";
 const TAG = "[Network]";
 
 const map = new Map([
-  [`jssz-boss.hdslb.com`, `jssz-boss.bilibili.co`], //
+  [`jssz-boss.hdslb.com`, `jssz-boss.bilibili.co`],
   [`boss.hdslb.com`, `shjd-boss.bilibili.co`],
+  [`upos-sz-mirrorcos.bilivideo.com`, `jssz-inner-boss.bilibili.co`],
 ]);
 
 const targets = new Set(map.values());

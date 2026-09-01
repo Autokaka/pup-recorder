@@ -2,9 +2,12 @@
 
 import type { Frame } from "node-av";
 import { Decoder, FilterAPI } from "node-av/api";
-import { AVMEDIA_TYPE_VIDEO } from "node-av/constants";
+import { AVMEDIA_TYPE_VIDEO, AVSEEK_FLAG_BACKWARD } from "node-av/constants";
+import { logger } from "../../base/logging";
 import type { VideoMeta } from "./frame_server";
 import { openInput } from "./open";
+
+const TAG = "[Decode]";
 
 export interface DecodedFrame {
   idx: number;
@@ -15,11 +18,22 @@ export interface DecodeFramesOptions {
   src: string;
   meta: VideoMeta;
   signal: AbortSignal;
+  /** 1-based content frame to resume decoding from; a failed seek falls back to decoding the whole head. */
+  fromIdx?: number;
 }
 
-// Decode a source to fps-resampled, display-scaled, tight-RGBA frames in order (idx = 1-based decode position). Consumer backpressure is just pulling slower.
-export async function* decodeFrames({ src, meta, signal }: DecodeFramesOptions): AsyncGenerator<DecodedFrame> {
+// Decode a source to fps-resampled, display-scaled, tight-RGBA frames (idx = 1-based content position past the lead gap). Consumer backpressure is just pulling slower.
+export async function* decodeFrames({ src, meta, signal, fromIdx }: DecodeFramesOptions): AsyncGenerator<DecodedFrame> {
   await using input = await openInput(src, signal);
+  let resumeAt: number | undefined;
+  if (fromIdx !== undefined && fromIdx > 1) {
+    const target = meta.leadGap + (fromIdx - 1) / meta.fps;
+    if ((await input.seek(target, -1, AVSEEK_FLAG_BACKWARD)) === 0) {
+      resumeAt = fromIdx;
+    } else {
+      logger.warn(TAG, `seek to frame ${fromIdx} failed, decoding from head`);
+    }
+  }
   const stream = input.streams?.find((s) => s.codecpar.codecType === AVMEDIA_TYPE_VIDEO);
   if (!stream) {
     throw new Error("no video stream");
@@ -29,11 +43,30 @@ export async function* decodeFrames({ src, meta, signal }: DecodeFramesOptions):
   const scale = frameWidth !== width || frameHeight !== height ? `scale=${frameWidth}:${frameHeight},` : "";
   using filter = FilterAPI.create(`fps=${fps},${scale}format=rgba`, { signal });
   let k = 0;
+  let prevK = 0;
   for await (using frame of filter.frames(dec.frames(input.packets(stream.index)))) {
     if (!frame) {
       continue;
     }
-    yield { idx: ++k, buf: packRgba(frame) };
+    if (resumeAt !== undefined) {
+      const tb = frame.timeBase.num / frame.timeBase.den;
+      const ts = frame.bestEffortTimestamp ?? frame.pts;
+      if (ts === undefined) {
+        continue;
+      }
+      const at = Math.round((Number(ts) * tb - meta.leadGap) * meta.fps) + 1;
+      if (at < prevK) {
+        continue;
+      }
+      prevK = at;
+      if (at < resumeAt) {
+        continue;
+      }
+      k = at;
+    } else {
+      k++;
+    }
+    yield { idx: k, buf: packRgba(frame) };
   }
 }
 

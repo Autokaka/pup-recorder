@@ -25,9 +25,10 @@ export function useFrameProtocol(useInnerProxy: boolean): AsyncDisposable {
     const url = new URL(req.url);
     logger.debug(TAG, `${req.method} ${url.hostname}${url.search}`);
     try {
+      let res: Response;
       switch (url.hostname) {
         case "open":
-          return jsonOk(
+          res = jsonOk(
             await fs.open({
               src: url.searchParams.get("src") ?? "",
               fps: int(url, "fps", 30),
@@ -36,19 +37,24 @@ export function useFrameProtocol(useInnerProxy: boolean): AsyncDisposable {
               fit: url.searchParams.get("fit") ?? undefined,
             }),
           );
+          break;
         case "frame":
-          return rgbaOk(await fs.getFrame(url.searchParams.get("id") ?? "", int(url, "idx", 1)));
+          res = rgbaOk(await fs.getFrame(url.searchParams.get("id") ?? "", int(url, "idx", 1)));
+          break;
         case "stub":
-          return webmOk(await fs.stub(url.searchParams.get("src") ?? ""));
+          res = webmOk(await fs.stub(url.searchParams.get("src") ?? ""));
+          break;
         case "close":
           await fs.close(url.searchParams.get("id") ?? "");
-          return new Response(null, { status: 204, headers: CORS_HEADERS });
+          res = new Response(null, { status: 204, headers: CORS_HEADERS });
+          break;
         default:
-          return new Response(`unknown action: ${url.hostname}`, {
+          res = new Response(`unknown action: ${url.hostname}`, {
             status: 404,
             headers: CORS_HEADERS,
           });
       }
+      return res;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       logger.error(TAG, `${url.hostname} failed${url.search}: ${msg}`);

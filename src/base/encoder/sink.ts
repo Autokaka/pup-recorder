@@ -104,7 +104,7 @@ export class OutputSink implements AsyncDisposable {
         deadline: "realtime",
         "cpu-used": "8",
         "row-mt": "1",
-        threads: "2",
+        threads: "4",
       },
       bitrate: 4_000_000,
       pixelFormat: AV_PIX_FMT_YUVA420P,

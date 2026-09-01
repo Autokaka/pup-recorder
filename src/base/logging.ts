@@ -13,6 +13,9 @@ export interface LoggerLike {
   warn?(this: void, ...messages: unknown[]): void;
 
   error?(this: void, ...messages: unknown[]): void;
+
+  // Buffered impls drain on this; shutdown awaits it so the tail is not lost.
+  flush?(this: void): Promise<void>;
 }
 
 const DEBUG = "<pup@debug>";
@@ -57,6 +60,7 @@ export class Logger implements LoggerLike {
       info: lv >= 2 ? info : undefined,
       warn: lv >= 1 ? warn : undefined,
       error: lv >= 0 ? error : undefined,
+      flush: value.flush,
     };
   }
 
@@ -141,6 +145,10 @@ export class Logger implements LoggerLike {
           this.error(`${name}.unhandled`, err);
         });
     });
+  }
+
+  async flush(): Promise<void> {
+    await this.impl?.flush?.();
   }
 }
 

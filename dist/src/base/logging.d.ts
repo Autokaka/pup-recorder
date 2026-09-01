@@ -4,6 +4,7 @@ export interface LoggerLike {
     info?(this: void, ...messages: unknown[]): void;
     warn?(this: void, ...messages: unknown[]): void;
     error?(this: void, ...messages: unknown[]): void;
+    flush?(this: void): Promise<void>;
 }
 export declare class Logger implements LoggerLike {
     private _level;
@@ -20,6 +21,7 @@ export declare class Logger implements LoggerLike {
     fatal(...messages: unknown[]): void;
     private dispatch;
     attach(proc: ChildProcess, name: string): Promise<void>;
+    flush(): Promise<void>;
 }
 declare const logger: Logger;
 export { logger };

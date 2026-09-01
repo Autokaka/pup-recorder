@@ -14,6 +14,8 @@ export declare class DecodeSession {
     private _restart;
     private readonly _leadFrames;
     private readonly _keepCount;
+    private readonly _seekJump;
+    private _seekTo?;
     private readonly _pumpDone;
     constructor(meta: VideoMeta, _src: string);
     getFrame(idx: number): Promise<Buffer>;

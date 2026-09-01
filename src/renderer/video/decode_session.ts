@@ -31,6 +31,10 @@ export class DecodeSession {
   private readonly _leadFrames: number;
   // Frames kept behind the head; a clip that fits the budget retains every frame, so loops re-serve from memory.
   private readonly _keepCount: number;
+  // A request this far ahead of decoded progress is a page scrub, not playback — re-open at the target.
+  private readonly _seekJump: number;
+  // Target frame for the next pass; undefined = decode from the head.
+  private _seekTo?: number;
   // Resolves when pump() fully unwinds — awaited on close so node-av generators free before process teardown.
   private readonly _pumpDone: Promise<void>;
 
@@ -40,6 +44,7 @@ export class DecodeSession {
   ) {
     this._leadFrames = Math.round(meta.leadGap * meta.fps);
     this._keepCount = Math.max(KEEP_BEHIND, Math.floor(MEMORY_BUDGET / (meta.frameWidth * meta.frameHeight * 4)));
+    this._seekJump = Math.max(2 * meta.fps, DECODE_AHEAD * 2);
     this._pumpDone = this.pump();
   }
 
@@ -62,13 +67,17 @@ export class DecodeSession {
       if (idx > this._want) {
         this._want = idx;
       }
-      this.wake();
+      if (idx > this._ready + this._seekJump) {
+        this.requestRestart(idx);
+      } else {
+        this.wake();
+      }
     } else {
       // Evicted (loop/rewind): clear ready/done synchronously so the wrap's prefetch burst coalesces into one restart, not one per frame.
       this._ready = 0;
       this._done = false;
       this._want = idx;
-      this.requestRestart();
+      this.requestRestart(idx);
     }
     return this.wait(idx);
   }
@@ -99,8 +108,9 @@ export class DecodeSession {
     r?.();
   }
 
-  // Invalidate the running pass (or wake a parked one) so pump() starts a fresh decode from frame 1.
-  private requestRestart(): void {
+  // Invalidate the running pass (or wake a parked one) so pump() starts a fresh decode, seeking to `target` when given.
+  private requestRestart(target?: number): void {
+    this._seekTo = target;
     this._gen++;
     const r = this._restart;
     this._restart = undefined;
@@ -146,7 +156,9 @@ export class DecodeSession {
   }
 
   private async decodePass(gen: number): Promise<void> {
-    const stream = decodeFrames({ src: this._src, meta: this.meta, signal: this._ctrl.signal });
+    const from = this._seekTo;
+    this._seekTo = undefined;
+    const stream = decodeFrames({ src: this._src, meta: this.meta, signal: this._ctrl.signal, fromIdx: from });
     for await (const { idx, buf } of stream) {
       if (this._closed || this._gen !== gen) {
         return;
