@@ -105,10 +105,10 @@ export class FrameServer {
     return p;
   }
 
-  getFrame(id: string, idx: number): Promise<Buffer> {
+  getFrame(id: string, idx: number): Buffer | undefined {
     const e = this._sessions.get(id);
     if (!e) {
-      return Promise.resolve(Buffer.alloc(0));
+      return undefined;
     }
     return e.session.getFrame(idx);
   }

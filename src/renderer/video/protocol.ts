@@ -39,7 +39,7 @@ export function useFrameProtocol(useInnerProxy: boolean): AsyncDisposable {
           );
           break;
         case "frame":
-          res = rgbaOk(await fs.getFrame(url.searchParams.get("id") ?? "", int(url, "idx", 1)));
+          res = rgbaOk(fs.getFrame(url.searchParams.get("id") ?? "", int(url, "idx", 1)) ?? Buffer.alloc(0));
           break;
         case "stub":
           res = webmOk(await fs.stub(url.searchParams.get("src") ?? ""));

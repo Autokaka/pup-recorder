@@ -29,7 +29,7 @@ export declare class FrameServer {
     constructor(_useInnerProxy: boolean);
     open(opts: OpenOptions): Promise<VideoMeta>;
     stub(src: string): Promise<Buffer>;
-    getFrame(id: string, idx: number): Promise<Buffer>;
+    getFrame(id: string, idx: number): Buffer | undefined;
     close(id: string): Promise<void>;
     private probeCached;
     closeAll(): Promise<void>;

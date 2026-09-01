@@ -110,7 +110,7 @@ export class VideoHook {
           this._lastSnapshot.set(video, snap);
         } catch {}
       }
-      this.cache.release(state.meta.id, state);
+      this.cache.release(state.meta.id, state); // stale bitmaps must not survive a detach; fresh open re-keys to the new session
     }
     state.cv.remove();
     this.sessions.delete(video);

@@ -18,7 +18,7 @@ await $`${tsc}`;
 
 const common: Options = {
   silent: true,
-  target: "node20",
+  target: "node22",
   shims: true,
   external: Object.keys(dependencies),
   sourcemap: "inline",
