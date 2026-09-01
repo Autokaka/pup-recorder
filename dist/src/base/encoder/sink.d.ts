@@ -17,9 +17,6 @@ export declare class OutputSink implements AsyncDisposable {
     private constructor();
     static kindFromPath(path: string): SinkKind;
     static create(opts: SinkOptions): Promise<OutputSink>;
-    private static mp4Video;
-    private static webmVideo;
-    private static audioFor;
     setInputRate(sampleRate: number): void;
     encodeBGRA(bgraFrame: Frame): Promise<void>;
     encodeDecodedFrame(src: Frame): Promise<void>;

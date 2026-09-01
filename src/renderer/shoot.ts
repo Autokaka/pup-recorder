@@ -85,8 +85,7 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
   const winP = loadWindow({ source, renderer: options, signal });
   await using pipeline = await EncoderPipeline.create({ width, height, fps, outFiles, withAudio, disableHwCodec });
   const win = await winP;
-  const initMs = Math.round(performance.now() - tInit);
-  logger.debug(TAG, "init done:", { source, cost: initMs });
+  logger.debug(TAG, "init done:", { source, cost: Math.round(performance.now() - tInit) });
 
   const total = Math.ceil(fps * duration);
   const frameInterval = 1000 / fps;

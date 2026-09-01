@@ -15,6 +15,7 @@ export declare class EncoderPipeline {
     encodeBGRA(input: Buffer): Promise<void>;
     encodePNG(pngData: Buffer): Promise<void>;
     encodeAudio(pcm: Buffer): Promise<void>;
+    private enqueue;
     finish(): Promise<string[]>;
     [Symbol.asyncDispose](): Promise<void>;
     private free;

@@ -1,41 +1,31 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/06/02.
 
-import { logger } from "../../base/logging";
-import { decodeFrames } from "./decode";
+import { DECODE_AHEAD, DecodePump } from "./decode_pump";
 import type { VideoMeta } from "./frame_server";
 
-const TAG = "[DecodeSession]";
-const DECODE_AHEAD = 4; // decode a few frames past the highest request; the page already prefetches
 const KEEP_BEHIND = 16; // min frames held behind the head; must exceed the page's prefetch lead (AHEAD=10)
 const MEMORY_BUDGET = 256 * 1024 * 1024; // retain decoded frames up to this per-session budget so a small looping video re-serves from memory instead of re-decoding
-const MAX_PASS_RETRY = 3; // re-open a streamed source this many times on a transient decode error before reporting end-of-stream
 
 interface Waiter {
   idx: number;
   resolve: (b: Buffer) => void;
 }
 
-// Demand-driven in-process decode (Demuxer→Decoder→fps/scale/rgba filter) serving frame N as tight RGBA; forward-only — a loop/rewind re-decodes from frame 1 unless the whole clip still fits the memory budget.
+// Demand-driven in-process decode (Demuxer→Decoder→fps/scale/rgba filter) serving frame N as tight RGBA; forward-only — a loop/rewind re-decodes from the requested frame unless the whole clip still fits the memory budget.
 export class DecodeSession {
   private _buf = new Map<number, Buffer>();
   private _ready = 0;
   private _want = 1;
   private _done = false;
   private _closed = false;
-  private _gen = 0;
-  private _ctrl = new AbortController();
   private _waiters = new Set<Waiter>();
-  private _resume: (() => void) | undefined;
-  private _restart: (() => void) | undefined;
   // Lead frames held on the first decodable frame; content idx is offset past them.
   private readonly _leadFrames: number;
   // Frames kept behind the head; a clip that fits the budget retains every frame, so loops re-serve from memory.
   private readonly _keepCount: number;
   // A request this far ahead of decoded progress is a page scrub, not playback — re-open at the target.
   private readonly _seekJump: number;
-  // Target frame for the next pass; undefined = decode from the head.
-  private _seekTo?: number;
-  // Resolves when pump() fully unwinds — awaited on close so node-av generators free before process teardown.
+  private readonly _pump: DecodePump;
   private readonly _pumpDone: Promise<void>;
 
   constructor(
@@ -45,7 +35,15 @@ export class DecodeSession {
     this._leadFrames = Math.round(meta.leadGap * meta.fps);
     this._keepCount = Math.max(KEEP_BEHIND, Math.floor(MEMORY_BUDGET / (meta.frameWidth * meta.frameHeight * 4)));
     this._seekJump = Math.max(2 * meta.fps, DECODE_AHEAD * 2);
-    this._pumpDone = this.pump();
+    this._pump = new DecodePump({
+      meta,
+      src: this._src,
+      closed: () => this._closed,
+      aheadOfDemand: (idx) => idx + this._leadFrames > this.demand + DECODE_AHEAD,
+      serve: (idx, buf) => this.serve(idx, buf),
+      passEnded: () => this.passEnded(),
+    });
+    this._pumpDone = this._pump.done;
   }
 
   async getFrame(idx: number): Promise<Buffer> {
@@ -63,21 +61,21 @@ export class DecodeSession {
       return Buffer.alloc(0); // beyond end of stream
     }
     if (idx > this._ready) {
-      // forward, not yet decoded in this pass
-      if (idx > this._want) {
-        this._want = idx;
-      }
-      if (idx > this._ready + this._seekJump) {
-        this.requestRestart(idx);
+      // forward, not yet decoded in this pass; pendingFrom = where it (or the queued restart) will decode from —
+      // a restart to a lower target is still spinning up (_ready is stale at 0), so it would never cover idx.
+      const pendingFrom = this._pump.pendingFrom;
+      if (idx < pendingFrom || idx > this._ready + this._seekJump) {
+        this._pump.requestRestart(idx);
       } else {
-        this.wake();
+        this._want = Math.max(this._want, idx);
+        this._pump.wake();
       }
     } else {
       // Evicted (loop/rewind): clear ready/done synchronously so the wrap's prefetch burst coalesces into one restart, not one per frame.
       this._ready = 0;
       this._done = false;
       this._want = idx;
-      this.requestRestart(idx);
+      this._pump.requestRestart(idx);
     }
     return this.wait(idx);
   }
@@ -86,9 +84,8 @@ export class DecodeSession {
   async close(): Promise<void> {
     this._closed = true;
     this._done = true;
-    this._ctrl.abort();
-    this.wake();
-    this.requestRestart();
+    this._pump.abort();
+    this._pump.requestRestart();
     for (const w of this._waiters) {
       w.resolve(Buffer.alloc(0));
     }
@@ -102,80 +99,18 @@ export class DecodeSession {
     return new Promise<Buffer>((resolve) => this._waiters.add({ idx, resolve }));
   }
 
-  private wake(): void {
-    const r = this._resume;
-    this._resume = undefined;
-    r?.();
+  private serve(idx: number, buf: Buffer): void {
+    const at = this._leadFrames + idx; // map decode position past the held lead-gap frames
+    this._buf.set(at, buf);
+    this._ready = at;
+    // Drain before evict: with want far ahead the floor covers this frame, and evicting it first starves its waiter forever.
+    this.drainWaiters();
+    this.evict();
   }
 
-  // Invalidate the running pass (or wake a parked one) so pump() starts a fresh decode, seeking to `target` when given.
-  private requestRestart(target?: number): void {
-    this._seekTo = target;
-    this._gen++;
-    const r = this._restart;
-    this._restart = undefined;
-    r?.();
-    this.wake();
-  }
-
-  private async pump(): Promise<void> {
-    let fails = 0;
-    while (!this._closed) {
-      const gen = this._gen;
-      this._ready = 0;
-      this._done = false;
-      this._buf.clear();
-      let failed = false;
-      try {
-        await this.decodePass(gen);
-      } catch (e) {
-        if (!this._closed && this._gen === gen) {
-          failed = true;
-          logger.warn(
-            TAG,
-            `[${this.meta.id.slice(0, 8)}] decode pass failed: ${e instanceof Error ? e.message : String(e)}`,
-          );
-        }
-      }
-      if (this._closed) {
-        break;
-      }
-      if (this._gen !== gen) {
-        fails = 0;
-        continue; // restart requested mid-pass
-      }
-      // A thrown pass is a transient source error (e.g. a streamed loop re-open); retry instead of reporting EOF, which would blank the frame.
-      if (failed && ++fails <= MAX_PASS_RETRY) {
-        continue;
-      }
-      fails = 0;
-      this._done = true;
-      this.drainWaiters();
-      await this.untilRestart();
-    }
-  }
-
-  private async decodePass(gen: number): Promise<void> {
-    const from = this._seekTo;
-    this._seekTo = undefined;
-    const stream = decodeFrames({ src: this._src, meta: this.meta, signal: this._ctrl.signal, fromIdx: from });
-    for await (const { idx, buf } of stream) {
-      if (this._closed || this._gen !== gen) {
-        return;
-      }
-      const at = this._leadFrames + idx; // map decode position past the held lead-gap frames
-      while (!this._closed && this._gen === gen && at > this.demand + DECODE_AHEAD) {
-        await this.pause();
-      }
-      if (this._closed || this._gen !== gen) {
-        return;
-      }
-      this._buf.set(at, buf);
-      this._ready = at;
-      // Drain before evict: with want far ahead the floor covers this frame, and evicting it first starves its waiter forever.
-      this.drainWaiters();
-      this.evict();
-    }
+  private passEnded(): void {
+    this._done = true;
+    this.drainWaiters();
   }
 
   // Waiters that survived a rewind restart are still demand; ignoring them parks the pass and starves them forever.
@@ -187,22 +122,6 @@ export class DecodeSession {
       }
     }
     return d;
-  }
-
-  private pause(): Promise<void> {
-    return new Promise<void>((r) => {
-      this._resume = r;
-    });
-  }
-
-  // Park until a loop/backward request (or close) calls requestRestart().
-  private untilRestart(): Promise<void> {
-    if (this._closed) {
-      return Promise.resolve();
-    }
-    return new Promise<void>((r) => {
-      this._restart = r;
-    });
   }
 
   private evict(): void {

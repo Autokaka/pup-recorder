@@ -5,9 +5,14 @@ import { HardwareContext } from "node-av/api";
 import { AV_PIX_FMT_BGRA, FF_HWDEVICE_TYPE_CUDA, FF_HWDEVICE_TYPE_VIDEOTOOLBOX } from "node-av/constants";
 
 import { ConcurrencyLimiter } from "../limiter";
+import { withTimeout } from "../timing";
 import { CodecState } from "./codec";
 import { makeFrame } from "./misc";
 import { OutputSink } from "./sink";
+
+const DRAIN_TIMEOUT_MS = 5_000;
+// Normal frame/audio encode lands in tens of ms; the bound only bites a wedged native encode.
+const ENCODE_TIMEOUT_MS = 3_000;
 
 export interface EncoderPipelineOptions {
   width: number;
@@ -69,7 +74,13 @@ export class EncoderPipeline {
     }
 
     stack.move();
-    return new EncoderPipeline({ sinks, sharedHw, limiter: new ConcurrencyLimiter(1), outFiles, opts });
+    return new EncoderPipeline({
+      sinks,
+      sharedHw,
+      limiter: new ConcurrencyLimiter(1),
+      outFiles,
+      opts,
+    });
   }
 
   setupAudio(sampleRate: number): void {
@@ -79,14 +90,14 @@ export class EncoderPipeline {
   }
 
   async encodeBGRA(input: Buffer): Promise<void> {
-    await this._s.limiter.schedule(async () => {
+    await this.enqueue("encodeBGRA", async () => {
       using frame = this.bgraFrame(input);
       await Promise.all(this._s.sinks.map((sink) => sink.encodeBGRA(frame)));
     });
   }
 
   async encodePNG(pngData: Buffer): Promise<void> {
-    await this._s.limiter.schedule(async () => {
+    await this.enqueue("encodePNG", async () => {
       const { width, height } = this._s.opts;
       this._s.pngCodec ??= await CodecState.create(width, height);
       const src = await this._s.pngCodec.decodePNG(pngData);
@@ -97,16 +108,24 @@ export class EncoderPipeline {
   }
 
   async encodeAudio(pcm: Buffer): Promise<void> {
-    await this._s.limiter.schedule(async () => {
+    await this.enqueue("encodeAudio", async () => {
       for (const sink of this._s.sinks) {
         await sink.encodeAudio(pcm);
       }
     });
   }
 
+  private enqueue(label: string, fn: () => Promise<void>): Promise<void> {
+    return withTimeout(this._s.limiter.schedule(fn), ENCODE_TIMEOUT_MS, label);
+  }
+
   async finish(): Promise<string[]> {
     try {
-      await this._s.limiter.drain();
+      await withTimeout(
+        this._s.limiter.drain(),
+        DRAIN_TIMEOUT_MS,
+        "encoder drain (outputs incomplete — native encode wedged)",
+      );
       for (const sink of this._s.sinks) {
         await sink.flush();
       }
@@ -120,7 +139,11 @@ export class EncoderPipeline {
     if (this._disposed) {
       return;
     }
-    await this._s.limiter.drain();
+    await withTimeout(
+      this._s.limiter.drain(),
+      DRAIN_TIMEOUT_MS,
+      "encoder drain (outputs incomplete — native encode wedged)",
+    );
     await this.free();
   }
 

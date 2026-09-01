@@ -3,19 +3,11 @@
 import { ok } from "node:assert";
 import { FFmpegError, type Frame } from "node-av";
 import type { HardwareContext } from "node-av/api";
-import {
-  AV_PIX_FMT_YUVA420P,
-  AV_SAMPLE_FMT_FLT,
-  AV_SAMPLE_FMT_FLTP,
-  FF_ENCODER_AAC,
-  FF_ENCODER_LIBOPUS,
-} from "node-av/constants";
-import { AudioEncoder } from "./audio";
-import { CodecState } from "./codec";
-import { createHwVideoEncoder, type HwEncoder, type VideoSetup } from "./factory";
-import { FF_ENCODER_LIBVPX_VP9 } from "./misc";
+import type { AudioEncoder } from "./audio";
+import type { CodecState } from "./codec";
+import { createAudio, createMp4Video, createWebmVideo, type HwEncoder } from "./factory";
 import { FormatMuxer } from "./muxer";
-import { VideoEncoder } from "./video";
+import type { VideoEncoder } from "./video";
 
 export type SinkKind = "mp4" | "webm";
 
@@ -64,8 +56,7 @@ export class OutputSink implements AsyncDisposable {
     // Partial-construction safety: dispose muxer/encoders if a later step throws; move() disowns on success.
     await using stack = new AsyncDisposableStack();
     const muxer = stack.use(new FormatMuxer(opts.outFile));
-    const setup =
-      opts.kind === "mp4" ? await OutputSink.mp4Video(opts, muxer) : await OutputSink.webmVideo(opts, muxer);
+    const setup = opts.kind === "mp4" ? await createMp4Video(opts, muxer) : await createWebmVideo(opts, muxer);
     if (setup.video) {
       stack.use(setup.video);
     }
@@ -79,64 +70,13 @@ export class OutputSink implements AsyncDisposable {
     if (setup.ownsHw && setup.hw) {
       stack.use(setup.hw);
     }
-    const audio = opts.withAudio ? await OutputSink.audioFor(opts, muxer) : undefined;
+    const audio = opts.withAudio ? await createAudio(opts.kind, muxer) : undefined;
     if (audio) {
       stack.use(audio);
     }
     await muxer.open();
     stack.move();
     return new OutputSink({ muxer, ...setup, audio, opts });
-  }
-
-  private static mp4Video(opts: SinkOptions, muxer: FormatMuxer): Promise<VideoSetup> {
-    const { width, height, fps, disableHwCodec, sharedHw } = opts;
-    return createHwVideoEncoder({ width, height, fps, disableHwCodec, sharedHw }, muxer);
-  }
-
-  private static async webmVideo(opts: SinkOptions, muxer: FormatMuxer): Promise<VideoSetup> {
-    const { width, height, fps } = opts;
-    const video = await VideoEncoder.create({
-      width,
-      height,
-      fps,
-      codecName: FF_ENCODER_LIBVPX_VP9,
-      codecOpts: {
-        deadline: "realtime",
-        "cpu-used": "8",
-        "row-mt": "1",
-        threads: "4",
-      },
-      bitrate: 4_000_000,
-      pixelFormat: AV_PIX_FMT_YUVA420P,
-      muxer,
-    });
-    return {
-      video,
-      codec: await CodecState.create(width, height),
-      ownsHw: false,
-    };
-  }
-
-  private static audioFor(opts: SinkOptions, muxer: FormatMuxer): Promise<AudioEncoder> {
-    // Opus rejects 44.1k.
-    const cfg =
-      opts.kind === "mp4"
-        ? {
-            outSampleRate: 44_100,
-            outSampleFmt: AV_SAMPLE_FMT_FLTP,
-            codecName: FF_ENCODER_AAC,
-          }
-        : {
-            outSampleRate: 48_000,
-            outSampleFmt: AV_SAMPLE_FMT_FLT,
-            codecName: FF_ENCODER_LIBOPUS,
-          };
-    return AudioEncoder.create({
-      ...cfg,
-      globalHeader: true,
-      bitrate: 128_000,
-      muxer,
-    });
   }
 
   setInputRate(sampleRate: number): void {
