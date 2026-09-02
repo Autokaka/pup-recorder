@@ -39,7 +39,8 @@ export function useFrameProtocol(useInnerProxy: boolean): AsyncDisposable {
           );
           break;
         case "frame":
-          res = rgbaOk(fs.getFrame(url.searchParams.get("id") ?? "", int(url, "idx", 1)) ?? Buffer.alloc(0));
+          // Paints drive the virtual clock, so stall on decode instead of handing back a black frame.
+          res = rgbaOk((await fs.getFrame(url.searchParams.get("id") ?? "", int(url, "idx", 1))) ?? Buffer.alloc(0));
           break;
         case "stub":
           res = webmOk(await fs.stub(url.searchParams.get("src") ?? ""));

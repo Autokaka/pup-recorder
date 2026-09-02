@@ -123,6 +123,9 @@ export async function openSession(hook: VideoHook, args: AttachArgs): Promise<Vi
       fire(video, "playing");
     }
   }
-  hook.cache.prefetch(state, 1, AHEAD);
+  // Native re-attach resumes mid-clip; warm only fresh opens, or the 1..AHEAD prefetch fights the paints' position.
+  if (!native) {
+    hook.cache.prefetch(state, 1, AHEAD);
+  }
   return state;
 }

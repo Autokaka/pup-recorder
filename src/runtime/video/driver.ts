@@ -1,7 +1,7 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/06/02.
 
 import type { VideoHook } from "./hook";
-import { fitRect, syncOverlay } from "./overlay";
+import { fitRect, shownPixels, syncOverlay } from "./overlay";
 import { AHEAD, fire, type VideoFrameMeta, type VideoState } from "./types";
 
 function fireFrameCallbacks(state: VideoState): void {
@@ -71,21 +71,32 @@ export function advance(hook: VideoHook, timestampMs: number): Promise<unknown> 
     if (!state || state.dead) {
       return;
     }
-    // A backing-store resize (animated container) wipes the canvas; force a redraw even on an unchanged frame idx.
+    // Re-decode at native when the element outgrows the downscaled decode; check before the resize wipes the canvas.
+    if (
+      state.meta &&
+      state.meta.frameWidth < state.meta.width &&
+      !hook.attaching.has(video) &&
+      shownPixels(video).width > state.meta.frameWidth * 1.05
+    ) {
+      hook.reattach(video, state);
+      return;
+    }
+    // Stall the tick while a re-attach opens, or the resize-wiped canvas is captured as blank frames.
+    if (!state.meta && hook.attaching.has(video)) {
+      ps.push(hook.attaching.get(video)!.then(() => undefined));
+      return;
+    }
     if (syncOverlay(video, state.cv)) {
       state.lastDrawnIdx = -1;
     }
     if (!state.meta) {
       return;
     }
-    // Element grew past the decoded (downscaled) res → re-decode at native, one-shot (covers zoom).
-    if (
-      state.meta.frameWidth < state.meta.width &&
-      state.cv.width > state.meta.frameWidth * 1.05 &&
-      !hook.attaching.has(video)
-    ) {
-      hook.reattach(video, state);
-      return;
+    // Backing store = decode resolution for the session's life (one set per attach; CSS scales the rest).
+    if (state.cv.width !== state.meta.frameWidth || state.cv.height !== state.meta.frameHeight) {
+      state.cv.width = state.meta.frameWidth;
+      state.cv.height = state.meta.frameHeight;
+      state.lastDrawnIdx = -1;
     }
     if (!state.paused && !state.ended) {
       state.currentTime += dt * (video.playbackRate || 1);

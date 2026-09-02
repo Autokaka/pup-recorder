@@ -40,12 +40,13 @@ export class FrameServer {
   private _sessions = new Map<string, Entry>();
   private _probes = new Map<string, Promise<ProbeResult>>();
   private _stubs = new Map<string, Promise<Buffer>>();
+  private _opening = new Map<string, Promise<VideoMeta>>();
   private _closed = false;
 
   // -d decode bypasses the window interceptor, so it remaps hosts itself when the inner proxy is on.
   constructor(private readonly _useInnerProxy: boolean) {}
 
-  // closed-checked after probe so closeAll() can't race a slow open into a leaked session.
+  // Dedupes concurrent same-key opens (two same-src/size <video> scanned together) so no session is orphaned.
   async open(opts: OpenOptions): Promise<VideoMeta> {
     if (this._closed) {
       throw new Error("frame-server: closed");
@@ -56,6 +57,26 @@ export class FrameServer {
       hit.refs++;
       return hit.session.meta;
     }
+    const inflight = this._opening.get(id);
+    if (inflight) {
+      const meta = await inflight;
+      const e = this._sessions.get(id);
+      if (e) {
+        e.refs++;
+      }
+      return meta;
+    }
+    const opening = this.openOnce(opts, id);
+    this._opening.set(id, opening);
+    try {
+      return await opening;
+    } finally {
+      this._opening.delete(id);
+    }
+  }
+
+  // closed-checked after probe so closeAll() can't race a slow open into a leaked session.
+  private async openOnce(opts: OpenOptions, id: string): Promise<VideoMeta> {
     const src = this._useInnerProxy ? proxiedUrl(opts.src) : opts.src;
     const info = await this.probeCached(src);
     if (this._closed) {
@@ -105,7 +126,7 @@ export class FrameServer {
     return p;
   }
 
-  getFrame(id: string, idx: number): Buffer | undefined {
+  async getFrame(id: string, idx: number): Promise<Buffer | undefined> {
     const e = this._sessions.get(id);
     if (!e) {
       return undefined;

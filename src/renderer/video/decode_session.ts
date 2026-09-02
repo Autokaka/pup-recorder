@@ -7,10 +7,15 @@ import type { VideoMeta } from "./frame_server";
 const TAG = "[DecodeSession]";
 const DECODE_AHEAD = 4; // decode a few frames past the highest request; the page already prefetches
 const KEEP_BEHIND = 16; // min frames held behind the head; must exceed the page's prefetch lead
-const MEMORY_BUDGET = 256 * 1024 * 1024; // retain decoded frames up to this per-session budget so a small looping video re-serves from memory instead of re-decoding
-const MAX_PASS_RETRY = 3; // re-open a streamed source this many times on a transient decode error before reporting end-of-stream
+const MEMORY_BUDGET = 256 * 1024 * 1024; // decoded-frame budget per session: a small loop re-serves from memory
+const MAX_PASS_RETRY = 3; // re-open a streamed source this many times on a transient decode error before EOF
 
-// A source plays on its own clock: the pump decodes ahead into the frame store continuously, and getFrame only ever reads the store.
+// A source plays on its own clock: the pump fills a frame store ahead of demand; getFrame waits for its frame.
+interface FrameWaiter {
+  idx: number;
+  resolve: (wake: "wake" | "cancel") => void;
+}
+
 export class DecodeSession {
   private _buf = new Map<number, Buffer>();
   private _ready = 0;
@@ -21,6 +26,7 @@ export class DecodeSession {
   private _ctrl = new AbortController();
   private _resume: (() => void) | undefined;
   private _restart: (() => void) | undefined;
+  private readonly _waiters = new Set<FrameWaiter>();
   private readonly _leadFrames: number;
   private readonly _keepCount: number;
   private readonly _seekJump: number;
@@ -38,36 +44,39 @@ export class DecodeSession {
     this._pumpDone = this.pump();
   }
 
-  getFrame(idx: number): Buffer | undefined {
-    if (idx < 1) {
-      idx = 1;
-    }
-    if (idx <= this._leadFrames) {
-      idx = this._leadFrames + 1; // hold the first decodable frame across the lead
-    }
-    const hit = this._buf.get(idx);
-    if (hit) {
-      return hit;
-    }
-    if (this._done && idx > this._ready) {
-      return Buffer.alloc(0); // beyond end of stream
-    }
-    if (idx > this._ready) {
-      const pendingFrom = this._seekTo ?? this._passFrom;
-      if (idx < pendingFrom || idx > this._ready + this._seekJump) {
-        this._want = idx;
+  // Waits for the frame to land: paints pace the virtual clock, so stall instead of painting black.
+  async getFrame(raw: number): Promise<Buffer | undefined> {
+    const idx = raw <= this._leadFrames ? this._leadFrames + 1 : raw; // hold the first frame across the lead
+    for (;;) {
+      const hit = this._buf.get(idx);
+      if (hit) {
+        return hit;
+      }
+      if (this._closed) {
+        return undefined;
+      }
+      if (this._done && idx > this._ready) {
+        return Buffer.alloc(0); // beyond end of stream
+      }
+      this._want = Math.max(this._want, idx);
+      if (this.mustRepoint(idx)) {
         this.requestRestart(idx);
       } else {
-        this._want = Math.max(this._want, idx);
         this.wake();
       }
-    } else {
-      // Evicted (loop/rewind): restart the pump at the requested frame.
-      this._ready = 0;
-      this._done = false;
-      this.requestRestart(idx);
+      if ((await this.waitEvent(idx)) === "cancel") {
+        return undefined; // stale demand dropped by a restart (see requestRestart)
+      }
     }
-    return undefined;
+  }
+
+  private mustRepoint(idx: number): boolean {
+    if (this._seekTo !== undefined) {
+      // A re-point is queued but not started: only a lower target may displace it, or waiters bounce forever.
+      return idx < this._seekTo;
+    }
+    const from = this._passFrom;
+    return idx < from || idx <= this._ready || idx > Math.max(this._ready, from) + this._seekJump;
   }
 
   async close(): Promise<void> {
@@ -85,13 +94,35 @@ export class DecodeSession {
     r?.();
   }
 
+  private waitEvent(idx: number): Promise<"wake" | "cancel"> {
+    return new Promise<"wake" | "cancel">((resolve) => this._waiters.add({ idx, resolve }));
+  }
+
+  // Broadcast decode progress (frame stored / pass done / restart / close) to waiting getFrames.
+  private signal(): void {
+    for (const w of this._waiters) {
+      w.resolve("wake");
+    }
+    this._waiters.clear();
+  }
+
   private requestRestart(target?: number): void {
     this._seekTo = target;
     this._gen++;
+    // Drop waiters a restart leaves far behind: they only re-raise _want and drag the pass to the tail.
+    if (target !== undefined) {
+      for (const w of this._waiters) {
+        if (w.idx > target + this._keepCount) {
+          this._waiters.delete(w);
+          w.resolve("cancel");
+        }
+      }
+    }
     const r = this._restart;
     this._restart = undefined;
     r?.();
     this.wake();
+    this.signal();
   }
 
   private async pump(): Promise<void> {
@@ -120,35 +151,49 @@ export class DecodeSession {
         fails = 0;
         continue; // restart requested mid-pass
       }
-      // A thrown pass is a transient source error (e.g. a streamed loop re-open); retry instead of reporting EOF, which would blank the frame.
+      // A thrown pass is a transient source error (e.g. a streamed loop re-open); retry, else EOF would blank the frame.
       if (failed && ++fails <= MAX_PASS_RETRY) {
         continue;
       }
       fails = 0;
       this._done = true;
+      this.signal();
       await this.untilRestart();
     }
   }
 
   private async decodePass(gen: number): Promise<void> {
-    const from = this._seekTo;
-    this._seekTo = undefined;
-    this._passFrom = from ?? 1;
-    const stream = decodeFrames({ src: this._src, meta: this.meta, signal: this._ctrl.signal, fromIdx: from });
-    for await (const { idx, buf } of stream) {
-      if (this._closed || this._gen !== gen) {
-        return;
+    // A seek whose target overshoots the last frame yields nothing; one retry from head beats a false EOF.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const from = this._seekTo; // restart target in page-frame space (lead included)
+      this._seekTo = undefined;
+      this._passFrom = from ?? 1;
+      this._want = from ?? 1; // a fresh pass paces off its own start, not the previous pass's tail demand
+      // decodeFrames counts post-lead content frames, so a page-key target loses the lead offset.
+      const contentFrom = from === undefined ? undefined : Math.max(1, from - this._leadFrames);
+      const stream = decodeFrames({ src: this._src, meta: this.meta, signal: this._ctrl.signal, fromIdx: contentFrom });
+      let stored = 0;
+      for await (const { idx, buf } of stream) {
+        if (this._closed || this._gen !== gen) {
+          return;
+        }
+        const at = this._leadFrames + idx; // map decode position past the held lead-gap frames
+        while (!this._closed && this._gen === gen && at > this._want + DECODE_AHEAD) {
+          await this.pause();
+        }
+        if (this._closed || this._gen !== gen) {
+          return;
+        }
+        this._buf.set(at, buf);
+        this._ready = at;
+        this.evict();
+        this.signal();
+        stored++;
       }
-      const at = this._leadFrames + idx; // map decode position past the held lead-gap frames
-      while (!this._closed && this._gen === gen && at > this._want + DECODE_AHEAD) {
-        await this.pause();
+      if (attempt === 0 && stored === 0 && contentFrom !== undefined && !this._closed && this._gen === gen) {
+        continue; // seek landed past the last frame: re-decode from head
       }
-      if (this._closed || this._gen !== gen) {
-        return;
-      }
-      this._buf.set(at, buf);
-      this._ready = at;
-      this.evict();
+      return;
     }
   }
 

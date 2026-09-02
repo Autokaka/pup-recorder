@@ -38,10 +38,17 @@ export async function* decodeFrames({ src, meta, signal, fromIdx }: DecodeFrames
   if (!stream) {
     throw new Error("no video stream");
   }
-  using dec = await Decoder.create(stream, { signal });
+  // Software decode with auto-detected threads (ffmpeg's default of 1 leaves most cores idle on 1080p).
+  using dec = await Decoder.create(stream, { signal, threadCount: 0 });
   const { frameWidth, frameHeight, width, height, fps } = meta;
   const scale = frameWidth !== width || frameHeight !== height ? `scale=${frameWidth}:${frameHeight},` : "";
-  using filter = FilterAPI.create(`fps=${fps},${scale}format=rgba`, { signal });
+  // Odd native widths (1922 etc) have no NEON swscale path; pad-right to 16-aligned and trim in packRgba.
+  const align = (n: number): number => Math.ceil(n / 16) * 16;
+  const pad =
+    scale === "" && (frameWidth % 16 !== 0 || frameHeight % 16 !== 0)
+      ? `pad=${align(frameWidth)}:${align(frameHeight)}:0:0,`
+      : "";
+  using filter = FilterAPI.create(`fps=${fps},${scale}${pad}format=rgba`, { signal });
   let k = 0;
   let prevK = 0;
   for await (using frame of filter.frames(dec.frames(input.packets(stream.index)))) {
@@ -66,20 +73,20 @@ export async function* decodeFrames({ src, meta, signal, fromIdx }: DecodeFrames
     } else {
       k++;
     }
-    yield { idx: k, buf: packRgba(frame) };
+    yield { idx: k, buf: packRgba(frame, frameWidth, frameHeight) };
   }
 }
 
-// Tight RGBA copy (drop libav row padding) so the page can wrap it straight into ImageData.
-function packRgba(frame: Frame): Buffer {
-  const row = frame.width * 4;
+// Tight RGBA of the top-left outW×outH region (drops libav row padding and any pad-right/bottom planes).
+function packRgba(frame: Frame, outW: number, outH: number): Buffer {
+  const row = outW * 4;
   const stride = frame.linesize[0]!;
   const src = frame.data![0]!;
-  if (stride === row) {
-    return Buffer.from(src.subarray(0, row * frame.height));
+  if (stride === row && frame.height === outH) {
+    return Buffer.from(src.subarray(0, row * outH));
   }
-  const out = Buffer.allocUnsafe(row * frame.height);
-  for (let y = 0; y < frame.height; y++) {
+  const out = Buffer.allocUnsafe(row * outH);
+  for (let y = 0; y < outH; y++) {
     src.copy(out, y * row, y * stride, y * stride + row);
   }
   return out;

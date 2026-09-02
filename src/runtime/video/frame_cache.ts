@@ -2,6 +2,8 @@
 
 import { SCHEME, type VideoCache, type VideoState } from "./types";
 
+const FETCH_TIMEOUT_MS = 8_000; // bound a stuck decode (matches the decoder rw_timeout) so paints hold instead of freezing
+
 // Per-session bitmap cache: fetches RGBA frames from the frame protocol, dedupes in-flight, evicts behind readers.
 export class FrameCache {
   private _caches = new Map<string, VideoCache>();
@@ -31,24 +33,27 @@ export class FrameCache {
     }
     const w = meta.frameWidth;
     const h = meta.frameHeight;
-    const p = fetch(`${SCHEME}frame?id=${meta.id}&idx=${idx}`)
-      .then((r) => (r.ok ? r.arrayBuffer() : undefined))
-      .then((buf) =>
-        buf && buf.byteLength === w * h * 4
-          ? createImageBitmap(new ImageData(new Uint8ClampedArray(buf), w, h))
-          : undefined,
-      )
-      .then((bm) => {
+    const p = new Promise<ImageBitmap | undefined>((res) => {
+      const settle = (bm: ImageBitmap | undefined): void => {
         c.inFlight.delete(idx);
         if (bm) {
           c.bitmaps.set(idx, bm);
         }
-        return bm;
-      })
-      .catch(() => {
-        c.inFlight.delete(idx);
-        return undefined;
-      });
+        res(bm);
+      };
+      const req = fetch(`${SCHEME}frame?id=${meta.id}&idx=${idx}`)
+        .then((r) => (r.ok ? r.arrayBuffer() : undefined))
+        .then((buf) =>
+          buf && buf.byteLength === w * h * 4
+            ? createImageBitmap(new ImageData(new Uint8ClampedArray(buf), w, h))
+            : undefined,
+        )
+        .then((bm) => settle(bm))
+        .catch(() => settle(undefined));
+      // A stuck decode would park the paint forever; time out and let the canvas hold its last frame.
+      setTimeout(() => settle(undefined), FETCH_TIMEOUT_MS);
+      void req;
+    });
     c.inFlight.set(idx, p);
     return p;
   }

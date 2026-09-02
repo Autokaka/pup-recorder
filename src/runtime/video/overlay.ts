@@ -28,7 +28,7 @@ function cssCase(s: string): string {
   return s.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
 }
 
-// Track the overlay canvas to the video element's live box; true = backing store resized (which wipes the canvas).
+// Track the overlay to the element's live box via CSS only; backing stays at decode res or zoom wipes risk blank frames.
 export function syncOverlay(video: HTMLVideoElement, cv: HTMLCanvasElement): boolean {
   const cs = window.getComputedStyle(video);
   cv.style.position = "absolute";
@@ -46,21 +46,17 @@ export function syncOverlay(video: HTMLVideoElement, cv: HTMLCanvasElement): boo
       cv.style.setProperty(cssCase(p), v);
     }
   }
-  // Backing store at on-screen pixel size (post-transform) so decode resolution matches displayed pixels.
+  return false;
+}
+
+// On-screen (post-transform) pixel size of a video element (drives the native re-attach threshold).
+export function shownPixels(video: HTMLVideoElement): { width: number; height: number } {
   const vr = video.getBoundingClientRect();
   const dpr = window.devicePixelRatio || 1;
-  const w = Math.max(1, Math.round(vr.width * dpr));
-  const h = Math.max(1, Math.round(vr.height * dpr));
-  let resized = false;
-  if (cv.width !== w) {
-    cv.width = w;
-    resized = true;
-  }
-  if (cv.height !== h) {
-    cv.height = h;
-    resized = true;
-  }
-  return resized;
+  return {
+    width: Math.max(1, Math.round(vr.width * dpr)),
+    height: Math.max(1, Math.round(vr.height * dpr)),
+  };
 }
 
 export function setupCanvas(video: HTMLVideoElement, snap: OffscreenCanvas | undefined): HTMLCanvasElement {

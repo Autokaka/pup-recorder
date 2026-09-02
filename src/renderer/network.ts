@@ -96,7 +96,7 @@ export function setInterceptor({ source, window, useInnerProxy, stubMedia }: Net
         return Promise.resolve();
       }
       return wait(key, () => {
-        logger.warn(TAG, `maybe timeout:`, {
+        logger.debug(TAG, `maybe timeout:`, {
           key,
           url,
           proxied,
@@ -136,10 +136,7 @@ export function setInterceptor({ source, window, useInnerProxy, stubMedia }: Net
     const key = `${window.id}_${details.id}`;
     signal(key);
     const { url, method, error, resourceType } = details;
-    // Stubbed media downgrades: ERR_ABORTED is just the loader restarting onto the cross-scheme redirect.
-    const media = stubMedia && resourceType === "media";
-    const level = media ? (error === "net::ERR_ABORTED" ? "debug" : "warn") : "error";
-    logger[level](TAG, `error:`, { key, url, method, error, resourceType, source });
+    logger.debug(TAG, `error:`, { key, url, method, error, resourceType, source });
   });
 }
 

@@ -11,6 +11,7 @@ export declare class DecodeSession {
     private _ctrl;
     private _resume;
     private _restart;
+    private readonly _waiters;
     private readonly _leadFrames;
     private readonly _keepCount;
     private readonly _seekJump;
@@ -18,9 +19,12 @@ export declare class DecodeSession {
     private _passFrom;
     private readonly _pumpDone;
     constructor(meta: VideoMeta, _src: string);
-    getFrame(idx: number): Buffer | undefined;
+    getFrame(raw: number): Promise<Buffer | undefined>;
+    private mustRepoint;
     close(): Promise<void>;
     private wake;
+    private waitEvent;
+    private signal;
     private requestRestart;
     private pump;
     private decodePass;
