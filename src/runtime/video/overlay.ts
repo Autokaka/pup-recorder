@@ -17,6 +17,8 @@ const MIRROR_PROPS = [
   "mixBlendMode",
   "mask",
   "zIndex",
+  "objectFit",
+  "objectPosition",
   "position",
   "left",
   "top",

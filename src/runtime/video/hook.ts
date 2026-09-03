@@ -3,9 +3,9 @@
 import { advance } from "./driver";
 import { FrameCache } from "./frame_cache";
 import { installMediaShim } from "./media_shim";
-import { setupCanvas } from "./overlay";
+import { fitRect, setupCanvas } from "./overlay";
 import { newVideoState, openSession } from "./session";
-import { fire, type VideoState } from "./types";
+import { AHEAD, fire, SCHEME, TAG, type VideoMeta, type VideoState } from "./types";
 
 declare global {
   interface Window {
@@ -24,6 +24,8 @@ export class VideoHook {
   readonly cache = new FrameCache();
   rvfcSeq = 0;
   currMs = 0;
+  private _upgrading = new WeakSet<HTMLVideoElement>();
+  private _lastUpgradeAt = new WeakMap<HTMLVideoElement, number>();
   private _lastSnapshot = new WeakMap<HTMLVideoElement, OffscreenCanvas>();
 
   install(): void {
@@ -129,20 +131,81 @@ export class VideoHook {
     this.attach(video);
   }
 
-  // Re-open at native resolution (the element outgrew the downscaled decode), preserving playback state.
-  reattach(video: HTMLVideoElement, state: VideoState): void {
-    const t = state.currentTime;
-    const paused = state.paused;
-    const ended = state.ended;
-    this.detach(video);
-    void this.attach(video, true).then((ns) => {
-      if (!ns) {
+  isUpgrading(video: HTMLVideoElement): boolean {
+    return this._upgrading.has(video);
+  }
+
+  // Background native swap: the old canvas keeps painting until the first native frame is decoded, so no blank/jump.
+  async upgrade(video: HTMLVideoElement, state: VideoState): Promise<void> {
+    const meta = state.meta;
+    if (!meta || meta.frameWidth >= meta.width || this._upgrading.has(video)) {
+      return;
+    }
+    const src = video.src || video.currentSrc;
+    if (!src) {
+      return;
+    }
+    // Back off after a failed open so a wedged source isn't re-probed every tick.
+    if (performance.now() - (this._lastUpgradeAt.get(video) ?? 0) < 1000) {
+      return;
+    }
+    this._lastUpgradeAt.set(video, performance.now());
+    this._upgrading.add(video);
+    let ns: VideoState | undefined;
+    try {
+      ns = await this.openNative(src, meta.fps);
+      if (!ns || this.sessions.get(video) !== state) {
         return;
       }
-      ns.currentTime = t;
-      ns.paused = paused;
-      ns.ended = ended;
-    });
+      // Decode the frame the clock is at right now so the swap lands on matching content.
+      const idx = Math.max(1, Math.round(state.currentTime * meta.fps));
+      const bm = await this.cache.fetch(ns, idx);
+      if (!bm || this.sessions.get(video) !== state) {
+        return;
+      }
+      this.commitUpgrade(state, ns, bm, idx);
+      ns = undefined; // committed: the live state owns the session now
+    } catch (e) {
+      console.error(TAG, `upgrade failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      // Aborted (stale session / src change) or failed: close the warm-up session so it can't leak.
+      if (ns?.meta) {
+        await fetch(`${SCHEME}close?id=${ns.meta.id}`, { keepalive: true }).catch(() => undefined);
+      }
+      this._upgrading.delete(video);
+    }
+  }
+
+  // Opens a native-resolution session without touching the live state (no events, no canvas swap).
+  private async openNative(src: string, fps: number): Promise<VideoState | undefined> {
+    try {
+      const res = await fetch(`${SCHEME}open?src=${encodeURIComponent(src)}&fps=${fps}`);
+      if (!res.ok) {
+        return undefined;
+      }
+      const meta = (await res.json()) as VideoMeta;
+      return { meta } as VideoState;
+    } catch {
+      return undefined;
+    }
+  }
+
+  // Repoint the live state at the native session and paint the pre-decoded frame in the same tick.
+  private commitUpgrade(state: VideoState, ns: VideoState, bm: ImageBitmap, idx: number): void {
+    const nmeta = ns.meta!;
+    const oldId = state.meta!.id;
+    const cv = state.cv;
+    // Backing store resize wipes the canvas, so draw the ready frame immediately after it.
+    cv.width = nmeta.frameWidth;
+    cv.height = nmeta.frameHeight;
+    const r = fitRect(bm.width, bm.height, cv.width, cv.height, state.objectFit);
+    state.ctx.clearRect(0, 0, cv.width, cv.height);
+    state.ctx.drawImage(bm, r[0], r[1], r[2], r[3]);
+    state.lastDrawnIdx = idx;
+    state.meta = nmeta;
+    // The pre-decoded frame now lives in the native cache under nmeta.id; drop the old session + its bitmaps.
+    this.cache.release(oldId, state);
+    this.cache.prefetch(state, idx + 1, AHEAD - 1);
   }
 
   private scan(root: Element | null): void {

@@ -18,6 +18,8 @@ export declare class VideoHook {
     readonly cache: FrameCache;
     rvfcSeq: number;
     currMs: number;
+    private _upgrading;
+    private _lastUpgradeAt;
     private _lastSnapshot;
     install(): void;
     attach(video: HTMLVideoElement, native?: boolean): Promise<VideoState | undefined>;
@@ -25,7 +27,10 @@ export declare class VideoHook {
     resume(video: HTMLVideoElement, state: VideoState): void;
     detach(video: HTMLVideoElement): void;
     onSrcChange(video: HTMLVideoElement): void;
-    reattach(video: HTMLVideoElement, state: VideoState): void;
+    isUpgrading(video: HTMLVideoElement): boolean;
+    upgrade(video: HTMLVideoElement, state: VideoState): Promise<void>;
+    private openNative;
+    private commitUpgrade;
     private scan;
 }
 export declare function installVideoHook(): void;

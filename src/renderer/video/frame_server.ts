@@ -1,6 +1,5 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/05/18.
 
-import { createHash } from "node:crypto";
 import { useRetry } from "../../base/retry";
 import { proxiedUrl } from "../network";
 import { DecodeSession } from "./decode_session";
@@ -31,52 +30,21 @@ export interface OpenOptions {
   fit?: string;
 }
 
-interface Entry {
-  session: DecodeSession;
-  refs: number;
-}
-
 export class FrameServer {
-  private _sessions = new Map<string, Entry>();
+  private _sessions = new Map<string, DecodeSession>();
   private _probes = new Map<string, Promise<ProbeResult>>();
   private _stubs = new Map<string, Promise<Buffer>>();
-  private _opening = new Map<string, Promise<VideoMeta>>();
+  private _seq = 0;
   private _closed = false;
 
   // -d decode bypasses the window interceptor, so it remaps hosts itself when the inner proxy is on.
   constructor(private readonly _useInnerProxy: boolean) {}
 
-  // Dedupes concurrent same-key opens (two same-src/size <video> scanned together) so no session is orphaned.
+  // One session per <video> element: a session is a single playback head, so same-src elements must not share it.
   async open(opts: OpenOptions): Promise<VideoMeta> {
     if (this._closed) {
       throw new Error("frame-server: closed");
     }
-    const id = key(opts);
-    const hit = this._sessions.get(id);
-    if (hit) {
-      hit.refs++;
-      return hit.session.meta;
-    }
-    const inflight = this._opening.get(id);
-    if (inflight) {
-      const meta = await inflight;
-      const e = this._sessions.get(id);
-      if (e) {
-        e.refs++;
-      }
-      return meta;
-    }
-    const opening = this.openOnce(opts, id);
-    this._opening.set(id, opening);
-    try {
-      return await opening;
-    } finally {
-      this._opening.delete(id);
-    }
-  }
-
-  // closed-checked after probe so closeAll() can't race a slow open into a leaked session.
-  private async openOnce(opts: OpenOptions, id: string): Promise<VideoMeta> {
     const src = this._useInnerProxy ? proxiedUrl(opts.src) : opts.src;
     const info = await this.probeCached(src);
     if (this._closed) {
@@ -91,7 +59,7 @@ export class FrameServer {
       frameHeight = even(info.height * s);
     }
     const meta: VideoMeta = {
-      id,
+      id: String(++this._seq),
       width: info.width,
       height: info.height,
       frameWidth,
@@ -100,7 +68,7 @@ export class FrameServer {
       duration: info.duration,
       leadGap: info.leadGap,
     };
-    this._sessions.set(id, { session: new DecodeSession(meta, src), refs: 1 });
+    this._sessions.set(meta.id, new DecodeSession(meta, src));
     return meta;
   }
 
@@ -127,23 +95,16 @@ export class FrameServer {
   }
 
   async getFrame(id: string, idx: number): Promise<Buffer | undefined> {
-    const e = this._sessions.get(id);
-    if (!e) {
-      return undefined;
-    }
-    return e.session.getFrame(idx);
+    return this._sessions.get(id)?.getFrame(idx);
   }
 
   async close(id: string): Promise<void> {
-    const e = this._sessions.get(id);
-    if (!e) {
-      return;
-    }
-    if (--e.refs > 0) {
+    const s = this._sessions.get(id);
+    if (!s) {
       return;
     }
     this._sessions.delete(id);
-    await e.session.close();
+    await s.close();
   }
 
   // Failed probes evict so a transient source error can retry on the next request.
@@ -162,14 +123,8 @@ export class FrameServer {
     this._closed = true;
     const sessions = [...this._sessions.values()];
     this._sessions.clear();
-    await Promise.all(sessions.map((e) => e.session.close()));
+    await Promise.all(sessions.map((s) => s.close()));
   }
-}
-
-function key(opts: OpenOptions): string {
-  return createHash("sha1")
-    .update(`${opts.src}|${opts.fps}|${opts.dstW ?? ""}|${opts.dstH ?? ""}|${opts.fit ?? ""}`)
-    .digest("hex");
 }
 
 // Round down to an even integer (≥2) for the scaler.

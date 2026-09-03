@@ -1,6 +1,7 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/06/02.
 
 import type { VideoHook } from "./hook";
+import { shownPixels } from "./overlay";
 import {
   AHEAD,
   fire,
@@ -67,7 +68,9 @@ export async function openSession(hook: VideoHook, args: AttachArgs): Promise<Vi
   fire(video, "loadstart");
   let res: Response;
   try {
-    const q = native ? "" : `&w=${state.cv.width}&h=${state.cv.height}&fit=${encodeURIComponent(state.objectFit)}`;
+    // Decode at the element's on-screen pixels, so static boxes open at final res without a reattach round.
+    const dpr = shownPixels(video);
+    const q = native ? "" : `&w=${dpr.width}&h=${dpr.height}&fit=${encodeURIComponent(state.objectFit)}`;
     res = await fetch(`${SCHEME}open?src=${encodeURIComponent(src)}&fps=${fps}${q}`);
   } catch (e) {
     return failOpen(video, state, {

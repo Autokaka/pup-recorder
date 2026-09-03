@@ -71,15 +71,15 @@ export function advance(hook: VideoHook, timestampMs: number): Promise<unknown> 
     if (!state || state.dead) {
       return;
     }
-    // Re-decode at native when the element outgrows the downscaled decode; check before the resize wipes the canvas.
+    // The element outgrew the downscaled decode: swap to native in the background, keeping the old frame painting.
     if (
       state.meta &&
       state.meta.frameWidth < state.meta.width &&
       !hook.attaching.has(video) &&
+      !hook.isUpgrading(video) &&
       shownPixels(video).width > state.meta.frameWidth * 1.05
     ) {
-      hook.reattach(video, state);
-      return;
+      hook.upgrade(video, state);
     }
     // Stall the tick while a re-attach opens, or the resize-wiped canvas is captured as blank frames.
     if (!state.meta && hook.attaching.has(video)) {
