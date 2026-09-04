@@ -8,6 +8,7 @@ import { logger } from "../base/logging";
 import { BLANK_WARN_RATIO, BlankStats } from "../base/quality/blank";
 import { DropStats, JANK_WARN_SCORE } from "../base/quality/drop";
 import { periodical } from "../base/timing";
+import { FirstFrameGate, type CapturedFrame as Frame } from "./frame_gate";
 import type { IpcDonePayload } from "./ipc";
 import type { IPCRenderOptions } from "./schema";
 import { ScreenshotTaker } from "./screenshot";
@@ -27,32 +28,33 @@ interface PaintOptions {
   ms: number;
 }
 
-interface Frame {
-  pix: Buffer;
-  ts: number;
-}
-
-// Painting stays on for the whole run; waits for the frame whose stego row matches `ms`, undefined on timeout.
+// Waits for a composited frame whose stego row matches ms; on the first frame only, FirstFrameGate holds the first match as baseline and only lets a later composite that differs beyond threshold through, so a stego row landing before the page's first paint cannot be captured as an empty frame 0.
 async function paint({ win, fps, size, ms }: PaintOptions): Promise<Frame | undefined> {
   let clearDirtyCheck: VoidFunction | undefined;
   const frameSize: Size = { width: size.width, height: size.height + 1 };
   const isFirstFrame = Math.abs(1000 / fps - ms) < 1;
+  // Gate waits at most 300ms for a differing frame; a page that stays blank is accepted as-is.
+  const gate = isFirstFrame ? new FirstFrameGate({ width: size.width, height: size.height, windowMs: 300 }) : undefined;
   try {
     return await new Promise<Frame | undefined>((resolve) => {
-      const handler = (_e: unknown, _d: unknown, image: NativeImage) => {
+      const handler = (_e: unknown, _d: unknown, image: NativeImage): void => {
         const imageSize = image.getSize();
         if (!sizeEquals(imageSize, frameSize)) {
-          return;
+          return; // not a full output frame (e.g. a partial repaint sliver)
         }
-        // Decode from a 2-row sliver first; the full-frame readback (~8MB memcpy) is paid only on the matching frame.
+        // Decode the 2-row tail first; the full-frame readback (~8MB memcpy) is paid only on a match.
         const sliver = image.crop({ x: 0, y: frameSize.height - 2, width: FRAME_SYNC_MARKER_WIDTH, height: 2 });
         const ts = decodeStego(sliver.toBitmap(), { width: FRAME_SYNC_MARKER_WIDTH, height: 2 });
         if (ts === undefined || ms - ts > 1) {
+          return; // stego row still behind the target timestamp
+        }
+        const frame = { ts, pix: image.toBitmap().subarray(0, size.width * size.height * 4) };
+        // Without the gate every match is final; with it, only a frame that differs from the baseline lands.
+        if (gate && gate.accept(frame, performance.now()) === undefined) {
           return;
         }
-        const bitmap = image.toBitmap();
         win.webContents.off("paint", handler);
-        resolve({ ts, pix: Buffer.from(bitmap.buffer, bitmap.byteOffset, size.height * size.width * 4) });
+        resolve(frame);
       };
       win.webContents.on("paint", handler);
       const timeout = isFirstFrame ? fps * 10 : fps * 5;
@@ -61,7 +63,11 @@ async function paint({ win, fps, size, ms }: PaintOptions): Promise<Frame | unde
         if (stuck >= timeout) {
           logger.warn(TAG, `paint timeout @ ${ms}`);
           win.webContents.off("paint", handler);
-          resolve(undefined);
+          resolve(gate?.baseline);
+        } else if (gate?.expired(performance.now())) {
+          // No differing frame inside the window: the page starts blank, its true first frame is the baseline.
+          win.webContents.off("paint", handler);
+          resolve(gate.baseline);
         } else if (stuck % refreshFps === 0) {
           await rebuildDrawable(win.webContents, frameSize);
         }

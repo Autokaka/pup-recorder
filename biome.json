@@ -9,6 +9,10 @@
       "style": {
         "noNonNullAssertion": "off",
         "useBlockStatements": "error",
+        "useFilenamingConvention": {
+          "level": "error",
+          "options": { "filenameCases": ["snake_case"] }
+        },
         "useNamingConvention": {
           "level": "error",
           "options": {
