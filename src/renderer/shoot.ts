@@ -105,6 +105,11 @@ export async function shoot(options: IPCRenderOptions): Promise<IpcDonePayload> 
     win.webContents.setFrameRate(RENDER_FPS);
     await pauseVirtualTime(cdp);
 
+    // Video opens land on wall time while the capture clock is virtual; prime one tick at 0 so frame 0's stego match composites the first painted frame, not the pre-open empty canvas.
+    if (total > 0 && iframe) {
+      await tick({ frame: iframe, timestampMs: 0, signal });
+    }
+
     for (let frameId = 0; frameId < total; frameId++) {
       signal?.throwIfAborted();
       const frameMs = (frameId + 1) * frameInterval;
