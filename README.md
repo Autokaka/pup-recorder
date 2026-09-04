@@ -68,7 +68,7 @@ The two modes differ in *when* a frame is captured.
 
 ## Production
 
-pup-recorder is the core rendering engine of [花生AI](https://www.huasheng.cn/), driving ~1.7M video exports a day at five-nines (99.999%) reliability. Its direction is driven solely by production needs [at bilibili](https://jobs.bilibili.com/), reasoned from first principles — not by backward compatibility. Expect breaking changes; pin a version.
+pup-recorder is the core rendering engine of [花生AI](https://www.huasheng.cn/), driving ~3.5M video exports a day at five-nines (99.999%) reliability. Its direction is driven solely by production needs [at bilibili](https://jobs.bilibili.com/), reasoned from first principles — not by backward compatibility. Expect breaking changes; pin a version.
 
 ## License
 
