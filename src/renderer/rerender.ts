@@ -1,4 +1,4 @@
-// Created by Lu Ao (luao@bilibili.com) on 2026/08/21.
+// Created by Autokaka (qq1909698494@gmail.com) on 2026/08/21.
 
 import { logger } from "../base/logging";
 

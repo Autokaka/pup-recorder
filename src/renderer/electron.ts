@@ -1,7 +1,7 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/25.
 
 import { rmSync } from "node:fs";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromiumOptions } from "../base/chromium";
@@ -32,7 +32,10 @@ export async function runElectronApp({ args }: RunElectronAppOptions) {
   const profileDir = await mkdtemp(join(tmpdir(), "pup-profile-"));
   const electronArgs = opts.map((a) => `--${a}`);
   electronArgs.push(`--user-data-dir=${profileDir}`);
-  electronArgs.push(`${PUP_ARGS_KEY}=${Buffer.from(JSON.stringify(args)).toString("base64")}`);
+  // Large data: source would blow the argv per-arg limit; stage it as a file the child reads.
+  const argsFile = join(profileDir, "args.json");
+  await writeFile(argsFile, JSON.stringify(args));
+  electronArgs.push(`${PUP_ARGS_KEY}=${argsFile}`);
   const cmd = [electron, ...electronArgs, pupApp].join(" ");
   logger.debug(TAG, cmd);
 
