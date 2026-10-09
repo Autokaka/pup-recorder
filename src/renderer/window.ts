@@ -3,11 +3,12 @@
 import { join } from "node:path";
 import { BrowserWindow } from "electron";
 import { pupPkgRoot, pupPreload } from "../base/constants";
+import { proxiedUrl } from "../base/inner_proxy";
 import { logger } from "../base/logging";
 import { useRetry } from "../base/retry";
 import { sleep } from "../base/timing";
 import { AUDIO_ARG, WORLD_ARG, type WorldMode } from "../runtime/world";
-import { proxiedUrl, setInterceptor, unsetInterceptor } from "./network";
+import { setInterceptor, unsetInterceptor } from "./network";
 import { createStegoURL } from "./protocol";
 import type { IPCRenderOptions } from "./schema";
 

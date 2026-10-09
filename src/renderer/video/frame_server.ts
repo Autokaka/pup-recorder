@@ -1,7 +1,7 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/05/18.
 
+import { proxiedUrl } from "../../base/inner_proxy";
 import { useRetry } from "../../base/retry";
-import { proxiedUrl } from "../network";
 import { DecodeSession } from "./decode_session";
 import { type ProbeResult, probe } from "./probe";
 import { encodeStubWebm } from "./stub";

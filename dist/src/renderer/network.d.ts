@@ -1,5 +1,4 @@
 import type { BrowserWindow } from "electron";
-export declare function proxiedUrl(url: string): string;
 export interface NetworkOptions {
     source: string;
     window: BrowserWindow;

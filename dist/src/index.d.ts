@@ -1,5 +1,6 @@
 export { barLogger, ProgressBar } from "./base/cli_ui";
 export { penv } from "./base/env";
+export { isProxyTarget, proxiedUrl } from "./base/inner_proxy";
 export { Lazy } from "./base/lazy";
 export { Logger, type LoggerLike, logger } from "./base/logging";
 export { noerr } from "./base/noerr";

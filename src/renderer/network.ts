@@ -1,20 +1,12 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/02/09.
 
-import { URL } from "node:url";
 import type { BrowserWindow } from "electron";
+import { isProxyTarget, proxiedUrl } from "../base/inner_proxy";
 import { ConcurrencyLimiter } from "../base/limiter";
 import { logger } from "../base/logging";
 import { WaitableEvent } from "../base/waitable_event";
 
 const TAG = "[Network]";
-
-const map = new Map([
-  [`jssz-boss.hdslb.com`, `jssz-boss.bilibili.co`],
-  [`boss.hdslb.com`, `shjd-boss.bilibili.co`],
-  [`upos-sz-mirrorcos.bilivideo.com`, `jssz-inner-boss.bilibili.co`],
-]);
-
-const targets = new Set(map.values());
 
 const LOCAL_SCHEMES = ["pup:", "pup-frame:", "file:", "data:", "blob:", "chrome-extension:", "devtools:"];
 
@@ -25,24 +17,6 @@ function isLocalScheme(url: string): boolean {
     }
   }
   return false;
-}
-
-function isProxyTarget(url: string): boolean {
-  return url.startsWith("http") && targets.has(new URL(url).hostname);
-}
-
-export function proxiedUrl(url: string) {
-  if (!url.startsWith("http")) {
-    return url;
-  }
-  const parsed = new URL(url);
-  const target = map.get(parsed.hostname);
-  if (!target) {
-    return url;
-  }
-  parsed.hostname = target;
-  parsed.protocol = "http:";
-  return parsed.toString();
 }
 
 export interface NetworkOptions {
