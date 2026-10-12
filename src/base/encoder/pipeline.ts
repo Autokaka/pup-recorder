@@ -152,11 +152,20 @@ export class EncoderPipeline {
       return;
     }
     this._disposed = true;
+    // Dispose every sink before rethrowing, so one failure cannot leave later outputs unfinalized/leaked.
+    let failure: unknown;
     for (const sink of this._s.sinks) {
-      await sink[Symbol.asyncDispose]();
+      try {
+        await sink[Symbol.asyncDispose]();
+      } catch (e) {
+        failure ??= e;
+      }
     }
     this._s.pngCodec?.[Symbol.dispose]();
     this._s.sharedHw?.dispose();
+    if (failure) {
+      throw failure;
+    }
   }
 
   private bgraFrame(input: Buffer): Frame {

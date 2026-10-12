@@ -46,7 +46,8 @@ export class FormatMuxer {
       if (this._opened) {
         this._opened = false;
         try {
-          await this._ctx.writeTrailer();
+          // writeTrailer returns an AVERROR instead of throwing: unchecked, it ships a moov-less file as ok.
+          FFmpegError.throwIfError(await this._ctx.writeTrailer(), "writeTrailer");
         } finally {
           // A failed/truncated trailer write must not leak the FD.
           await this._ctx.closeOutput();
