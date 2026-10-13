@@ -1,7 +1,7 @@
 // Created by Autokaka (qq1909698494@gmail.com) on 2026/06/02.
 
 import type { VideoHook } from "./hook";
-import { fitRect, shownPixels, syncOverlay } from "./overlay";
+import { backingRect, shownPixels, syncOverlay } from "./overlay";
 import { AHEAD, fire, type VideoFrameMeta, type VideoState } from "./types";
 
 function fireFrameCallbacks(state: VideoState): void {
@@ -50,7 +50,7 @@ async function paint(hook: VideoHook, video: HTMLVideoElement, state: VideoState
     }
   }
   const cv = state.cv;
-  const r = fitRect(bm.width, bm.height, cv.width, cv.height, state.objectFit);
+  const r = backingRect(bm, cv, state.objectFit);
   state.ctx.clearRect(0, 0, cv.width, cv.height);
   state.ctx.drawImage(bm, r[0], r[1], r[2], r[3]);
   state.lastDrawnIdx = idx;

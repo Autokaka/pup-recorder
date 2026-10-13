@@ -5,5 +5,6 @@ export declare function shownPixels(video: HTMLVideoElement): {
     height: number;
 };
 export declare function setupCanvas(video: HTMLVideoElement, snap: OffscreenCanvas | undefined): HTMLCanvasElement;
+export declare function backingRect(bm: ImageBitmap, cv: HTMLCanvasElement, fit: string): Vec4;
 export declare function fitRect(srcW: number, srcH: number, dstW: number, dstH: number, fit: string): Vec4;
 export {};

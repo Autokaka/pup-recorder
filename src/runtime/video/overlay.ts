@@ -33,6 +33,11 @@ function cssCase(s: string): string {
 // Track the overlay to the element's live box via CSS only; backing stays at decode res or zoom wipes risk blank frames.
 export function syncOverlay(video: HTMLVideoElement, cv: HTMLCanvasElement): boolean {
   const cs = window.getComputedStyle(video);
+  // offset* resolve against the nearest positioned ancestor; the canvas must sit in that same box to inherit the element's clip.
+  const parent = video.parentNode;
+  if (parent instanceof HTMLElement && window.getComputedStyle(parent).position === "static") {
+    parent.style.position = "relative";
+  }
   cv.style.position = "absolute";
   // offset* are pre-transform coords from offsetParent's padding edge = the abs containing-block origin; map direct.
   cv.style.left = `${video.offsetLeft}px`;
@@ -76,6 +81,16 @@ export function setupCanvas(video: HTMLVideoElement, snap: OffscreenCanvas | und
     } catch {}
   }
   return cv;
+}
+
+// fitRect works in the element's box space; the backing is anamorphic to that box.
+export function backingRect(bm: ImageBitmap, cv: HTMLCanvasElement, fit: string): Vec4 {
+  const boxW = cv.offsetWidth || cv.width;
+  const boxH = cv.offsetHeight || cv.height;
+  const r = fitRect(bm.width, bm.height, boxW, boxH, fit);
+  const kx = cv.width / boxW;
+  const ky = cv.height / boxH;
+  return [r[0] * kx, r[1] * ky, r[2] * kx, r[3] * ky];
 }
 
 // Draw rect for the bitmap within the canvas per objectFit.

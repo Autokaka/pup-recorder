@@ -3,7 +3,7 @@
 import { advance } from "./driver";
 import { FrameCache } from "./frame_cache";
 import { installMediaShim } from "./media_shim";
-import { fitRect, setupCanvas } from "./overlay";
+import { backingRect, setupCanvas } from "./overlay";
 import { newVideoState, openSession } from "./session";
 import { AHEAD, fire, SCHEME, TAG, type VideoMeta, type VideoState } from "./types";
 
@@ -198,7 +198,7 @@ export class VideoHook {
     // Backing store resize wipes the canvas, so draw the ready frame immediately after it.
     cv.width = nmeta.frameWidth;
     cv.height = nmeta.frameHeight;
-    const r = fitRect(bm.width, bm.height, cv.width, cv.height, state.objectFit);
+    const r = backingRect(bm, cv, state.objectFit);
     state.ctx.clearRect(0, 0, cv.width, cv.height);
     state.ctx.drawImage(bm, r[0], r[1], r[2], r[3]);
     state.lastDrawnIdx = idx;
